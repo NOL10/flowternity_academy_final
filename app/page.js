@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
 import SiteNav from '@/components/site-nav';
@@ -7,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { motion } from 'framer-motion';
-import { ArrowRight, Check, Zap, Users, Calendar, Trophy, Sparkles, CalendarCheck2 } from 'lucide-react';
+import { ArrowRight, Check, Zap, Users, Calendar, Trophy, Sparkles, CalendarCheck2, ChevronDown } from 'lucide-react';
 import { SPORTS, MEMBERSHIPS } from '@/lib/flowternity/config';
 import { useAuth } from '@/app/providers';
 
@@ -164,7 +165,7 @@ function App() {
               {basketballPlans.map(p => {
                 const monthlyPrice = Math.round(p.price / p.duration_months);
                 // What you'd pay if buying 1-month plan repeatedly
-                const payMonthlyTotal = 2500 * p.duration_months;
+                const payMonthlyTotal = 3102 * p.duration_months;
                 const savingVsMonthly = payMonthlyTotal - p.price;
                 const savingPct = Math.round((savingVsMonthly / payMonthlyTotal) * 100);
                 // Only show discount for multi-month plans
@@ -211,7 +212,7 @@ function App() {
             </div>
 
             {/* Other sports */}
-            <p className="text-white/50 text-sm uppercase tracking-widest mb-4 text-center">Other Sports · ₹2,000 / month each</p>
+            <p className="text-white/50 text-sm uppercase tracking-widest mb-4 text-center">Other Sports · Starting from ₹2,000/month</p>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               {MEMBERSHIPS.filter(m => m.sport_id !== 'basketball').map(p => (
                 <Link key={p.id} href={`/checkout?plan=${p.id}`}>
@@ -266,15 +267,158 @@ function App() {
         </div>
       </section>
 
-      <footer className="border-t border-border py-12">
-        <div className="container flex flex-col md:flex-row justify-between gap-6">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center"><Zap className="w-5 h-5 text-black" strokeWidth={2.5} /></div>
-            <span className="font-display font-extrabold text-xl">FLOWTERNITY</span>
+      {/* FAQ */}
+      <section className="py-24 md:py-32 bg-secondary/30">
+        <div className="container max-w-4xl">
+          <div className="text-center mb-14">
+            <p className="text-sm uppercase tracking-widest text-muted-foreground mb-3">From 1 August 2026</p>
+            <h2 className="font-display font-black text-4xl md:text-6xl tracking-tight">Frequently asked questions.</h2>
+            <p className="text-muted-foreground mt-4 max-w-xl mx-auto">Everything you need to know about the new membership and class-booking system.</p>
           </div>
-          <p className="text-muted-foreground text-sm">© {new Date().getFullYear()} Flowternity. Train with purpose.</p>
+          <FaqSection />
         </div>
-      </footer>
+      </section>
+
+    </div>
+  );
+}
+
+const FAQ_GROUPS = [
+  {
+    group: 'General',
+    items: [
+      { q: 'When will the new membership system begin?', a: 'The new membership and class-booking system is effective from 1 August 2026. From this date, students must have an active membership and book classes in advance before attending.' },
+      { q: 'Why is Flowternity changing the current batch system?', a: 'The current system limits most students to two fixed classes per week. The new system provides more weekly training opportunities, greater flexibility for families, better class organisation, more focused coaching, level-specific training, and an improved player development pathway.' },
+      { q: 'Is this only a change in fees?', a: 'No. This is a complete upgrade to how coaching classes are organised and delivered — including flexible booking, access to multiple sessions per week, level-based coaching categories, better capacity management, and a clearer player development pathway.' },
+      { q: 'Will the old fixed batches continue after 1 August 2026?', a: 'The academy will transition away from fixed batches. Students will book suitable classes from the timetable based on their active membership, assigned development category, the class schedule, and available capacity.' },
+    ],
+  },
+  {
+    group: 'Basketball Memberships',
+    items: [
+      { q: 'What are the new basketball membership plans?', a: 'Annual Basketball Pass — ₹24,708 (₹2,059/month). Half-Yearly Basketball Pass — ₹16,704 (₹2,784/month). Monthly Basketball Pass — ₹3,102 (approximately ₹129 per class when attending six classes per week).' },
+      { q: 'How is the Annual Pass calculated at ₹2,059 per month?', a: '₹24,708 ÷ 12 months = ₹2,059 per month. The annual plan provides the best monthly value among all basketball memberships.' },
+      { q: 'How is the Half-Yearly Pass calculated at ₹2,784 per month?', a: '₹16,704 ÷ 6 months = ₹2,784 per month.' },
+      { q: 'How does the Monthly Pass work out to ₹129 per class?', a: '₹3,102 ÷ 24 classes (six per week × four weeks) = approximately ₹129 per class. The actual effective cost depends on how many eligible classes you book and attend.' },
+      { q: 'Does the Monthly Pass guarantee six classes every week?', a: 'No. Six classes per week demonstrates the potential value. Actual availability depends on the published timetable, your assigned category, advance booking, available capacity, and academy guidelines.' },
+      { q: 'Can basketball students attend more than two classes per week?', a: 'Yes — this is one of the major benefits of the new system. Students may book multiple eligible classes during the week, subject to their active membership, correct category, advance booking, slot availability, and academy guidelines.' },
+      { q: 'Must students attend the same class every week?', a: 'No. Students may select suitable classes from the available schedule. This provides flexibility around school timings, exams, travel, and family commitments. Regular and consistent attendance is strongly recommended for steady progress.' },
+      { q: 'Can a student attend any basketball category?', a: 'No. Students must attend classes assigned to their development category. Categories are planned according to skill level, basketball understanding, physical readiness, age where relevant, and training requirements.' },
+    ],
+  },
+  {
+    group: 'Class Categories',
+    items: [
+      { q: 'What does "one category per class hour" mean?', a: 'Each coaching hour is assigned to one specific player category. A session may be for beginners, intermediate players, intermediate-advanced, or advanced players. Different categories will not be unnecessarily combined in the same session.' },
+      { q: 'Why is category-based coaching better?', a: 'Coaches can plan drills for one specific level, provide more relevant corrections, maintain appropriate intensity, give greater individual attention, introduce skills at the correct stage, and track progress more accurately.' },
+      { q: "How will my child's category be decided?", a: 'The coaching team considers current basketball skill, movement ability, game understanding, training experience, confidence, physical readiness, ability to follow the session, and coachability. Age may be considered but placement will not be based on age alone.' },
+      { q: "Can parents choose their child's category?", a: "Parents may discuss development with the coaching team, but the final placement decision is made by Flowternity Sports — to place each student in the environment that best supports their safety, confidence, and long-term progress." },
+      { q: 'Can a student move to a higher category?', a: 'Yes, when the coaching team believes they are ready. Progression depends on technical ability, basketball understanding, attendance, effort, coachability, behaviour, physical readiness, and performance. Promotion is not automatic based on age or time enrolled.' },
+      { q: 'What happens if a student books the wrong category?', a: 'The student may be asked to move to the appropriate session or may not be permitted to participate. Contact the Flowternity team if you are unsure about the correct category.' },
+    ],
+  },
+  {
+    group: 'Booking',
+    items: [
+      { q: 'Is advance booking compulsory?', a: 'Yes. From 1 August 2026, every class must be booked in advance through the Flowternity Sports website. Students should not arrive for a class without a confirmed booking.' },
+      { q: 'Where should classes be booked?', a: 'Classes must be booked at www.flowternity.com. You can view the available schedule and select eligible sessions through the website.' },
+      { q: 'Why is advance booking necessary?', a: 'Advance booking helps control class sizes, avoid overcrowding, maintain coach-to-student ratios, allocate coaches correctly, prepare equipment, and plan drills based on expected attendance.' },
+      { q: 'Can a student attend without booking?', a: 'No. Entry depends on an active membership, correct category selection, advance booking, and available capacity. This keeps sessions organised and fair for all members.' },
+      { q: 'What happens if a class is full?', a: 'Additional bookings may not be accepted once capacity is reached. Select another eligible session from the timetable. Book preferred classes early to avoid disappointment.' },
+      { q: 'What should I do if my child cannot attend a booked class?', a: 'Cancel the booking through the website as early as possible so the slot becomes available to another student. Repeatedly booking and not attending may affect other members.' },
+      { q: 'Can I book several classes in advance?', a: 'Yes, subject to membership validity, category eligibility, published schedules, available capacity, and academy booking rules.' },
+      { q: 'Will the class timetable remain the same every week?', a: 'The academy may update schedules due to events, tournaments, holidays, coach availability, facility requirements, or operational changes. Always check the website before booking.' },
+    ],
+  },
+  {
+    group: 'Attendance & Progress',
+    items: [
+      { q: 'Is it compulsory to attend many classes every week?', a: 'No, but consistency is key. Regular attendance improves fundamentals, fitness, confidence, decision-making, game understanding, and teamwork.' },
+      { q: 'Will my child fall behind attending only twice a week?', a: 'Students can still benefit from twice-weekly attendance if consistent and practising appropriately. The new system simply allows motivated students to train more frequently.' },
+      { q: 'Will attending more classes guarantee faster promotion?', a: 'Not automatically. Progression also depends on skill improvement, basketball understanding, effort, coachability, physical readiness, behaviour, and ability to apply learning. Quality and consistency matter more than attendance numbers alone.' },
+      { q: 'Will students get more individual attention?', a: 'Category-based sessions are designed to improve the quality of attention each student receives. Because each class focuses on one category, coaches can deliver more relevant instruction.' },
+      { q: 'Will student progress be assessed?', a: 'Yes. Coaches observe technical ability, game understanding, physical readiness, attendance, effort, coachability, behaviour, and teamwork to determine category placement and progression.' },
+    ],
+  },
+  {
+    group: 'Other Sports',
+    items: [
+      { q: 'What are the monthly fees for other sports?', a: 'Skateboarding — ₹5,000/month. Skating — ₹2,000/month. Futsal — ₹2,000/month. Karate — ₹2,000/month.' },
+      { q: 'Are other sports included in the Basketball Pass?', a: 'No. The Basketball Pass is specifically for eligible basketball sessions. Skateboarding, Skating, Futsal, and Karate have separate monthly memberships.' },
+      { q: 'Can a student join basketball and another sport?', a: 'Yes. A student may enrol in basketball and another sport by taking the applicable memberships separately, subject to schedules, level requirements, advance booking, and available capacity.' },
+      { q: 'Do other sports also need to be booked online?', a: 'Class-booking requirements will be communicated for each sport through the website and official Flowternity communication.' },
+    ],
+  },
+  {
+    group: 'Membership & Payments',
+    items: [
+      { q: 'When does the membership period begin?', a: 'The membership period begins on the activation date shown at the time of registration or purchase. Review the membership details before completing payment.' },
+      { q: 'Can the Annual or Half-Yearly Pass be paid monthly?', a: 'The ₹2,059/month and ₹2,784/month figures represent the effective monthly cost over the full membership duration — not a monthly instalment plan. Payment terms shown during registration apply.' },
+      { q: 'Can memberships be transferred to another student?', a: 'No. Memberships are issued to the registered student and cannot be transferred, exchanged, or shared.' },
+      { q: 'Can memberships be paused or extended?', a: 'Any pause, extension, or special request is handled according to official Flowternity Sports membership terms. Contact the management team for exceptional circumstances.' },
+      { q: 'Will missed classes be refunded?', a: 'Missing a booked or available class does not normally create an automatic refund or extension. Exceptional cases are considered according to the applicable membership policy.' },
+      { q: 'Are membership fees refundable?', a: 'Refunds and cancellations are governed by the membership terms accepted at the time of purchase. Review the applicable terms carefully before completing payment.' },
+    ],
+  },
+  {
+    group: 'Transition',
+    items: [
+      { q: 'What happens to students who are already enrolled?', a: 'Existing students will be guided through the transition. Flowternity Sports will communicate membership options, the new timetable, the student\'s category, the website login process, and booking instructions.' },
+      { q: 'Will existing students retain their previous batch timings?', a: 'Previous batch timings may change as the academy moves to the category-based schedule. Students will view and book eligible classes from the updated timetable.' },
+      { q: 'What if the new timings are not convenient?', a: 'The new system provides more choices than the previous fixed-batch model. Parents can review available sessions and select classes that suit their schedule, subject to availability.' },
+      { q: 'What if parents find the online system difficult to use?', a: 'The Flowternity team will support parents during transition — with help logging in, selecting a membership, identifying the correct category, viewing the timetable, booking, and cancelling.' },
+      { q: 'Who should I contact if my question is not answered here?', a: 'Contact Flowternity Sports at www.flowternity.com or call 9886696155. Our team will assist with membership selection, category placement, bookings, and transition questions.' },
+    ],
+  },
+];
+
+function FaqSection() {
+  const [openGroup, setOpenGroup] = useState(0);
+  const [openItem, setOpenItem] = useState(null);
+
+  return (
+    <div className="space-y-3">
+      {FAQ_GROUPS.map((group, gi) => (
+        <div key={gi} className="border border-border rounded-2xl overflow-hidden">
+          {/* Group header */}
+          <button
+            onClick={() => { setOpenGroup(openGroup === gi ? null : gi); setOpenItem(null); }}
+            className="w-full flex items-center justify-between p-5 md:p-6 text-left hover:bg-secondary/50 transition-colors"
+          >
+            <span className="font-display font-black text-lg md:text-xl">{group.group}</span>
+            <span className="flex items-center gap-2 text-sm text-muted-foreground flex-shrink-0 ml-4">
+              <span className="hidden sm:inline">{group.items.length} questions</span>
+              <ChevronDown className={`w-5 h-5 transition-transform duration-200 ${openGroup === gi ? 'rotate-180' : ''}`} />
+            </span>
+          </button>
+
+          {/* Items */}
+          {openGroup === gi && (
+            <div className="border-t border-border divide-y divide-border">
+              {group.items.map((item, ii) => {
+                const key = `${gi}-${ii}`;
+                const isOpen = openItem === key;
+                return (
+                  <div key={ii}>
+                    <button
+                      onClick={() => setOpenItem(isOpen ? null : key)}
+                      className="w-full flex items-start justify-between gap-4 px-5 md:px-6 py-4 text-left hover:bg-secondary/30 transition-colors"
+                    >
+                      <span className="text-sm md:text-base font-medium leading-snug">{item.q}</span>
+                      <ChevronDown className={`w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+                    </button>
+                    {isOpen && (
+                      <div className="px-5 md:px-6 pb-4 text-sm md:text-base text-muted-foreground leading-relaxed">
+                        {item.a}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ))}
     </div>
   );
 }

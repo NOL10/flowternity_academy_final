@@ -26,10 +26,10 @@ export default function ContactPage() {
 
             <div className="mt-10 space-y-5">
               {[
-                { icon: MapPin, t: 'Visit', d: 'Flowternity Sports Facility · Bengaluru, India' },
-                { icon: Phone, t: 'Call', d: '+91 98765 43210' },
-                { icon: Mail, t: 'Email', d: 'hello@flowternity.com' },
-                { icon: Clock, t: 'Hours', d: 'Mon–Sun · 6:00 AM – 10:00 PM' },
+                { icon: MapPin, t: 'Visit', d: 'Flowternity Sports · Horamavu–Kalkere, Bengaluru, Karnataka' },
+                { icon: Phone, t: 'Call', d: '7795310645 / 9886696155' },
+                { icon: Mail, t: 'Email', d: 'admin@flowternity.com' },
+                { icon: Clock, t: 'Hours', d: 'Mon–Sun · 6:00 AM – 9:00 PM' },
               ].map((c, i) => (
                 <div key={i} className="flex gap-4">
                   <div className="w-10 h-10 rounded-lg bg-accent flex items-center justify-center flex-shrink-0"><c.icon className="w-5 h-5 text-black" /></div>

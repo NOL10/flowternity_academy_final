@@ -49,7 +49,7 @@ function MembershipsInner() {
           <div className="grid md:grid-cols-3 gap-6">
             {basketballPlans.map(plan => {
               const monthlyPrice = Math.round(plan.price / plan.duration_months);
-              const payMonthlyTotal = 2500 * plan.duration_months;
+              const payMonthlyTotal = 3102 * plan.duration_months;
               const savingVsMonthly = payMonthlyTotal - plan.price;
               const savingPct = Math.round((savingVsMonthly / payMonthlyTotal) * 100);
               const showDiscount = plan.duration_months > 1;
@@ -103,11 +103,11 @@ function MembershipsInner() {
           </div>
         </div>
 
-        {/* Other sports — 1 month at ₹2,000 each */}
+        {/* Other sports — prices vary */}
         <div className="mt-16">
           <div className="mb-6">
             <h2 className="font-display font-black text-2xl">Other Sports</h2>
-            <p className="text-sm text-muted-foreground mt-1">1 month · ₹2,000 per sport. Add as many as you like.</p>
+            <p className="text-sm text-muted-foreground mt-1">1 month · prices vary by sport.</p>
           </div>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">

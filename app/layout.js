@@ -1,6 +1,7 @@
 import './globals.css'
 import { Providers } from './providers'
 import { Toaster } from '@/components/ui/sonner'
+import SiteFooter from '@/components/site-footer'
 
 export const metadata = {
   title: 'Flowternity — Premium Sports Academy',
@@ -15,6 +16,7 @@ export default function RootLayout({ children }) {
       </head>
       <body className="antialiased">
         <Providers>{children}</Providers>
+        <SiteFooter />
         <Toaster position="top-center" richColors />
       </body>
     </html>
