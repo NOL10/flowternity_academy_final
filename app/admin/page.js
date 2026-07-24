@@ -703,9 +703,26 @@ function ClassesSection() {
 function GamesSection() {
   const [games, setGames] = useState([]);
   const [open, setOpen] = useState(false);
+  const [mode, setMode] = useState('single');
   const emptyForm = { sport_id: 'basketball', title: '', description: '', date: '', start_time: '', end_time: '', max_players: 10, host_name: 'Flowternity', skill_level: 'all_levels' };
   const [form, setForm] = useState(emptyForm);
+  const emptyBulk = { sport_id: 'basketball', title: '', description: '', host_name: 'Flowternity', skill_level: 'all_levels', max_players: 10, start_date: '', end_date: '', weekdays: [5, 6], slots: [{ start_time: '18:00', end_time: '19:30' }] };
+  const [bulk, setBulk] = useState(emptyBulk);
   const [saving, setSaving] = useState(false);
+  const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  const toggleWeekday = (d) => setBulk(b => ({ ...b, weekdays: b.weekdays.includes(d) ? b.weekdays.filter(x => x !== d) : [...b.weekdays, d].sort() }));
+  const addSlot = () => setBulk(b => ({ ...b, slots: [...b.slots, { start_time: '', end_time: '' }] }));
+  const removeSlot = (i) => setBulk(b => ({ ...b, slots: b.slots.filter((_, idx) => idx !== i) }));
+  const updateSlot = (i, k, v) => setBulk(b => ({ ...b, slots: b.slots.map((s, idx) => idx === i ? { ...s, [k]: v } : s) }));
+  const bulkPreview = useMemo(() => {
+    if (!bulk.start_date || !bulk.end_date) return 0;
+    const s = new Date(bulk.start_date), e = new Date(bulk.end_date);
+    if (isNaN(s) || isNaN(e) || s > e) return 0;
+    const wk = new Set(bulk.weekdays);
+    let count = 0;
+    for (let d = new Date(s); d <= e; d.setDate(d.getDate() + 1)) { if (wk.has(d.getDay())) count += bulk.slots.length; }
+    return count;
+  }, [bulk]);
 
   const load = async () => {
     const d = await fetch('/api/admin/games', { credentials: 'include' }).then(r => r.json());
@@ -730,6 +747,20 @@ function GamesSection() {
     if (!confirm('Delete this game? All players will be removed.')) return;
     const res = await fetch(`/api/admin/games/${id}`, { method: 'DELETE', credentials: 'include' });
     if (res.ok) { toast.success('Deleted'); load(); }
+  };
+
+  const bulkCreate = async (e) => {
+    e.preventDefault();
+    if (!bulk.start_date || !bulk.end_date) { toast.error('Pick a date range'); return; }
+    if (bulk.weekdays.length === 0) { toast.error('Pick at least one weekday'); return; }
+    if (bulk.slots.some(s => !s.start_time || !s.end_time)) { toast.error('Fill all time slots'); return; }
+    setSaving(true);
+    const res = await fetch('/api/admin/games/bulk', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(bulk) });
+    const d = await res.json();
+    setSaving(false);
+    if (!res.ok) { toast.error(d.error || 'Bulk failed'); return; }
+    toast.success(`Created ${d.count} games`);
+    load(); setBulk(emptyBulk); setOpen(false); setMode('single');
   };
 
   return (
@@ -785,57 +816,144 @@ function GamesSection() {
         </Card>
       )}
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg bg-slate-900 border-slate-800 text-slate-100">
+      <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) { setMode('single'); } }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto bg-slate-900 border-slate-800 text-slate-100">
           <DialogHeader>
-            <DialogTitle className="text-slate-50">Schedule a pickup game</DialogTitle>
-            <DialogDescription className="text-slate-400">Community play session for members to join.</DialogDescription>
+            <DialogTitle className="text-slate-50">Schedule games</DialogTitle>
+            <DialogDescription className="text-slate-400">Create one game or a recurring batch.</DialogDescription>
           </DialogHeader>
-          <form onSubmit={(e) => create(e, false)} className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
+
+          {/* Mode toggle */}
+          <div className="flex items-center gap-2 p-1 bg-slate-800 rounded-lg w-fit">
+            <button type="button" onClick={() => setMode('single')} className={`px-4 py-1.5 rounded-md text-sm font-medium transition ${mode === 'single' ? 'bg-slate-100 text-slate-900' : 'text-slate-400 hover:text-slate-100'}`}>
+              Single game
+            </button>
+            <button type="button" onClick={() => setMode('recurring')} className={`px-4 py-1.5 rounded-md text-sm font-medium transition ${mode === 'recurring' ? 'bg-lime-400 text-slate-900' : 'text-slate-400 hover:text-slate-100'}`}>
+              <CalendarPlus className="w-3.5 h-3.5 inline mr-1" /> Recurring batch
+            </button>
+          </div>
+
+          {mode === 'single' ? (
+            <form onSubmit={(e) => create(e, false)} className="space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-slate-300 text-xs uppercase tracking-widest">Sport</Label>
+                  <Select value={form.sport_id} onValueChange={v => setForm({ ...form, sport_id: v })}>
+                    <SelectTrigger className="h-11 mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>{SPORTS.filter(s => s.status === 'active').map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-slate-300 text-xs uppercase tracking-widest">Skill level</Label>
+                  <Select value={form.skill_level} onValueChange={v => setForm({ ...form, skill_level: v })}>
+                    <SelectTrigger className="h-11 mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all_levels">All levels</SelectItem>
+                      <SelectItem value="beginner">Beginner</SelectItem>
+                      <SelectItem value="intermediate">Intermediate</SelectItem>
+                      <SelectItem value="advanced">Advanced</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Title <span className="text-slate-500 normal-case">(optional)</span></Label><Input className="h-11 mt-1" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Friday Night Hoops" /></div>
+              <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Description</Label><Textarea rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Casual 5v5" /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2"><QuickDateInput label="Date" required value={form.date} onChange={v => setForm({ ...form, date: v })} /></div>
+                <div>
+                  <Label className="text-slate-300 text-xs uppercase tracking-widest mb-1 block">Start</Label>
+                  <TimeSelect value={form.start_time} onChange={v => setForm({ ...form, start_time: v })} placeholder="Start time" />
+                </div>
+                <div>
+                  <Label className="text-slate-300 text-xs uppercase tracking-widest mb-1 block">End</Label>
+                  <TimeSelect value={form.end_time} onChange={v => setForm({ ...form, end_time: v })} placeholder="End time" />
+                </div>
+                <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Max players</Label><Input type="number" min="2" required className="h-11 mt-1" value={form.max_players} onChange={e => setForm({ ...form, max_players: e.target.value })} /></div>
+                <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Host</Label><Input className="h-11 mt-1" value={form.host_name} onChange={e => setForm({ ...form, host_name: e.target.value })} /></div>
+              </div>
+              <DialogFooter className="pt-3 flex-col-reverse sm:flex-row gap-2">
+                <Button type="button" variant="outline" onClick={() => setOpen(false)} className="border-slate-700 bg-transparent hover:bg-slate-800 text-slate-300">Cancel</Button>
+                <Button type="button" disabled={saving} onClick={(e) => create(e, true)} variant="outline" className="border-slate-700 bg-transparent hover:bg-slate-800 text-slate-100">{saving ? '...' : 'Save & add another'}</Button>
+                <Button type="submit" disabled={saving} className="bg-lime-400 text-slate-900 hover:bg-lime-300 font-semibold"><Plus className="w-4 h-4 mr-1.5" />{saving ? 'Saving…' : 'Schedule'}</Button>
+              </DialogFooter>
+            </form>
+          ) : (
+            <form onSubmit={bulkCreate} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <Label className="text-slate-300 text-xs uppercase tracking-widest">Sport</Label>
+                  <Select value={bulk.sport_id} onValueChange={v => setBulk({ ...bulk, sport_id: v })}>
+                    <SelectTrigger className="h-11 mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>{SPORTS.filter(s => s.status === 'active').map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label className="text-slate-300 text-xs uppercase tracking-widest">Skill level</Label>
+                  <Select value={bulk.skill_level} onValueChange={v => setBulk({ ...bulk, skill_level: v })}>
+                    <SelectTrigger className="h-11 mt-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all_levels">All levels</SelectItem>
+                      <SelectItem value="beginner">Beginner</SelectItem>
+                      <SelectItem value="intermediate">Intermediate</SelectItem>
+                      <SelectItem value="advanced">Advanced</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Max players</Label><Input type="number" min="2" required className="h-11 mt-1" value={bulk.max_players} onChange={e => setBulk({ ...bulk, max_players: e.target.value })} /></div>
+                <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Host</Label><Input className="h-11 mt-1" value={bulk.host_name} onChange={e => setBulk({ ...bulk, host_name: e.target.value })} /></div>
+                <div className="col-span-2"><Label className="text-slate-300 text-xs uppercase tracking-widest">Title <span className="text-slate-500 normal-case">(optional)</span></Label><Input className="h-11 mt-1" value={bulk.title} onChange={e => setBulk({ ...bulk, title: e.target.value })} placeholder="Friday Night Hoops" /></div>
+                <div className="col-span-2">
+                  <QuickDateInput label="Start date" required value={bulk.start_date} onChange={v => setBulk({ ...bulk, start_date: v })} />
+                </div>
+                <div className="col-span-2">
+                  <QuickDateInput label="End date" required value={bulk.end_date} onChange={v => setBulk({ ...bulk, end_date: v })} />
+                </div>
+              </div>
+
               <div>
-                <Label className="text-slate-300 text-xs uppercase tracking-widest">Sport</Label>
-                <Select value={form.sport_id} onValueChange={v => setForm({ ...form, sport_id: v })}>
-                  <SelectTrigger className="h-11 mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>{SPORTS.filter(s => s.status === 'active').map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
-                </Select>
+                <Label className="text-slate-300 text-xs uppercase tracking-widest">Repeat on</Label>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {WEEKDAY_LABELS.map((lbl, i) => {
+                    const on = bulk.weekdays.includes(i);
+                    return (
+                      <button key={i} type="button" onClick={() => toggleWeekday(i)} className={`w-12 h-10 rounded-md border text-xs font-semibold transition ${on ? 'bg-lime-400 text-slate-900 border-lime-400' : 'border-slate-700 text-slate-400 hover:text-slate-100'}`}>{lbl}</button>
+                    );
+                  })}
+                </div>
               </div>
+
               <div>
-                <Label className="text-slate-300 text-xs uppercase tracking-widest">Skill level</Label>
-                <Select value={form.skill_level} onValueChange={v => setForm({ ...form, skill_level: v })}>
-                  <SelectTrigger className="h-11 mt-1"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all_levels">All levels</SelectItem>
-                    <SelectItem value="beginner">Beginner</SelectItem>
-                    <SelectItem value="intermediate">Intermediate</SelectItem>
-                    <SelectItem value="advanced">Advanced</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div className="flex items-center justify-between mb-2">
+                  <Label className="text-slate-300 text-xs uppercase tracking-widest">Time slots (per day)</Label>
+                  <button type="button" onClick={addSlot} className="text-xs text-lime-400 hover:text-lime-300 flex items-center gap-1"><Plus className="w-3 h-3" /> Add slot</button>
+                </div>
+                <div className="space-y-2">
+                  {bulk.slots.map((s, i) => (
+                    <div key={i} className="flex items-center gap-2">
+                      <TimeSelect value={s.start_time} onChange={v => updateSlot(i, 'start_time', v)} placeholder="Start" className="flex-1" />
+                      <span className="text-slate-500 text-xs">to</span>
+                      <TimeSelect value={s.end_time} onChange={v => updateSlot(i, 'end_time', v)} placeholder="End" className="flex-1" />
+                      {bulk.slots.length > 1 && (
+                        <button type="button" onClick={() => removeSlot(i)} className="p-2 rounded hover:bg-red-500/10 text-slate-500 hover:text-red-400"><XCircle className="w-4 h-4" /></button>
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-            <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Title <span className="text-slate-500 normal-case">(optional)</span></Label><Input className="h-11 mt-1" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Friday Night Hoops" /></div>
-            <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Description</Label><Textarea rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Casual 5v5" /></div>
-            <div className="grid grid-cols-3 gap-3">
-              <div className="col-span-3">
-                <QuickDateInput label="Date" required value={form.date} onChange={v => setForm({ ...form, date: v })} />
+
+              <div className="rounded-lg bg-slate-800/50 border border-slate-800 p-3 text-sm flex items-center justify-between">
+                <span className="text-slate-400">Preview</span>
+                <span className="text-slate-100 font-mono font-semibold">{bulkPreview} game{bulkPreview === 1 ? '' : 's'} will be created</span>
               </div>
-              <div>
-                <Label className="text-slate-300 text-xs uppercase tracking-widest mb-1 block">Start</Label>
-                <TimeSelect value={form.start_time} onChange={v => setForm({ ...form, start_time: v })} placeholder="Start time" />
-              </div>
-              <div>
-                <Label className="text-slate-300 text-xs uppercase tracking-widest mb-1 block">End</Label>
-                <TimeSelect value={form.end_time} onChange={v => setForm({ ...form, end_time: v })} placeholder="End time" />
-              </div>
-              <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Max players</Label><Input type="number" min="2" required className="h-11 mt-1" value={form.max_players} onChange={e => setForm({ ...form, max_players: e.target.value })} /></div>
-            </div>
-            <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Host</Label><Input className="h-11 mt-1" value={form.host_name} onChange={e => setForm({ ...form, host_name: e.target.value })} /></div>
-            <DialogFooter className="pt-3 flex-col-reverse sm:flex-row gap-2">
-              <Button type="button" variant="outline" onClick={() => setOpen(false)} className="border-slate-700 bg-transparent hover:bg-slate-800 text-slate-300">Cancel</Button>
-              <Button type="button" disabled={saving} onClick={(e) => create(e, true)} variant="outline" className="border-slate-700 bg-transparent hover:bg-slate-800 text-slate-100">{saving ? '...' : 'Save & add another'}</Button>
-              <Button type="submit" disabled={saving} className="bg-lime-400 text-slate-900 hover:bg-lime-300 font-semibold"><Plus className="w-4 h-4 mr-1.5" /> {saving ? 'Saving…' : 'Schedule'}</Button>
-            </DialogFooter>
-          </form>
+
+              <DialogFooter className="pt-3 flex-col-reverse sm:flex-row gap-2">
+                <Button type="button" variant="outline" onClick={() => setOpen(false)} className="border-slate-700 bg-transparent hover:bg-slate-800 text-slate-300">Cancel</Button>
+                <Button type="submit" disabled={saving || bulkPreview === 0} className="bg-lime-400 text-slate-900 hover:bg-lime-300 font-semibold">
+                  <CalendarPlus className="w-4 h-4 mr-1.5" />{saving ? 'Creating…' : `Create ${bulkPreview} games`}
+                </Button>
+              </DialogFooter>
+            </form>
+          )}
         </DialogContent>
       </Dialog>
     </>
