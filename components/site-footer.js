@@ -1,5 +1,6 @@
 import Link from 'next/link';
-import { Zap, Mail, Phone } from 'lucide-react';
+import Image from 'next/image';
+import { Mail, Phone } from 'lucide-react';
 
 export default function SiteFooter() {
   return (
@@ -8,12 +9,9 @@ export default function SiteFooter() {
         <div className="grid md:grid-cols-4 gap-8 md:gap-12">
           {/* Brand */}
           <div className="md:col-span-1">
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">
-                <Zap className="w-5 h-5 text-black" strokeWidth={2.5} />
-              </div>
-              <span className="font-display font-extrabold text-xl">FLOWTERNITY</span>
-            </div>
+            <Link href="/" className="inline-block mb-4">
+              <Image src="/logo.png" alt="Flowternity" width={140} height={42} className="h-10 w-auto object-contain" />
+            </Link>
             <p className="text-sm text-muted-foreground leading-relaxed">
               Premium multi-sport academy. Train with purpose.
             </p>

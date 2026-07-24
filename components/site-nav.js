@@ -1,10 +1,11 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/app/providers';
-import { Menu, X, Zap, Sparkles } from 'lucide-react';
+import { Menu, X, Sparkles } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
@@ -36,10 +37,7 @@ export default function SiteNav({ dark = false }) {
     <header className={`w-full ${dark ? 'bg-transparent' : 'bg-background/80 backdrop-blur-lg'} border-b ${border} sticky top-0 z-40`}>
       <div className="container flex items-center justify-between h-16">
         <Link href="/" className={`flex items-center gap-2 ${textColor}`} aria-label="Flowternity home">
-          <div className="w-8 h-8 rounded-lg bg-accent flex items-center justify-center">
-            <Zap className="w-5 h-5 text-black" strokeWidth={2.5} />
-          </div>
-          <span className="font-display font-extrabold text-xl tracking-tight">FLOWTERNITY</span>
+          <Image src="/logo.png" alt="Flowternity" width={120} height={36} className="h-9 w-auto object-contain" priority />
         </Link>
 
         <nav className="hidden md:flex items-center gap-8">
