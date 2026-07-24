@@ -114,7 +114,7 @@ function App() {
               <p className="text-sm uppercase tracking-widest text-muted-foreground mb-3">Our Programs</p>
               <h2 className="font-display font-black text-5xl md:text-7xl tracking-tight">Pick your sport.</h2>
             </div>
-            <p className="text-muted-foreground max-w-md text-lg">World-class facilities across every sport we offer. All included in a single membership.</p>
+            <p className="text-muted-foreground max-w-md text-lg">World-class facilities across every sport we offer.</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

@@ -37,7 +37,7 @@ export default function SiteNav({ dark = false }) {
     <header className={`w-full ${dark ? 'bg-transparent' : 'bg-background/80 backdrop-blur-lg'} border-b ${border} sticky top-0 z-40`}>
       <div className="container flex items-center justify-between h-16">
         <Link href="/" className={`flex items-center gap-2 ${textColor}`} aria-label="Flowternity home">
-          <Image src="/logo.png" alt="Flowternity" width={120} height={36} className="h-9 w-auto object-contain" priority />
+          <Image src="/favicon/logo.png" alt="Flowternity" width={120} height={36} className="h-9 w-auto object-contain" priority />
         </Link>
 
         <nav className="hidden md:flex items-center gap-8">

@@ -10,7 +10,7 @@ export default function SiteFooter() {
           {/* Brand */}
           <div className="md:col-span-1">
             <Link href="/" className="inline-block mb-4">
-              <Image src="/logo.png" alt="Flowternity" width={140} height={42} className="h-10 w-auto object-contain" />
+              <Image src="/favicon/logo.png" alt="Flowternity" width={140} height={42} className="h-10 w-auto object-contain" />
             </Link>
             <p className="text-sm text-muted-foreground leading-relaxed">
               Premium multi-sport academy. Train with purpose.

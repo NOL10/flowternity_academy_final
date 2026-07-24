@@ -63,7 +63,7 @@ export default function AboutPage() {
       <section className="container pb-24">
         <Card className="p-12 md:p-16 bg-primary text-primary-foreground border-0 rounded-3xl">
           <h2 className="font-display font-black text-4xl md:text-5xl leading-[0.95]">Come train with us.</h2>
-          <p className="text-white/60 mt-3">Membership starts at ₹2,500/month.</p>
+          <p className="text-white/60 mt-3">Membership starts at ₹2,000/month.</p>
           <div className="flex gap-3 mt-8">
             <Link href="/memberships"><Button className="h-12 bg-accent text-black hover:bg-accent/90">See Plans <ArrowRight className="w-4 h-4 ml-2" /></Button></Link>
             <Link href="/contact"><Button variant="outline" className="h-12 border-white/20 text-white bg-transparent hover:bg-white/10 hover:text-white">Visit Us</Button></Link>
