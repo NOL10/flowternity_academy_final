@@ -1,4 +1,5 @@
 'use client';
+'use client';
 
 import { useEffect, useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
@@ -20,6 +21,97 @@ import {
   Megaphone, UserCog, ClipboardList, CheckCircle2, XCircle, Save, Flame,
   LayoutDashboard, ArrowLeft, LogOut, ChevronRight, Home, TrendingUp, Gift, CalendarPlus, RotateCcw
 } from 'lucide-react';
+
+// ---- Friendly time selector (30-min slots) + manual entry toggle ----
+function TimeSelect({ value, onChange, placeholder = 'Pick time', className = '' }) {
+  const [manual, setManual] = useState(false);
+
+  const slots = [];
+  for (let h = 5; h <= 22; h++) {
+    for (const m of [0, 30]) {
+      const hh = String(h).padStart(2, '0');
+      const mm = String(m).padStart(2, '0');
+      const val = `${hh}:${mm}`;
+      const ampm = h < 12 ? 'AM' : 'PM';
+      const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+      const label = `${h12}:${mm} ${ampm}`;
+      slots.push({ val, label });
+    }
+  }
+
+  // Check if current value is not in the 30-min slots (i.e. it's a custom time)
+  const isCustom = value && !slots.find(s => s.val === value);
+
+  return (
+    <div className={`space-y-1 ${className}`}>
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          onClick={() => setManual(m => !m)}
+          className="text-[10px] text-slate-500 hover:text-lime-400 transition"
+        >
+          {manual || isCustom ? '↩ Use dropdown' : '✎ Type manually'}
+        </button>
+      </div>
+      {manual || isCustom ? (
+        <input
+          type="time"
+          value={value || ''}
+          onChange={e => onChange(e.target.value)}
+          className="h-11 w-full rounded-md border border-input bg-slate-950 px-3 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-lime-400"
+        />
+      ) : (
+        <select
+          value={value || ''}
+          onChange={e => onChange(e.target.value)}
+          className="h-11 w-full rounded-md border border-input bg-slate-950 px-3 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-lime-400"
+        >
+          <option value="" disabled>{placeholder}</option>
+          {slots.map(s => (
+            <option key={s.val} value={s.val}>{s.label}</option>
+          ))}
+        </select>
+      )}
+    </div>
+  );
+}
+
+// ---- Quick date picker with shortcuts ----
+function QuickDateInput({ value, onChange, label, required = false }) {
+  const today = new Date().toISOString().slice(0, 10);
+  const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+  const in2 = new Date(Date.now() + 2 * 86400000).toISOString().slice(0, 10);
+  const in3 = new Date(Date.now() + 3 * 86400000).toISOString().slice(0, 10);
+  const shortcuts = [
+    { label: 'Today', val: today },
+    { label: 'Tomorrow', val: tomorrow },
+    { label: `+2d`, val: in2 },
+    { label: `+3d`, val: in3 },
+  ];
+  const fmt = (v) => v ? new Date(v).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' }) : '';
+  return (
+    <div>
+      {label && <Label className="text-slate-300 text-xs uppercase tracking-widest">{label}</Label>}
+      <div className="flex flex-wrap gap-1.5 mt-1 mb-1">
+        {shortcuts.map(s => (
+          <button
+            key={s.val} type="button"
+            onClick={() => onChange(s.val)}
+            className={`px-2 py-1 rounded text-xs border transition ${value === s.val ? 'bg-lime-400 text-slate-900 border-lime-400 font-semibold' : 'border-slate-700 text-slate-400 hover:text-slate-100'}`}
+          >{s.label}</button>
+        ))}
+      </div>
+      <Input
+        type="date"
+        required={required}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="h-10 mt-0 text-slate-100"
+      />
+      {value && <p className="text-[10px] text-slate-500 mt-0.5">{fmt(value)}</p>}
+    </div>
+  );
+}
 
 const NAV = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -501,21 +593,22 @@ function ClassesSection() {
                 <Input required className="h-11 mt-1" value={form.coach_name} onChange={e => setForm({ ...form, coach_name: e.target.value })} placeholder="Coach Ravi" />
               </div>
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="text-slate-300 text-xs uppercase tracking-widest">Date</Label>
-                  <Input type="date" required className="h-11 mt-1" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} />
+                <div className="col-span-2">
+                  <QuickDateInput label="Date" required value={form.date} onChange={v => setForm({ ...form, date: v })} />
                 </div>
                 <div>
                   <Label className="text-slate-300 text-xs uppercase tracking-widest">Capacity</Label>
                   <Input type="number" min="1" required className="h-11 mt-1" value={form.capacity} onChange={e => setForm({ ...form, capacity: e.target.value })} />
                 </div>
-                <div>
-                  <Label className="text-slate-300 text-xs uppercase tracking-widest">Start</Label>
-                  <Input type="time" required className="h-11 mt-1" value={form.start_time} onChange={e => setForm({ ...form, start_time: e.target.value })} />
-                </div>
-                <div>
-                  <Label className="text-slate-300 text-xs uppercase tracking-widest">End</Label>
-                  <Input type="time" required className="h-11 mt-1" value={form.end_time} onChange={e => setForm({ ...form, end_time: e.target.value })} />
+                <div className="col-span-2 grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="text-slate-300 text-xs uppercase tracking-widest mb-1 block">Start time</Label>
+                    <TimeSelect value={form.start_time} onChange={v => setForm({ ...form, start_time: v })} placeholder="Start time" />
+                  </div>
+                  <div>
+                    <Label className="text-slate-300 text-xs uppercase tracking-widest mb-1 block">End time</Label>
+                    <TimeSelect value={form.end_time} onChange={v => setForm({ ...form, end_time: v })} placeholder="End time" />
+                  </div>
                 </div>
               </div>
               <DialogFooter className="pt-3 flex-col-reverse sm:flex-row gap-2">
@@ -546,13 +639,11 @@ function ClassesSection() {
                   <Label className="text-slate-300 text-xs uppercase tracking-widest">Coach name</Label>
                   <Input required className="h-11 mt-1" value={bulk.coach_name} onChange={e => setBulk({ ...bulk, coach_name: e.target.value })} placeholder="Coach Ravi" />
                 </div>
-                <div>
-                  <Label className="text-slate-300 text-xs uppercase tracking-widest">Start date</Label>
-                  <Input type="date" required className="h-11 mt-1" value={bulk.start_date} onChange={e => setBulk({ ...bulk, start_date: e.target.value })} />
+                <div className="col-span-2">
+                  <QuickDateInput label="Start date" required value={bulk.start_date} onChange={v => setBulk({ ...bulk, start_date: v })} />
                 </div>
-                <div>
-                  <Label className="text-slate-300 text-xs uppercase tracking-widest">End date</Label>
-                  <Input type="date" required className="h-11 mt-1" value={bulk.end_date} onChange={e => setBulk({ ...bulk, end_date: e.target.value })} />
+                <div className="col-span-2">
+                  <QuickDateInput label="End date" required value={bulk.end_date} onChange={v => setBulk({ ...bulk, end_date: v })} />
                 </div>
               </div>
 
@@ -578,9 +669,9 @@ function ClassesSection() {
                 <div className="space-y-2">
                   {bulk.slots.map((s, i) => (
                     <div key={i} className="flex items-center gap-2">
-                      <Input type="time" className="h-10 flex-1" value={s.start_time} onChange={e => updateSlot(i, 'start_time', e.target.value)} />
+                      <TimeSelect value={s.start_time} onChange={v => updateSlot(i, 'start_time', v)} placeholder="Start" className="flex-1" />
                       <span className="text-slate-500 text-xs">to</span>
-                      <Input type="time" className="h-10 flex-1" value={s.end_time} onChange={e => updateSlot(i, 'end_time', e.target.value)} />
+                      <TimeSelect value={s.end_time} onChange={v => updateSlot(i, 'end_time', v)} placeholder="End" className="flex-1" />
                       {bulk.slots.length > 1 && (
                         <button type="button" onClick={() => removeSlot(i)} className="p-2 rounded hover:bg-red-500/10 text-slate-500 hover:text-red-400"><XCircle className="w-4 h-4" /></button>
                       )}
@@ -725,14 +816,20 @@ function GamesSection() {
             <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Title <span className="text-slate-500 normal-case">(optional)</span></Label><Input className="h-11 mt-1" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Friday Night Hoops" /></div>
             <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Description</Label><Textarea rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Casual 5v5" /></div>
             <div className="grid grid-cols-3 gap-3">
-              <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Date</Label><Input type="date" required className="h-11 mt-1" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })} /></div>
-              <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Start</Label><Input type="time" required className="h-11 mt-1" value={form.start_time} onChange={e => setForm({ ...form, start_time: e.target.value })} /></div>
-              <div><Label className="text-slate-300 text-xs uppercase tracking-widest">End</Label><Input type="time" required className="h-11 mt-1" value={form.end_time} onChange={e => setForm({ ...form, end_time: e.target.value })} /></div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-3">
+                <QuickDateInput label="Date" required value={form.date} onChange={v => setForm({ ...form, date: v })} />
+              </div>
+              <div>
+                <Label className="text-slate-300 text-xs uppercase tracking-widest mb-1 block">Start</Label>
+                <TimeSelect value={form.start_time} onChange={v => setForm({ ...form, start_time: v })} placeholder="Start time" />
+              </div>
+              <div>
+                <Label className="text-slate-300 text-xs uppercase tracking-widest mb-1 block">End</Label>
+                <TimeSelect value={form.end_time} onChange={v => setForm({ ...form, end_time: v })} placeholder="End time" />
+              </div>
               <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Max players</Label><Input type="number" min="2" required className="h-11 mt-1" value={form.max_players} onChange={e => setForm({ ...form, max_players: e.target.value })} /></div>
-              <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Host</Label><Input className="h-11 mt-1" value={form.host_name} onChange={e => setForm({ ...form, host_name: e.target.value })} /></div>
             </div>
+            <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Host</Label><Input className="h-11 mt-1" value={form.host_name} onChange={e => setForm({ ...form, host_name: e.target.value })} /></div>
             <DialogFooter className="pt-3 flex-col-reverse sm:flex-row gap-2">
               <Button type="button" variant="outline" onClick={() => setOpen(false)} className="border-slate-700 bg-transparent hover:bg-slate-800 text-slate-300">Cancel</Button>
               <Button type="button" disabled={saving} onClick={(e) => create(e, true)} variant="outline" className="border-slate-700 bg-transparent hover:bg-slate-800 text-slate-100">{saving ? '...' : 'Save & add another'}</Button>
