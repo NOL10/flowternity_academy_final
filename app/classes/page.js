@@ -16,14 +16,28 @@ export default function ClassesPage() {
   const router = useRouter();
   const { user, loading } = useAuth();
   const [classes, setClasses] = useState([]);
-  const [memberSportIds, setMemberSportIds] = useState([]); // sports user has memberships for
+  const [memberSportIds, setMemberSportIds] = useState([]);
   const [sport, setSport] = useState('all');
   const [busyId, setBusyId] = useState(null);
   const [loadingList, setLoadingList] = useState(true);
+  const [upcomingCount, setUpcomingCount] = useState(0);
+  const [maxBookings, setMaxBookings] = useState(3); // fetched from API
 
   useEffect(() => {
     if (!loading && !user) router.push('/auth?mode=login&next=/classes');
   }, [loading, user, router]);
+
+  // Fetch settings once on mount
+  useEffect(() => {
+    const loadSettings = async () => {
+      const res = await fetch('/api/settings');
+      if (res.ok) {
+        const d = await res.json();
+        setMaxBookings(d.max_bookings_per_member ?? 3);
+      }
+    };
+    loadSettings();
+  }, []);
 
   const load = async () => {
     if (!user) return;
@@ -33,10 +47,12 @@ export default function ClassesPage() {
     if (res.ok) {
       const d = await res.json();
       setClasses(d.classes || []);
-      // On first load (all), capture which sports the user has access to
       if (sport === 'all' && d.member_sport_ids) {
         setMemberSportIds(d.member_sport_ids);
       }
+      // Count how many upcoming classes the user already has booked
+      const booked = (d.classes || []).filter(c => c.is_booked);
+      setUpcomingCount(booked.length);
     }
     setLoadingList(false);
   };
@@ -81,7 +97,15 @@ export default function ClassesPage() {
       <SiteNav />
       <div className="container py-10 md:py-14">
         <p className="text-sm uppercase tracking-widest text-muted-foreground mb-2">Classes</p>
-        <h1 className="font-display font-black text-4xl md:text-6xl tracking-tight">Book your slot.</h1>
+        <div className="flex items-end justify-between gap-4 flex-wrap">
+          <h1 className="font-display font-black text-4xl md:text-6xl tracking-tight">Book your slot.</h1>
+          {user?.role !== 'admin' && upcomingCount > 0 && (
+            <div className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold border ${upcomingCount >= maxBookings ? 'bg-destructive/10 border-destructive/30 text-destructive' : 'bg-secondary border-border text-muted-foreground'}`}>
+              <span className={`w-2 h-2 rounded-full ${upcomingCount >= maxBookings ? 'bg-destructive' : 'bg-accent'}`} />
+              {upcomingCount} / {maxBookings} slots used
+            </div>
+          )}
+        </div>
 
         {/* Filter chips — only sports user has membership for */}
         {accessibleSports.length > 1 && (
@@ -167,10 +191,11 @@ export default function ClassesPage() {
                           ) : (
                             <Button
                               onClick={() => book(c.id)}
-                              disabled={busyId === c.id || isFull}
-                              className="bg-primary text-primary-foreground hover:bg-primary/90"
+                              disabled={busyId === c.id || isFull || (upcomingCount >= maxBookings && user?.role !== 'admin')}
+                              title={upcomingCount >= maxBookings && user?.role !== 'admin' ? 'Cancel a booking to free up a slot' : undefined}
+                              className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
                             >
-                              {busyId === c.id ? 'Booking...' : isFull ? 'Full' : 'Book'}
+                              {busyId === c.id ? 'Booking...' : isFull ? 'Full' : upcomingCount >= maxBookings && user?.role !== 'admin' ? 'Limit reached' : 'Book'}
                             </Button>
                           )}
                         </div>

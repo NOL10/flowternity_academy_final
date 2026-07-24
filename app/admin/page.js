@@ -124,6 +124,7 @@ const NAV = [
   { id: 'payments', label: 'Payments', icon: CreditCard },
   { id: 'coaches', label: 'Coaches', icon: UserCog },
   { id: 'announcements', label: 'Announcements', icon: Megaphone },
+  { id: 'settings', label: 'Settings', icon: Activity },
 ];
 
 export default function AdminPage() {
@@ -241,6 +242,7 @@ export default function AdminPage() {
             {tab === 'payments' && <PaymentsSection />}
             {tab === 'coaches' && <CoachesSection />}
             {tab === 'announcements' && <AnnouncementsSection />}
+            {tab === 'settings' && <SettingsSection />}
           </div>
         </main>
       </div>
@@ -563,14 +565,14 @@ function ClassesSection() {
       )}
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-2xl bg-slate-900 border-slate-800 text-slate-100">
-          <DialogHeader>
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col bg-slate-900 border-slate-800 text-slate-100">
+          <DialogHeader className="flex-shrink-0">
             <DialogTitle className="text-slate-50">Schedule classes</DialogTitle>
             <DialogDescription className="text-slate-400">Create one class, or a whole recurring batch in one go.</DialogDescription>
           </DialogHeader>
 
           {/* Mode toggle */}
-          <div className="flex items-center gap-2 mb-2 p-1 bg-slate-800 rounded-lg w-fit">
+          <div className="flex items-center gap-2 mb-2 p-1 bg-slate-800 rounded-lg w-fit flex-shrink-0">
             <button type="button" onClick={() => setMode('single')} className={`px-4 py-1.5 rounded-md text-sm font-medium transition ${mode === 'single' ? 'bg-slate-100 text-slate-900' : 'text-slate-400 hover:text-slate-100'}`}>
               Single class
             </button>
@@ -579,6 +581,7 @@ function ClassesSection() {
             </button>
           </div>
 
+          <div className="overflow-y-auto flex-1 min-h-0 pr-1">
           {mode === 'single' ? (
             <form onSubmit={(e) => create(e, false)} className="space-y-3">
               <div>
@@ -693,6 +696,7 @@ function ClassesSection() {
               </DialogFooter>
             </form>
           )}
+          </div>
         </DialogContent>
       </Dialog>
     </>
@@ -2096,6 +2100,80 @@ function PerformanceSection() {
           )}
         </div>
       </div>
+    </>
+  );
+}
+
+
+// -------- Settings Section --------
+function SettingsSection() {
+  const [settings, setSettings] = useState({ max_bookings_per_member: 3 });
+  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  const load = async () => {
+    setLoading(true);
+    const res = await fetch('/api/admin/settings', { credentials: 'include' });
+    if (res.ok) setSettings(await res.json());
+    setLoading(false);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const save = async () => {
+    setSaving(true);
+    const res = await fetch('/api/admin/settings', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(settings),
+    });
+    setSaving(false);
+    if (res.ok) toast.success('Settings saved');
+    else {
+      const d = await res.json();
+      toast.error(d.error || 'Failed to save');
+    }
+  };
+
+  if (loading) return <div className="animate-pulse h-32 bg-slate-900 rounded-2xl" />;
+
+  return (
+    <>
+      <SectionHeader
+        title="Settings"
+        description="Platform configuration and limits."
+      />
+      <Card className="rounded-lg bg-slate-900 border-slate-800 p-6 max-w-2xl">
+        <h3 className="font-display font-bold text-xl text-slate-50 mb-4">Booking limits</h3>
+        <div className="space-y-4">
+          <div>
+            <Label className="text-slate-300 text-sm">Max bookings per member</Label>
+            <p className="text-xs text-slate-500 mt-1 mb-2">
+              Members can have this many upcoming classes booked at once. They must cancel one to book another.
+            </p>
+            <div className="flex items-center gap-3">
+              <Input
+                type="number"
+                min="1"
+                max="20"
+                className="h-11 w-24 bg-slate-950 border-slate-800 text-slate-100"
+                value={settings.max_bookings_per_member}
+                onChange={e => setSettings({ ...settings, max_bookings_per_member: e.target.value })}
+              />
+              <span className="text-sm text-slate-400">classes</span>
+            </div>
+          </div>
+          <Button
+            onClick={save}
+            disabled={saving}
+            className="bg-lime-400 text-slate-900 hover:bg-lime-300 font-semibold"
+          >
+            <Save className="w-4 h-4 mr-2" />
+            {saving ? 'Saving...' : 'Save settings'}
+          </Button>
+        </div>
+      </Card>
     </>
   );
 }

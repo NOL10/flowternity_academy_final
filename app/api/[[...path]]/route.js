@@ -5,7 +5,7 @@ import { hashPassword, verifyPassword, createToken, setAuthCookie, clearAuthCook
 import { SPORTS, MEMBERSHIPS, MAX_PAUSE_DAYS, KIDS_LEVELS, COUPONS } from '@/lib/flowternity/config';
 import { metricsForSport, isValidMetricKey, SPORT_METRICS, GENERIC_METRICS } from '@/lib/flowternity/metrics';
 import { createOrder, verifySignature, publicKeyId, getRazorpay, verifyWebhookSignature, refundPayment } from '@/lib/flowternity/razorpay';
-import { sendPasswordResetEmail, sendWelcomeEmail, sendBookingConfirmationEmail, sendMembershipPurchaseEmail } from '@/lib/flowternity/email';
+import { sendPasswordResetEmail, sendWelcomeEmail, sendOnboardingEmail, sendBookingConfirmationEmail, sendMembershipPurchaseEmail } from '@/lib/flowternity/email';
 
 function cors(res) {
   res.headers.set('Access-Control-Allow-Origin', process.env.CORS_ORIGINS || '*');
@@ -513,6 +513,8 @@ async function handleRoute(request, { params }) {
       await db.collection('users').insertOne(user);
       const token = createToken(user);
       await setAuthCookie(token);
+      // Onboarding email — best-effort, non-fatal
+      try { await sendOnboardingEmail({ to: user.email, name: user.full_name }); } catch (e) { /* non-fatal */ }
       return j({ user: publicUser(user) });
     }
 
@@ -729,6 +731,8 @@ async function handleRoute(request, { params }) {
           membershipName: mem.name, months: mem.duration_months, price: mem.price, expiryDate: expiry,
         });
       } catch (e) { /* non-fatal */ }
+      // Also send onboarding email since this is a new user
+      try { await sendOnboardingEmail({ to: newUser.email, name: newUser.full_name }); } catch (e) { /* non-fatal */ }
 
       return j({
         user: publicUser(newUser),
@@ -927,6 +931,16 @@ async function handleRoute(request, { params }) {
       const already = await db.collection('bookings').findOne({ user_id: auth.user.id, class_id, status: 'booked' });
       if (already) return err('Already booked', 409);
 
+      // Limit: read max_bookings_per_member from settings (default 3)
+      const settingsDoc = await db.collection('settings').findOne({ key: 'global' });
+      const maxBookings = settingsDoc?.max_bookings_per_member ?? 3;
+      const today = new Date().toISOString().slice(0, 10);
+      const upcomingClassIds = (await db.collection('bookings').find({ user_id: auth.user.id, status: 'booked' }).toArray()).map(b => b.class_id);
+      const upcomingCount = upcomingClassIds.length
+        ? await db.collection('classes').countDocuments({ id: { $in: upcomingClassIds }, date: { $gte: today } })
+        : 0;
+      if (upcomingCount >= maxBookings) return err(`You can only have ${maxBookings} upcoming classes booked at a time. Cancel one to book another.`, 409);
+
       const activeCount = await db.collection('bookings').countDocuments({ class_id, status: 'booked' });
       if (activeCount >= cls.capacity) return err('Class is full', 409);
 
@@ -1111,6 +1125,14 @@ async function handleRoute(request, { params }) {
       const auth = await requireUser(); if (auth.error) return auth.error;
       await db.collection('game_participants').deleteOne({ game_id: gameLeaveMatch[1], user_id: auth.user.id });
       return j({ ok: true });
+    }
+
+    // -------- SETTINGS (public read) --------
+    if (route === '/settings' && method === 'GET') {
+      const settingsDoc = await db.collection('settings').findOne({ key: 'global' });
+      return j({
+        max_bookings_per_member: settingsDoc?.max_bookings_per_member ?? 3,
+      });
     }
 
     // -------- ADMIN --------
@@ -1428,6 +1450,26 @@ async function handleRoute(request, { params }) {
         const todayClasses = await db.collection('classes').countDocuments({ date: today });
         const totalBookings = await db.collection('bookings').countDocuments({ status: 'booked' });
         return j({ total_users: total, active_memberships: active, today_classes: todayClasses, active_bookings: totalBookings });
+      }
+
+      // -------- Settings (admin read/write) --------
+      if (route === '/admin/settings' && method === 'GET') {
+        const settingsDoc = await db.collection('settings').findOne({ key: 'global' });
+        return j({
+          max_bookings_per_member: settingsDoc?.max_bookings_per_member ?? 3,
+        });
+      }
+
+      if (route === '/admin/settings' && method === 'PATCH') {
+        const { max_bookings_per_member } = await request.json();
+        const val = parseInt(max_bookings_per_member);
+        if (!Number.isInteger(val) || val < 1 || val > 20) return err('max_bookings_per_member must be between 1 and 20');
+        await db.collection('settings').updateOne(
+          { key: 'global' },
+          { $set: { max_bookings_per_member: val, updated_at: new Date(), updated_by: auth.user.id } },
+          { upsert: true }
+        );
+        return j({ ok: true, max_bookings_per_member: val });
       }
 
       if (route === '/admin/announcements' && method === 'POST') {

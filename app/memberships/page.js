@@ -47,35 +47,59 @@ function MembershipsInner() {
           </div>
 
           <div className="grid md:grid-cols-3 gap-6">
-            {basketballPlans.map(plan => (
-              <Card key={plan.id} className={`p-8 rounded-3xl relative ${plan.popular ? 'border-2 border-primary shadow-xl' : ''}`}>
-                {plan.popular && <Badge className="absolute -top-3 left-8 bg-accent text-black hover:bg-accent">Most Popular</Badge>}
-                <div className="flex items-baseline gap-2">
-                  <div className="font-display font-black text-5xl">{plan.duration_months}</div>
-                  <div className="text-muted-foreground">{plan.duration_months === 1 ? 'Month' : 'Months'}</div>
+            {basketballPlans.map(plan => {
+              const monthlyPrice = Math.round(plan.price / plan.duration_months);
+              const payMonthlyTotal = 2500 * plan.duration_months;
+              const savingVsMonthly = payMonthlyTotal - plan.price;
+              const savingPct = Math.round((savingVsMonthly / payMonthlyTotal) * 100);
+              const showDiscount = plan.duration_months > 1;
+              const isBestValue = plan.duration_months === 12;
+
+              return (
+              <Card key={plan.id} className={`p-6 md:p-8 rounded-3xl relative ${isBestValue ? 'border-2 border-primary shadow-xl' : ''}`}>
+                {isBestValue && <Badge className="absolute -top-3 left-8 bg-accent text-black hover:bg-accent font-semibold">BEST VALUE</Badge>}
+
+                <div className="mb-1">
+                  <div className="text-sm uppercase tracking-widest font-bold text-foreground">ACADEMY</div>
                 </div>
-                <div className="mt-2">
-                  <span className="font-display font-black text-3xl">₹{plan.price.toLocaleString('en-IN')}</span>
+
+                <div className="mb-1">
+                  <div className="font-display font-black text-2xl md:text-3xl">
+                    {plan.duration_months === 1 ? 'Monthly (1 Month)' : plan.duration_months === 6 ? 'Half-year (6 Months)' : 'Annual (12 Months)'}
+                  </div>
                 </div>
-                <div className="text-sm text-muted-foreground">
-                  ₹{Math.round(plan.price / plan.duration_months).toLocaleString('en-IN')}/month
-                </div>
-                {plan.savings && <Badge variant="secondary" className="mt-3">{plan.savings}</Badge>}
-                <ul className="mt-6 space-y-3 text-sm">
-                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" /> Basketball classes</li>
-                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" /> Unlimited bookings</li>
-                  {plan.pause_days > 0 && <li className="flex items-start gap-2"><Check className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" /> One free pause (up to {plan.pause_days} days)</li>}
-                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" /> Access to all coaches</li>
-                  <li className="flex items-start gap-2"><Check className="w-4 h-4 text-primary mt-0.5 flex-shrink-0" /> Progress tracking</li>
+
+                {showDiscount && <div className="text-sm text-muted-foreground mb-2">{savingPct}% cheaper than monthly</div>}
+
+                <ul className="mt-4 space-y-2 text-sm mb-6">
+                  <li className="flex items-start gap-2"><span className="text-accent">●</span> Unlimited classes</li>
+                  {plan.pause_days > 0 && <li className="flex items-start gap-2"><span className="text-accent">●</span> {plan.pause_days} pause days</li>}
                 </ul>
+
+                <div className="space-y-1">
+                  {showDiscount && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground line-through text-base">₹{payMonthlyTotal.toLocaleString('en-IN')}</span>
+                      <Badge variant="destructive" className="text-xs font-semibold">{savingPct}% off</Badge>
+                    </div>
+                  )}
+                  <div className="flex items-baseline gap-1">
+                    <span className="font-display font-black text-5xl md:text-6xl">₹{monthlyPrice.toLocaleString('en-IN')}</span>
+                    <span className="text-muted-foreground text-base">/month</span>
+                  </div>
+                  <div className="text-sm text-muted-foreground font-medium">
+                    ₹{plan.price.toLocaleString('en-IN')} total
+                  </div>
+                </div>
+
                 <Button
                   onClick={() => choose(plan)}
-                  className={`w-full mt-8 h-12 ${plan.popular ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'bg-accent text-black hover:bg-accent/90'}`}
+                  className={`w-full mt-6 h-12 text-base font-semibold ${isBestValue ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'bg-accent text-black hover:bg-accent/90'}`}
                 >
                   Get Started <ArrowRight className="w-4 h-4 ml-2" />
                 </Button>
               </Card>
-            ))}
+            );})}
           </div>
         </div>
 

@@ -161,18 +161,53 @@ function App() {
           <div className="max-w-4xl mx-auto">
             <p className="text-white/50 text-sm uppercase tracking-widest mb-6 text-center">Basketball · 3 plans</p>
             <div className="grid md:grid-cols-3 gap-4 mb-10">
-              {basketballPlans.map(p => (
-                <div key={p.id} className={`bg-white/5 border rounded-2xl p-6 relative ${p.popular ? 'border-accent shadow-lg shadow-accent/20' : 'border-white/10'}`}>
-                  {p.popular && <Badge className="absolute -top-3 left-6 bg-accent text-black hover:bg-accent">Popular</Badge>}
-                  <div className="font-display font-black text-4xl">{p.duration_months}<span className="text-white/40 text-lg font-normal ml-1">{p.duration_months === 1 ? 'mo' : 'mo'}</span></div>
-                  <div className="font-display font-black text-2xl mt-1">₹{p.price.toLocaleString('en-IN')}</div>
-                  <div className="text-white/40 text-xs">₹{Math.round(p.price / p.duration_months).toLocaleString('en-IN')}/month</div>
-                  {p.savings && <Badge className="mt-2 bg-white/10 text-white text-xs">{p.savings}</Badge>}
-                  <Link href={`/checkout?plan=${p.id}`}>
-                    <Button className="w-full mt-4 bg-accent text-black hover:bg-accent/90 h-10 text-sm">Get Started</Button>
-                  </Link>
-                </div>
-              ))}
+              {basketballPlans.map(p => {
+                const monthlyPrice = Math.round(p.price / p.duration_months);
+                // What you'd pay if buying 1-month plan repeatedly
+                const payMonthlyTotal = 2500 * p.duration_months;
+                const savingVsMonthly = payMonthlyTotal - p.price;
+                const savingPct = Math.round((savingVsMonthly / payMonthlyTotal) * 100);
+                // Only show discount for multi-month plans
+                const showDiscount = p.duration_months > 1;
+                // 12m is best value, not 6m
+                const isBestValue = p.duration_months === 12;
+
+                return (
+                  <div key={p.id} className={`bg-white/5 border rounded-2xl p-6 relative flex flex-col ${isBestValue ? 'border-accent shadow-lg shadow-accent/20' : 'border-white/10'}`}>
+                    {isBestValue && <Badge className="absolute -top-3 left-6 bg-accent text-black hover:bg-accent font-bold tracking-wide">BEST VALUE</Badge>}
+
+                    <div className="text-xs uppercase tracking-widest text-white/40 font-bold mb-1">ACADEMY</div>
+                    <div className="font-display font-black text-xl mb-1">
+                      {p.duration_months === 1 ? 'Monthly (1 Month)' : p.duration_months === 6 ? 'Half-year (6 Months)' : 'Annual (12 Months)'}
+                    </div>
+                    {showDiscount && <div className="text-xs text-accent mb-3">{savingPct}% cheaper than monthly</div>}
+
+                    <ul className="space-y-1.5 mb-4 text-sm">
+                      <li className="flex items-center gap-2 text-white/70"><span className="text-accent">●</span> Unlimited classes</li>
+                      {p.pause_days > 0 && <li className="flex items-center gap-2 text-white/70"><span className="text-accent">●</span> {p.pause_days} pause days</li>}
+                    </ul>
+
+                    {/* Pricing */}
+                    <div className="mt-auto">
+                      {showDiscount && (
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-white/30 line-through text-sm">₹{payMonthlyTotal.toLocaleString('en-IN')}</span>
+                          <span className="bg-red-500/20 text-red-400 text-xs font-semibold px-2 py-0.5 rounded">{savingPct}% off</span>
+                        </div>
+                      )}
+                      <div className="flex items-baseline gap-1">
+                        <span className="font-display font-black text-4xl md:text-5xl">₹{monthlyPrice.toLocaleString('en-IN')}</span>
+                        <span className="text-white/40 text-sm">/month</span>
+                      </div>
+                      <div className="text-white/40 text-xs mt-0.5">₹{p.price.toLocaleString('en-IN')} total</div>
+                    </div>
+
+                    <Link href={`/checkout?plan=${p.id}`}>
+                      <Button className="w-full mt-5 bg-accent text-black hover:bg-accent/90 h-11 font-semibold">Get Started</Button>
+                    </Link>
+                  </div>
+                );
+              })}
             </div>
 
             {/* Other sports */}
