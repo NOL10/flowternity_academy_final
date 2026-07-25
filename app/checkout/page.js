@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/app/providers';
-import { MEMBERSHIPS, SPORTS } from '@/lib/flowternity/config';
+import { MEMBERSHIPS, SPORTS, COUPONS } from '@/lib/flowternity/config';
 import { toast } from 'sonner';
 import { Check, CreditCard, Loader2, Lock, User, ShieldCheck, Info } from 'lucide-react';
 
@@ -82,9 +82,18 @@ function CheckoutInner() {
 
   const applyCoupon = () => {
     if (!couponCode.trim()) { toast.error('Enter a coupon code'); return; }
-    setAppliedCoupon({ code: couponCode, discount_percent: 15 });
-    setFinalPrice(plan.price - Math.round(plan.price * 0.15));
-    toast.success('Coupon applied! 15% discount');
+    
+    // Check if coupon is valid and applicable to this plan
+    const coupon = COUPONS.find(c => c.code.toUpperCase() === couponCode.toUpperCase());
+    if (!coupon) { toast.error('Invalid coupon code'); return; }
+    if (!coupon.applicable_plans.includes(plan.id)) { 
+      toast.error(`This coupon only applies to: ${coupon.applicable_plans.join(', ')}`); 
+      return; 
+    }
+    
+    setAppliedCoupon(coupon);
+    setFinalPrice(plan.price - coupon.discount_amount);
+    toast.success(`Coupon applied! ₹${coupon.discount_amount.toLocaleString('en-IN')} off`);
   };
 
   const validate = () => {
@@ -432,8 +441,8 @@ function CheckoutInner() {
                 <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span>₹{plan.price.toLocaleString('en-IN')}</span></div>
                 {appliedCoupon && (
                   <div className="flex justify-between text-green-600">
-                    <span>Discount ({appliedCoupon.discount_percent}%)</span>
-                    <span>-₹{(plan.price - finalPrice).toLocaleString('en-IN')}</span>
+                    <span>Discount ({appliedCoupon.code})</span>
+                    <span>-₹{appliedCoupon.discount_amount.toLocaleString('en-IN')}</span>
                   </div>
                 )}
                 <div className="flex justify-between"><span className="text-muted-foreground">Per month</span><span>₹{perMonth.toLocaleString('en-IN')}</span></div>

@@ -274,8 +274,12 @@ async function handleRoute(request, { params }) {
       if (coupon_code) {
         const coupon = COUPONS.find(c => c.code.toLowerCase() === coupon_code.toLowerCase());
         if (!coupon) return err('Invalid coupon code');
+        // Check if coupon applies to this plan
+        if (!coupon.applicable_plans.includes(mem.id)) {
+          return err(`This coupon only applies to: ${coupon.applicable_plans.join(', ')}`);
+        }
         appliedCoupon = coupon;
-        finalPrice = Math.round(mem.price * (1 - coupon.discount_percent / 100));
+        finalPrice = mem.price - coupon.discount_amount;
       }
       
       try {
@@ -319,8 +323,12 @@ async function handleRoute(request, { params }) {
       if (coupon_code) {
         const coupon = COUPONS.find(c => c.code.toLowerCase() === coupon_code.toLowerCase());
         if (!coupon) return err('Invalid coupon code');
+        // Check if coupon applies to this plan
+        if (!coupon.applicable_plans.includes(mem.id)) {
+          return err(`This coupon only applies to: ${coupon.applicable_plans.join(', ')}`);
+        }
         appliedCoupon = coupon;
-        finalPrice = Math.round(mem.price * (1 - coupon.discount_percent / 100));
+        finalPrice = mem.price - coupon.discount_amount;
       }
       
       if (!child || (!child.athlete_name && !child.child_name) || !child.dob) return err('Athlete name & DOB required');
