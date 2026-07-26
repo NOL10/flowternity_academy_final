@@ -255,6 +255,53 @@ async function handleRoute(request, { params }) {
         sport_name: SPORTS.find(sp => sp.id === s.sport_id)?.name || s.sport_id,
         metrics_catalog: metricsForSport(s.sport_id),
       }));
+      
+      // Also return monthly aggregated historical data
+      const url = new URL(request.url);
+      const includeHistory = url.searchParams.get('history') === 'true';
+      if (includeHistory) {
+        // Collect monthly aggregated metrics for last 12 months
+        const monthlyData = {};
+        for (const doc of mergedMetrics) {
+          const sport = doc.sport_id;
+          if (!monthlyData[sport]) monthlyData[sport] = {};
+          
+          // Extract month from updated_at or created_at
+          const date = new Date(doc.updated_at || doc.created_at);
+          const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+          
+          if (!monthlyData[sport][monthKey]) {
+            monthlyData[sport][monthKey] = { count: 0, scores: {} };
+          }
+          
+          // Aggregate scores
+          for (const [key, val] of Object.entries(doc.scores || {})) {
+            if (!monthlyData[sport][monthKey].scores[key]) {
+              monthlyData[sport][monthKey].scores[key] = [];
+            }
+            monthlyData[sport][monthKey].scores[key].push(val);
+          }
+          monthlyData[sport][monthKey].count += 1;
+        }
+        
+        // Convert to monthly averages
+        const monthlyHistory = {};
+        for (const [sport, months] of Object.entries(monthlyData)) {
+          monthlyHistory[sport] = Object.entries(months)
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .slice(-12)
+            .map(([month, data]) => ({
+              month,
+              metrics: Object.entries(data.scores).reduce((acc, [key, vals]) => {
+                acc[key] = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+                return acc;
+              }, {}),
+              recordCount: data.count,
+            }));
+        }
+        return j({ sports, levels_catalog: KIDS_LEVELS, monthly_history: monthlyHistory });
+      }
+      
       return j({ sports, levels_catalog: KIDS_LEVELS });
     }
 

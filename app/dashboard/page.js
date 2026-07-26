@@ -14,6 +14,7 @@ import { toast } from 'sonner';
 import { useAuth } from '@/app/providers';
 import { SPORTS, MEMBERSHIPS } from '@/lib/flowternity/config';
 import { Calendar, Clock, User, Pause, PlayCircle, RefreshCw, CreditCard, Trophy, Sparkles, X, TrendingUp } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -257,6 +258,7 @@ function PerformancePanel({ user }) {
   const [subjects, setSubjects] = useState([]);
   const [selected, setSelected] = useState(null);
   const [data, setData] = useState(null);
+  const [monthlyHistory, setMonthlyHistory] = useState(null);
   const [activeSport, setActiveSport] = useState(null);
 
   useEffect(() => {
@@ -288,16 +290,20 @@ function PerformancePanel({ user }) {
   const loadPerf = async (s) => {
     setSelected(s);
     setData(null);
-    const r = await fetch(`/api/athletes/${s.id}/performance`, { credentials: 'include' });
+    setMonthlyHistory(null);
+    
+    const r = await fetch(`/api/athletes/${s.id}/performance?history=true`, { credentials: 'include' });
     if (!r.ok) { setData({ sports: [] }); return; }
     const d = await r.json();
     setData(d);
+    setMonthlyHistory(d.monthly_history || {});
     setActiveSport(d.sports?.[0]?.sport_id || null);
   };
 
   if (!user || !subjects.length) return null;
 
   const current = data?.sports?.find(s => s.sport_id === activeSport);
+  const currentMonthlyData = monthlyHistory ? monthlyHistory[activeSport] : null;
 
   return (
     <div className="mt-10">
@@ -327,73 +333,194 @@ function PerformancePanel({ user }) {
           </div>
 
           {current && (
-            <div className="grid md:grid-cols-3 gap-6">
-              {current.level && (
-                <Card className="p-6 rounded-2xl bg-gradient-to-br from-accent/20 to-transparent border-accent/30 md:col-span-1">
-                  <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Current level · {current.sport_name}</p>
-                  <div className="flex items-baseline gap-3">
-                    <span className="font-display font-black text-4xl">L{current.level || 1}</span>
-                    <span className="font-display font-bold text-xl">{current.level_info?.name || 'SPARK'}</span>
-                  </div>
-                  <p className="text-sm italic text-muted-foreground mt-2">&ldquo;{current.level_info?.quote || 'Every champion starts with a spark.'}&rdquo;</p>
-                  <div className="mt-4 flex flex-wrap gap-1">
-                    {(data.levels_catalog || []).map(l => {
-                      const at = (current.level || 1) >= l.level;
-                      return (
-                        <div key={l.level} title={`L${l.level} ${l.name}`}
-                          className={`w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold ${at ? 'bg-accent text-black' : 'bg-secondary text-muted-foreground'}`}>
-                          {l.level}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </Card>
-              )}
+            <div className="space-y-6">
+              <div className="grid md:grid-cols-3 gap-6">
+                {current.level && (
+                  <Card className="p-6 rounded-2xl bg-gradient-to-br from-accent/20 to-transparent border-accent/30 md:col-span-1">
+                    <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Current level · {current.sport_name}</p>
+                    <div className="flex items-baseline gap-3">
+                      <span className="font-display font-black text-4xl">L{current.level || 1}</span>
+                      <span className="font-display font-bold text-xl">{current.level_info?.name || 'SPARK'}</span>
+                    </div>
+                    <p className="text-sm italic text-muted-foreground mt-2">&ldquo;{current.level_info?.quote || 'Every champion starts with a spark.'}&rdquo;</p>
+                    <div className="mt-4 flex flex-wrap gap-1">
+                      {(data.levels_catalog || []).map(l => {
+                        const at = (current.level || 1) >= l.level;
+                        return (
+                          <div key={l.level} title={`L${l.level} ${l.name}`}
+                            className={`w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold ${at ? 'bg-accent text-black' : 'bg-secondary text-muted-foreground'}`}>
+                            {l.level}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </Card>
+                )}
 
-              <Card className={`p-6 rounded-2xl ${current.level ? 'md:col-span-2' : 'md:col-span-3'}`}>
-                <div className="flex items-baseline justify-between mb-4">
-                  <div>
-                    <h4 className="font-semibold text-lg">{current.sport_name} · Metrics</h4>
-                    <p className="text-xs text-muted-foreground">Scored by your coach · 0–10 scale.</p>
-                  </div>
-                  {Object.keys(current.scores || {}).length > 0 && (
-                    <div className="text-right">
-                      <div className="text-xs text-muted-foreground uppercase tracking-widest">Avg</div>
-                      <div className="font-display font-black text-2xl">
-                        {(() => {
-                          const vals = Object.values(current.scores || {});
-                          return vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : '—';
-                        })()}
+                <Card className={`p-6 rounded-2xl ${current.level ? 'md:col-span-2' : 'md:col-span-3'}`}>
+                  <div className="flex items-baseline justify-between mb-4">
+                    <div>
+                      <h4 className="font-semibold text-lg">{current.sport_name} · Metrics</h4>
+                      <p className="text-xs text-muted-foreground">Scored by your coach · 0–10 scale.</p>
+                    </div>
+                    {Object.keys(current.scores || {}).length > 0 && (
+                      <div className="text-right">
+                        <div className="text-xs text-muted-foreground uppercase tracking-widest">Avg</div>
+                        <div className="font-display font-black text-2xl">
+                          {(() => {
+                            const vals = Object.values(current.scores || {});
+                            return vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : '—';
+                          })()}
+                        </div>
                       </div>
+                    )}
+                  </div>
+                  {Object.keys(current.scores || {}).length === 0 ? (
+                    <div className="py-8 text-center text-sm text-muted-foreground">Your coach hasn&apos;t recorded metrics yet.</div>
+                  ) : (
+                    <div className="grid sm:grid-cols-2 gap-3">
+                      {(current.metrics_catalog || []).map(m => {
+                        const v = current.scores?.[m.key];
+                        if (v === undefined) return null;
+                        return (
+                          <div key={m.key} className="flex items-center gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm truncate">{m.label}</div>
+                              <div className="h-1.5 bg-secondary rounded-full overflow-hidden mt-1.5">
+                                <div className={`h-full ${v >= 7 ? 'bg-primary' : v >= 4 ? 'bg-yellow-400' : 'bg-red-400'}`} style={{ width: `${v * 10}%` }} />
+                              </div>
+                            </div>
+                            <div className="font-mono font-semibold w-12 text-right">{v}<span className="text-muted-foreground text-xs">/10</span></div>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
-                </div>
-                {Object.keys(current.scores || {}).length === 0 ? (
-                  <div className="py-8 text-center text-sm text-muted-foreground">Your coach hasn&apos;t recorded metrics yet.</div>
-                ) : (
-                  <div className="grid sm:grid-cols-2 gap-3">
-                    {(current.metrics_catalog || []).map(m => {
-                      const v = current.scores?.[m.key];
-                      if (v === undefined) return null;
-                      return (
-                        <div key={m.key} className="flex items-center gap-3">
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm truncate">{m.label}</div>
-                            <div className="h-1.5 bg-secondary rounded-full overflow-hidden mt-1.5">
-                              <div className={`h-full ${v >= 7 ? 'bg-primary' : v >= 4 ? 'bg-yellow-400' : 'bg-red-400'}`} style={{ width: `${v * 10}%` }} />
-                            </div>
-                          </div>
-                          <div className="font-mono font-semibold w-12 text-right">{v}<span className="text-muted-foreground text-xs">/10</span></div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </Card>
+                </Card>
+              </div>
+
+              {/* Monthly trend chart */}
+              {currentMonthlyData && currentMonthlyData.length > 0 && (
+                <PerformanceTrendChart 
+                  monthlyData={currentMonthlyData}
+                  metrics={current.metrics_catalog || []}
+                />
+              )}
             </div>
           )}
         </>
       )}
     </div>
+  );
+}
+
+// Monthly performance trend component - Overall Graph Only
+function PerformanceTrendChart({ monthlyData, metrics, selectedMetric, onMetricSelect }) {
+  const chartData = monthlyData.map(m => ({
+    month: m.month,
+    avg: m.metrics && Object.keys(m.metrics).length > 0 
+      ? Object.values(m.metrics).reduce((a, b) => a + b, 0) / Object.keys(m.metrics).length 
+      : 0,
+    count: m.recordCount,
+  }));
+
+  const trend = chartData.length > 1 
+    ? ((chartData[chartData.length - 1].avg - chartData[0].avg) / chartData[0].avg * 100).toFixed(1)
+    : 0;
+
+  const isPositive = trend >= 0;
+  const currentScore = chartData.length > 0 ? chartData[chartData.length - 1].avg : 0;
+  const lowestScore = Math.min(...chartData.map(d => d.avg));
+  const highestScore = Math.max(...chartData.map(d => d.avg));
+
+  return (
+    <Card className="p-6 md:p-8 rounded-3xl border border-border bg-gradient-to-br from-background via-background to-secondary/5 shadow-lg">
+      {/* Header */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
+        <div>
+          <h4 className="font-display font-bold text-2xl md:text-3xl mb-1">Performance Progress</h4>
+          <p className="text-sm text-muted-foreground">Month-on-month average scores over the last 12 months</p>
+        </div>
+        
+        {/* Stats Box */}
+        <div className="flex gap-6">
+          <div className="flex flex-col items-center md:items-end">
+            <span className="text-xs uppercase tracking-widest text-muted-foreground font-semibold mb-1">Current</span>
+            <span className="font-display font-black text-3xl">{currentScore.toFixed(1)}</span>
+            <span className="text-xs text-muted-foreground">/10</span>
+          </div>
+          
+          <div className={`flex flex-col items-center md:items-end p-3 rounded-2xl ${isPositive ? 'bg-green-500/10 border border-green-500/30' : 'bg-red-500/10 border border-red-500/30'}`}>
+            <span className="text-xs uppercase tracking-widest text-muted-foreground font-semibold mb-1">Trend</span>
+            <span className={`font-display font-black text-3xl flex items-center gap-1 ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
+              {isPositive ? '↑' : '↓'} {Math.abs(trend)}%
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Chart */}
+      <div className="w-full h-72 md:h-96 -mx-2 md:-mx-4">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={chartData} margin={{ top: 10, right: 40, left: 0, bottom: 40 }}>
+            <defs>
+              <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
+                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
+              </linearGradient>
+            </defs>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+            <XAxis 
+              dataKey="month" 
+              stroke="#9ca3af"
+              style={{ fontSize: '12px' }}
+              tick={{ fill: '#6b7280' }}
+            />
+            <YAxis 
+              domain={[0, 10]} 
+              stroke="#9ca3af"
+              style={{ fontSize: '12px' }}
+              tick={{ fill: '#6b7280' }}
+            />
+            <Tooltip 
+              formatter={(value) => [`${value.toFixed(1)}/10`, 'Avg Score']}
+              labelFormatter={(label) => `${label}`}
+              contentStyle={{ 
+                borderRadius: '12px', 
+                border: '1px solid #e5e7eb',
+                backgroundColor: '#ffffff',
+                boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
+              }}
+              wrapperStyle={{ outline: 'none' }}
+            />
+            <Line 
+              type="monotone" 
+              dataKey="avg" 
+              stroke="#3b82f6" 
+              strokeWidth={3}
+              dot={{ fill: '#3b82f6', r: 5, strokeWidth: 2, stroke: '#ffffff' }} 
+              activeDot={{ r: 7, strokeWidth: 2, stroke: '#ffffff' }}
+              isAnimationActive={true}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Stats Footer */}
+      <div className="mt-8 grid grid-cols-3 gap-4">
+        <div className="text-center p-3 rounded-2xl bg-secondary/50">
+          <p className="text-xs uppercase tracking-widest text-muted-foreground font-semibold mb-1">Highest</p>
+          <p className="font-display font-black text-2xl">{highestScore.toFixed(1)}</p>
+        </div>
+        <div className="text-center p-3 rounded-2xl bg-secondary/50">
+          <p className="text-xs uppercase tracking-widest text-muted-foreground font-semibold mb-1">Data Points</p>
+          <p className="font-display font-black text-2xl">{chartData.length}</p>
+        </div>
+        <div className="text-center p-3 rounded-2xl bg-secondary/50">
+          <p className="text-xs uppercase tracking-widest text-muted-foreground font-semibold mb-1">Lowest</p>
+          <p className="font-display font-black text-2xl">{lowestScore.toFixed(1)}</p>
+        </div>
+      </div>
+    </Card>
   );
 }

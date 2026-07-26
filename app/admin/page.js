@@ -1925,6 +1925,9 @@ function PerformanceSection() {
 
   const currentSportData = data?.sports?.find(s => s.sport_id === activeSport);
 
+  // Get the parent member name from the search (if available)
+  const currentParent = members.find(m => subjects.some(s => s.id === m.id || (selected?.type === 'child' && subjects.some(subj => subj.id === selected.id))));
+
   const scoreValue = (mkey) => {
     if (dirty[mkey] !== undefined) return dirty[mkey];
     return currentSportData?.scores?.[mkey] ?? '';
@@ -1998,10 +2001,35 @@ function PerformanceSection() {
           )}
           {!loading && selected && data && (
             <div className="space-y-4">
+              {/* Member/Athlete highlight banner */}
+              <div className="rounded-2xl bg-gradient-to-r from-lime-400/20 via-lime-400/10 to-transparent border border-lime-400/40 p-4 md:p-6">
+                <p className="text-xs uppercase tracking-widest text-lime-400 font-semibold mb-1">Currently editing</p>
+                <div className="flex flex-col md:flex-row md:items-center gap-3">
+                  <div className="flex-1">
+                    {currentParent && (
+                      <>
+                        <p className="text-sm text-slate-400">Parent / Member</p>
+                        <p className="font-display font-black text-2xl text-slate-100">{currentParent.full_name}</p>
+                      </>
+                    )}
+                  </div>
+                  <div className="flex-1">
+                    <p className="text-sm text-slate-400">Athlete Profile</p>
+                    <p className="font-display font-black text-2xl text-lime-300">{selected.label}</p>
+                  </div>
+                  {activeSport && (
+                    <div className="flex-1">
+                      <p className="text-sm text-slate-400">Sport</p>
+                      <p className="font-display font-black text-2xl text-slate-100">{data.sports.find(s => s.sport_id === activeSport)?.sport_name}</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+
               {/* Subject switcher (user + kids) */}
               {subjects.length > 1 && (
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-xs text-slate-500 uppercase tracking-widest mr-1">Athlete</span>
+                  <span className="text-xs text-slate-500 uppercase tracking-widest mr-1">Switch Athlete</span>
                   {subjects.map(s => (
                     <button key={s.id} onClick={() => pickSubject(s)} className={`text-xs px-3 py-1.5 rounded-full border transition ${selected.id === s.id ? 'bg-lime-400 text-slate-900 border-lime-400 font-semibold' : 'border-slate-700 text-slate-400 hover:text-slate-100'}`}>
                       {s.label}
