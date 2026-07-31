@@ -122,7 +122,19 @@ export default function DashboardPage() {
                         <span className="text-xs md:text-sm uppercase tracking-widest text-white/60">{sport?.name || m.membership_snapshot?.name}</span>
                         <Badge className={`${m.status === 'active' ? 'bg-accent text-black' : 'bg-white/20 text-white'} hover:bg-accent text-xs`}>{m.status}</Badge>
                       </div>
-                      <h2 className="font-display font-black text-2xl md:text-4xl mt-2">{m.membership_snapshot?.duration_months} {m.membership_snapshot?.duration_months === 1 ? 'Month' : 'Months'}</h2>
+                      <h2 className="font-display font-black text-2xl md:text-4xl mt-2">
+                        {m.membership_snapshot?.type === 'slot' ? (
+                          <>Basketball Single Classes</>
+                        ) : (
+                          <>{m.membership_snapshot?.duration_months} {m.membership_snapshot?.duration_months === 1 ? 'Month' : 'Months'}</>
+                        )}
+                      </h2>
+                      {m.membership_snapshot?.type === 'slot' && (
+                        <p className="text-white/80 mt-2 text-sm md:text-base font-semibold">
+                          <span className="text-accent text-lg">{m.slots_remaining || 0}</span>
+                          <span className="text-white/60"> / {m.slots_total || 0} slots remaining</span>
+                        </p>
+                      )}
                       <p className="text-white/60 mt-1 text-xs md:text-sm">Expires {new Date(m.expiry_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
                       <div className="mt-4">
                         <div className="flex justify-between text-xs text-white/60 mb-1"><span>{daysLeft} days remaining</span><span>{Math.round(pct)}%</span></div>

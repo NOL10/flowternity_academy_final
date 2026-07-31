@@ -49,6 +49,7 @@ function CheckoutInner() {
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState(null);
   const [finalPrice, setFinalPrice] = useState(plan?.price || 0);
+  const [slotQuantity, setSlotQuantity] = useState(1); // For slot-type plans
 
   // Pre-fill from logged-in user + fetch existing athlete profile
   useEffect(() => {
@@ -65,8 +66,13 @@ function CheckoutInner() {
           }
         });
     }
-    setFinalPrice(plan?.price || 0);
-  }, [user, plan]);
+    // Calculate final price based on plan type
+    if (plan) {
+      const isSlotPlan = plan.type === 'slot';
+      const qty = isSlotPlan ? slotQuantity : 1;
+      setFinalPrice(plan.price * qty);
+    }
+  }, [user, plan, slotQuantity]);
 
   if (!plan || !sport) {
     return (
@@ -159,7 +165,12 @@ function CheckoutInner() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
-          body: JSON.stringify({ membership_id: plan.id, child_profile_id, coupon_code: appliedCoupon?.code || null }),
+          body: JSON.stringify({ 
+            membership_id: plan.id, 
+            child_profile_id, 
+            coupon_code: appliedCoupon?.code || null,
+            slot_quantity: slotQuantity,
+          }),
         });
         orderData = await ores.json();
         if (!ores.ok) throw new Error(orderData.error || 'Failed to create order');
@@ -208,6 +219,7 @@ function CheckoutInner() {
             membership_id: plan.id,
             child: { athlete_name: form.full_name, dob: form.dob, gender: form.gender },
             coupon_code: appliedCoupon?.code || null,
+            slot_quantity: slotQuantity,
           }),
         });
         orderData = await ores.json();
@@ -382,6 +394,40 @@ function CheckoutInner() {
                   </>
                 )}
               </div>
+
+              {/* Slot quantity selector — only for slot-type plans */}
+              {plan.type === 'slot' && (
+                <div className="mt-6 pt-6 border-t border-border">
+                  <Label className="text-base font-semibold mb-3 block">How many slots do you want?</Label>
+                  <p className="text-sm text-muted-foreground mb-4">Each slot = 1 class booking. Use all slots within 30 days.</p>
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center border border-input rounded-lg overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setSlotQuantity(Math.max(1, slotQuantity - 1))}
+                        className="px-4 py-3 hover:bg-secondary transition"
+                      >−</button>
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={slotQuantity}
+                        onChange={(e) => setSlotQuantity(Math.max(1, Math.min(100, parseInt(e.target.value) || 1)))}
+                        className="w-16 text-center border-0 bg-transparent font-display font-black text-xl focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setSlotQuantity(Math.min(100, slotQuantity + 1))}
+                        className="px-4 py-3 hover:bg-secondary transition"
+                      >+</button>
+                    </div>
+                    <div>
+                      <div className="text-sm text-muted-foreground">Total: ₹{finalPrice.toLocaleString('en-IN')}</div>
+                      <div className="text-xs text-muted-foreground mt-1">{slotQuantity} slots × ₹400</div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {!user && (
                 <p className="text-xs text-muted-foreground mt-4">

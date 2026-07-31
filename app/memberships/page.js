@@ -16,6 +16,10 @@ function MembershipsInner() {
   const basketballPlans = MEMBERSHIPS.filter(m => m.sport_id === 'basketball');
   const otherPlans = MEMBERSHIPS.filter(m => m.sport_id !== 'basketball');
 
+  // Separate slot plans from regular plans for basketball
+  const basketballRegularPlans = basketballPlans.filter(m => m.type !== 'slot');
+  const basketballSlotPlans = basketballPlans.filter(m => m.type === 'slot');
+
   const choose = (plan) => {
     router.push(`/checkout?plan=${plan.id}`);
   };
@@ -46,61 +50,107 @@ function MembershipsInner() {
             </div>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-6">
-            {basketballPlans.map(plan => {
-              const monthlyPrice = Math.round(plan.price / plan.duration_months);
-              const payMonthlyTotal = 3102 * plan.duration_months;
-              const savingVsMonthly = payMonthlyTotal - plan.price;
-              const savingPct = Math.round((savingVsMonthly / payMonthlyTotal) * 100);
-              const showDiscount = plan.duration_months > 1;
-              const isBestValue = plan.duration_months === 12;
+          {/* Unlimited classes plans */}
+          <div className="mb-12">
+            <h3 className="text-sm uppercase tracking-widest font-bold text-muted-foreground mb-4">Unlimited Classes</h3>
+            <div className="grid md:grid-cols-3 gap-6">
+              {basketballRegularPlans.map(plan => {
+                const monthlyPrice = Math.round(plan.price / plan.duration_months);
+                const payMonthlyTotal = 3102 * plan.duration_months;
+                const savingVsMonthly = payMonthlyTotal - plan.price;
+                const savingPct = Math.round((savingVsMonthly / payMonthlyTotal) * 100);
+                const showDiscount = plan.duration_months > 1;
+                const isBestValue = plan.duration_months === 12;
 
-              return (
-              <Card key={plan.id} className={`p-6 md:p-8 rounded-3xl relative ${isBestValue ? 'border-2 border-primary shadow-xl' : ''}`}>
-                {isBestValue && <Badge className="absolute -top-3 left-8 bg-accent text-black hover:bg-accent font-semibold">BEST VALUE</Badge>}
+                return (
+                <Card key={plan.id} className={`p-6 md:p-8 rounded-3xl relative ${isBestValue ? 'border-2 border-primary shadow-xl' : ''}`}>
+                  {isBestValue && <Badge className="absolute -top-3 left-8 bg-accent text-black hover:bg-accent font-semibold">BEST VALUE</Badge>}
 
-                <div className="mb-1">
-                  <div className="text-sm uppercase tracking-widest font-bold text-foreground">ACADEMY</div>
-                </div>
-
-                <div className="mb-1">
-                  <div className="font-display font-black text-2xl md:text-3xl">
-                    {plan.duration_months === 1 ? 'Monthly (1 Month)' : plan.duration_months === 6 ? 'Half-year (6 Months)' : 'Annual (12 Months)'}
+                  <div className="mb-1">
+                    <div className="text-sm uppercase tracking-widest font-bold text-foreground">ACADEMY</div>
                   </div>
-                </div>
 
-                {showDiscount && <div className="text-sm text-muted-foreground mb-2">{savingPct}% cheaper than monthly</div>}
-
-                <ul className="mt-4 space-y-2 text-sm mb-6">
-                  <li className="flex items-start gap-2"><span className="text-accent">●</span> Unlimited classes</li>
-                  {plan.pause_days > 0 && <li className="flex items-start gap-2"><span className="text-accent">●</span> {plan.pause_days} pause days</li>}
-                </ul>
-
-                <div className="space-y-1">
-                  {showDiscount && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground line-through text-base">₹{payMonthlyTotal.toLocaleString('en-IN')}</span>
-                      <Badge variant="destructive" className="text-xs font-semibold">{savingPct}% off</Badge>
+                  <div className="mb-1">
+                    <div className="font-display font-black text-2xl md:text-3xl">
+                      {plan.duration_months === 1 ? 'Monthly (1 Month)' : plan.duration_months === 6 ? 'Half-year (6 Months)' : 'Annual (12 Months)'}
                     </div>
-                  )}
-                  <div className="flex items-baseline gap-1">
-                    <span className="font-display font-black text-5xl md:text-6xl">₹{monthlyPrice.toLocaleString('en-IN')}</span>
-                    <span className="text-muted-foreground text-base">/month</span>
                   </div>
-                  <div className="text-sm text-muted-foreground font-medium">
-                    ₹{plan.price.toLocaleString('en-IN')} total
-                  </div>
-                </div>
 
-                <Button
-                  onClick={() => choose(plan)}
-                  className={`w-full mt-6 h-12 text-base font-semibold ${isBestValue ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'bg-accent text-black hover:bg-accent/90'}`}
-                >
-                  Get Started <ArrowRight className="w-4 h-4 ml-2" />
-                </Button>
-              </Card>
-            );})}
+                  {showDiscount && <div className="text-sm text-muted-foreground mb-2">{savingPct}% cheaper than monthly</div>}
+
+                  <ul className="mt-4 space-y-2 text-sm mb-6">
+                    <li className="flex items-start gap-2"><span className="text-accent">●</span> Unlimited classes</li>
+                    {plan.pause_days > 0 && <li className="flex items-start gap-2"><span className="text-accent">●</span> {plan.pause_days} pause days</li>}
+                  </ul>
+
+                  <div className="space-y-1">
+                    {showDiscount && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground line-through text-base">₹{payMonthlyTotal.toLocaleString('en-IN')}</span>
+                        <Badge variant="destructive" className="text-xs font-semibold">{savingPct}% off</Badge>
+                      </div>
+                    )}
+                    <div className="flex items-baseline gap-1">
+                      <span className="font-display font-black text-5xl md:text-6xl">₹{monthlyPrice.toLocaleString('en-IN')}</span>
+                      <span className="text-muted-foreground text-base">/month</span>
+                    </div>
+                    <div className="text-sm text-muted-foreground font-medium">
+                      ₹{plan.price.toLocaleString('en-IN')} total
+                    </div>
+                  </div>
+
+                  <Button
+                    onClick={() => choose(plan)}
+                    className={`w-full mt-6 h-12 text-base font-semibold ${isBestValue ? 'bg-primary text-primary-foreground hover:bg-primary/90' : 'bg-accent text-black hover:bg-accent/90'}`}
+                  >
+                    Get Started <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                </Card>
+              );})}
+            </div>
           </div>
+
+          {/* Single Class plans */}
+          {basketballSlotPlans.length > 0 && (
+            <div>
+              <h3 className="text-sm uppercase tracking-widest font-bold text-muted-foreground mb-4">Pay Per Class</h3>
+              <div className="grid md:grid-cols-3 gap-6">
+                {basketballSlotPlans.map(plan => (
+                  <Card key={plan.id} className="p-6 md:p-8 rounded-3xl border-2 border-accent/30">
+                    <div className="mb-1">
+                      <div className="text-sm uppercase tracking-widest font-bold text-foreground">BASKETBALL</div>
+                    </div>
+
+                    <div className="mb-1">
+                      <div className="font-display font-black text-2xl md:text-3xl">Basketball Single Classes</div>
+                    </div>
+
+                    <div className="text-sm text-muted-foreground mb-4">30-day validity per slot</div>
+
+                    <ul className="mt-4 space-y-2 text-sm mb-6">
+                      <li className="flex items-start gap-2"><span className="text-accent">●</span> Pay per class</li>
+                      <li className="flex items-start gap-2"><span className="text-accent">●</span> Buy 1 or more slots</li>
+                      <li className="flex items-start gap-2"><span className="text-accent">●</span> 30 days to use</li>
+                    </ul>
+
+                    <div className="space-y-1">
+                      <div className="flex items-baseline gap-1">
+                        <span className="font-display font-black text-5xl md:text-6xl">₹{plan.price.toLocaleString('en-IN')}</span>
+                        <span className="text-muted-foreground text-base">/slot</span>
+                      </div>
+                    </div>
+
+                    <Button
+                      onClick={() => choose(plan)}
+                      className="w-full mt-6 h-12 text-base font-semibold bg-accent text-black hover:bg-accent/90"
+                    >
+                      Get Started <ArrowRight className="w-4 h-4 ml-2" />
+                    </Button>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Other sports — prices vary */}

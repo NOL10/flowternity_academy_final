@@ -106,6 +106,11 @@ async function activateOrderMembership(db, { razorpay_order_id, razorpay_payment
   const meta = paymentRec.pending_meta || {};
   const now = new Date();
   const expiry = new Date(now); expiry.setMonth(expiry.getMonth() + mem.duration_months);
+  
+  // For slot-based memberships, add slots_remaining field
+  const isSlotPlan = mem.type === 'slot';
+  const slotQty = isSlotPlan ? (meta.slot_quantity || 1) : null;
+  
   const um = {
     id: uuidv4(),
     user_id: user.id,
@@ -116,6 +121,7 @@ async function activateOrderMembership(db, { razorpay_order_id, razorpay_payment
     selected_sports: [mem.sport_id],
     start_date: now, expiry_date: expiry,
     status: 'active', pause_days: 0, paused_at: null,
+    ...(isSlotPlan && { slots_remaining: slotQty, slots_total: slotQty }),
     created_at: now,
   };
   await db.collection('user_memberships').insertOne(um);
@@ -141,6 +147,9 @@ async function activateOrderMembership(db, { razorpay_order_id, razorpay_payment
     await seedKidLevels(db, { user_id: user.id, child_profile_id: meta.child_profile_id, sport_ids: [mem.sport_id] });
   }
   try {
+    const emailMsg = isSlotPlan 
+      ? `You purchased ${slotQty} Basketball slot(s). Valid for 30 days.`
+      : `Membership: ${mem.name} for ${mem.duration_months} month(s).`;
     await sendMembershipPurchaseEmail({
       to: user.email, name: user.full_name,
       membershipName: mem.name, months: mem.duration_months, price: mem.price, expiryDate: expiry,
@@ -309,14 +318,17 @@ async function handleRoute(request, { params }) {
     // 1) Authenticated user creates order for existing account
     if (route === '/checkout/order' && method === 'POST') {
       const auth = await requireUser(); if (auth.error) return auth.error;
-      const { membership_id, child_profile_id, coupon_code } = await request.json();
+      const { membership_id, child_profile_id, coupon_code, slot_quantity } = await request.json();
       const mem = MEMBERSHIPS.find(m => m.id === membership_id);
       if (!mem) return err('Invalid membership');
       if (!child_profile_id) return err('Child profile required');
       if (!getRazorpay()) return err('Payments not configured', 500);
       
+      // For slot-based memberships, use quantity
+      const qty = (mem.type === 'slot') ? Math.max(1, parseInt(slot_quantity) || 1) : 1;
+      
       // Validate and apply coupon
-      let finalPrice = mem.price;
+      let finalPrice = mem.price * qty;
       let appliedCoupon = null;
       if (coupon_code) {
         const coupon = COUPONS.find(c => c.code.toLowerCase() === coupon_code.toLowerCase());
@@ -326,30 +338,30 @@ async function handleRoute(request, { params }) {
           return err(`This coupon only applies to: ${coupon.applicable_plans.join(', ')}`);
         }
         appliedCoupon = coupon;
-        finalPrice = mem.price - coupon.discount_amount;
+        finalPrice = (mem.price * qty) - coupon.discount_amount;
       }
       
       try {
         const order = await createOrder({
           amountRupees: finalPrice,
           receipt: `sub_${auth.user.id.slice(0, 8)}_${Date.now()}`,
-          notes: { user_id: auth.user.id, membership_id: mem.id, coupon_code: appliedCoupon?.code },
+          notes: { user_id: auth.user.id, membership_id: mem.id, coupon_code: appliedCoupon?.code, slot_quantity: qty },
         });
         // Save pending payment
         await db.collection('payments').insertOne({
           id: uuidv4(),
           user_id: auth.user.id,
           amount: finalPrice, currency: 'INR',
-          original_amount: mem.price,
+          original_amount: mem.price * qty,
           status: 'created', method: 'razorpay',
           razorpay_order_id: order.id,
           membership_id: mem.id,
           coupon_code: appliedCoupon?.code || null,
           coupon_discount_percent: appliedCoupon?.discount_percent || null,
-          pending_meta: { child_profile_id, selected_sports: [mem.sport_id], sport_id: mem.sport_id },
+          pending_meta: { child_profile_id, selected_sports: [mem.sport_id], sport_id: mem.sport_id, slot_quantity: qty },
           created_at: new Date(),
         });
-        return j({ order_id: order.id, amount: order.amount, currency: order.currency, key_id: publicKeyId(), membership: mem, applied_coupon: appliedCoupon, final_price: finalPrice });
+        return j({ order_id: order.id, amount: order.amount, currency: order.currency, key_id: publicKeyId(), membership: mem, applied_coupon: appliedCoupon, final_price: finalPrice, slot_quantity: qty });
       } catch (e) {
         return err('Order creation failed: ' + e.message, 500);
       }
@@ -358,14 +370,17 @@ async function handleRoute(request, { params }) {
     // 2) Public: register + create order
     if (route === '/checkout/register-order' && method === 'POST') {
       const body = await request.json();
-      const { full_name, email, password, phone, membership_id, child, coupon_code } = body || {};
+      const { full_name, email, password, phone, membership_id, child, coupon_code, slot_quantity } = body || {};
       if (!full_name || !email || !password || !membership_id) return err('full_name, email, password, membership_id are required');
       if (password.length < 6) return err('Password must be 6+ chars');
       const mem = MEMBERSHIPS.find(m => m.id === membership_id);
       if (!mem) return err('Invalid membership');
       
+      // For slot-based memberships, use quantity
+      const qty = (mem.type === 'slot') ? Math.max(1, parseInt(slot_quantity) || 1) : 1;
+      
       // Validate and apply coupon
-      let finalPrice = mem.price;
+      let finalPrice = mem.price * qty;
       let appliedCoupon = null;
       if (coupon_code) {
         const coupon = COUPONS.find(c => c.code.toLowerCase() === coupon_code.toLowerCase());
@@ -375,7 +390,7 @@ async function handleRoute(request, { params }) {
           return err(`This coupon only applies to: ${coupon.applicable_plans.join(', ')}`);
         }
         appliedCoupon = coupon;
-        finalPrice = mem.price - coupon.discount_amount;
+        finalPrice = (mem.price * qty) - coupon.discount_amount;
       }
       
       if (!child || (!child.athlete_name && !child.child_name) || !child.dob) return err('Athlete name & DOB required');
@@ -983,6 +998,14 @@ async function handleRoute(request, { params }) {
       });
       if (!um) return err(`No active ${cls.sport_id} membership. Please purchase one to book this class.`, 403);
 
+      // For slot-based memberships, check if slots are available
+      if (um.type === 'slot' || um.membership_snapshot?.type === 'slot') {
+        const slotsRemaining = um.slots_remaining || 0;
+        if (slotsRemaining <= 0) {
+          return err('No slots remaining. Please purchase more slots or renew your membership.', 403);
+        }
+      }
+
       const already = await db.collection('bookings').findOne({ user_id: auth.user.id, class_id, status: 'booked' });
       if (already) return err('Already booked', 409);
 
@@ -1006,8 +1029,18 @@ async function handleRoute(request, { params }) {
         child_profile_id: child_profile_id || null,
         status: 'booked',
         created_at: new Date(),
+        user_membership_id: um.id,
       };
       await db.collection('bookings').insertOne(booking);
+
+      // For slot-based memberships, deduct 1 slot
+      if (um.type === 'slot' || um.membership_snapshot?.type === 'slot') {
+        const newSlotsRemaining = Math.max(0, (um.slots_remaining || 1) - 1);
+        await db.collection('user_memberships').updateOne(
+          { id: um.id },
+          { $set: { slots_remaining: newSlotsRemaining, slots_last_used_at: new Date() } }
+        );
+      }
 
       // Booking confirmation email
       const sport = SPORTS.find(s => s.id === cls.sport_id);
@@ -1026,7 +1059,22 @@ async function handleRoute(request, { params }) {
       const bid = bookingCancelMatch[1];
       const b = await db.collection('bookings').findOne({ id: bid, user_id: auth.user.id });
       if (!b) return err('Booking not found', 404);
+      
       await db.collection('bookings').updateOne({ id: bid }, { $set: { status: 'cancelled', cancelled_at: new Date() } });
+
+      // If this was a slot-based booking, return 1 slot to the user
+      if (b.user_membership_id) {
+        const um = await db.collection('user_memberships').findOne({ id: b.user_membership_id });
+        if (um && (um.type === 'slot' || um.membership_snapshot?.type === 'slot')) {
+          const slotsRemaining = um.slots_remaining || 0;
+          const newSlotsRemaining = Math.min(um.slots_total || slotsRemaining, slotsRemaining + 1);
+          await db.collection('user_memberships').updateOne(
+            { id: um.id },
+            { $set: { slots_remaining: newSlotsRemaining, slots_last_returned_at: new Date() } }
+          );
+        }
+      }
+
       return j({ ok: true });
     }
 
@@ -1193,7 +1241,19 @@ async function handleRoute(request, { params }) {
     // -------- ADMIN --------
     if (route.startsWith('/admin/')) {
       const auth = await requireUser(); if (auth.error) return auth.error;
-      if (auth.user.role !== 'admin') return err('Admin only', 403);
+      const isAdmin = auth.user.role === 'admin';
+      const isCoach = auth.user.role === 'coach';
+      
+      // Coaches can only access specific endpoints
+      const coachAllowedRoutes = ['/admin/stats', '/admin/classes', '/admin/games', '/admin/athletes', '/admin/attendance', '/admin/trial-leads', '/admin/reports', '/admin/announcements', '/admin/members'];
+      const isCoachAllowed = isCoach && coachAllowedRoutes.some(r => route.startsWith(r));
+      
+      if (!isAdmin && !isCoachAllowed) return err('Admin/Coach only', 403);
+      
+      // For coaches, only allow GET (read) on members endpoint
+      if (isCoach && route.startsWith('/admin/members') && method !== 'GET') {
+        return err('Coaches can only view members', 403);
+      }
 
       if (route === '/admin/classes' && method === 'POST') {
         const { sport_id, coach_name, date, start_time, end_time, capacity } = await request.json();
@@ -1505,6 +1565,162 @@ async function handleRoute(request, { params }) {
         const todayClasses = await db.collection('classes').countDocuments({ date: today });
         const totalBookings = await db.collection('bookings').countDocuments({ status: 'booked' });
         return j({ total_users: total, active_memberships: active, today_classes: todayClasses, active_bookings: totalBookings });
+      }
+
+      // -------- Reports --------
+      if (route === '/admin/reports/bookings' && method === 'GET') {
+        const url = new URL(request.url);
+        const range = url.searchParams.get('range') || '30'; // days
+        const days = Math.min(parseInt(range) || 30, 365);
+        const since = new Date();
+        since.setDate(since.getDate() - days);
+        const sinceStr = since.toISOString().slice(0, 10);
+
+        // All classes in range
+        const classes = await db.collection('classes').find({ date: { $gte: sinceStr } }).sort({ date: 1 }).toArray();
+        const classIds = classes.map(c => c.id);
+
+        // All bookings for those classes
+        const bookings = classIds.length
+          ? await db.collection('bookings').find({ class_id: { $in: classIds } }).toArray()
+          : [];
+
+        // All unique user ids
+        const userIds = [...new Set(bookings.map(b => b.user_id))];
+        const users = userIds.length
+          ? await db.collection('users').find({ id: { $in: userIds } }, { projection: { id: 1, full_name: 1, email: 1 } }).toArray()
+          : [];
+        const userMap = Object.fromEntries(users.map(u => [u.id, u]));
+
+        // Bookings per day
+        const byDay = {};
+        for (const b of bookings) {
+          const cls = classes.find(c => c.id === b.class_id);
+          if (!cls) continue;
+          const day = cls.date;
+          if (!byDay[day]) byDay[day] = { date: day, booked: 0, cancelled: 0 };
+          if (b.status === 'booked') byDay[day].booked++;
+          else if (b.status === 'cancelled') byDay[day].cancelled++;
+        }
+        const dailyTrend = Object.values(byDay).sort((a, b) => a.date.localeCompare(b.date));
+
+        // Bookings per sport
+        const bySport = {};
+        for (const b of bookings) {
+          const cls = classes.find(c => c.id === b.class_id);
+          if (!cls || b.status !== 'booked') continue;
+          const sport = SPORTS.find(s => s.id === cls.sport_id);
+          const name = sport?.name || cls.sport_id;
+          if (!bySport[name]) bySport[name] = { sport: name, bookings: 0, capacity: 0 };
+          bySport[name].bookings++;
+        }
+        for (const cls of classes) {
+          const sport = SPORTS.find(s => s.id === cls.sport_id);
+          const name = sport?.name || cls.sport_id;
+          if (!bySport[name]) bySport[name] = { sport: name, bookings: 0, capacity: 0 };
+          bySport[name].capacity += cls.capacity || 0;
+        }
+        const bySportArr = Object.values(bySport).sort((a, b) => b.bookings - a.bookings);
+
+        // Top booked classes (most booked individual class slots)
+        const classBookingCounts = {};
+        for (const b of bookings) {
+          if (b.status !== 'booked') continue;
+          if (!classBookingCounts[b.class_id]) classBookingCounts[b.class_id] = 0;
+          classBookingCounts[b.class_id]++;
+        }
+        const topClasses = classes
+          .map(c => {
+            const sport = SPORTS.find(s => s.id === c.sport_id);
+            return {
+              id: c.id, date: c.date, sport: sport?.name || c.sport_id,
+              coach: c.coach_name, start_time: c.start_time, end_time: c.end_time,
+              booked: classBookingCounts[c.id] || 0, capacity: c.capacity || 0,
+            };
+          })
+          .filter(c => c.booked > 0)
+          .sort((a, b) => b.booked - a.booked)
+          .slice(0, 10);
+
+        // Most active members
+        const memberBookings = {};
+        for (const b of bookings) {
+          if (b.status !== 'booked') continue;
+          if (!memberBookings[b.user_id]) memberBookings[b.user_id] = 0;
+          memberBookings[b.user_id]++;
+        }
+        const topMembers = Object.entries(memberBookings)
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 10)
+          .map(([uid, count]) => {
+            const u = userMap[uid];
+            return { user_id: uid, name: u?.full_name || 'Unknown', email: u?.email || '', bookings: count };
+          });
+
+        // Summary stats
+        const totalBooked = bookings.filter(b => b.status === 'booked').length;
+        const totalCancelled = bookings.filter(b => b.status === 'cancelled').length;
+        const totalCapacity = classes.reduce((sum, c) => sum + (c.capacity || 0), 0);
+        const fillRate = totalCapacity > 0 ? Math.round((totalBooked / totalCapacity) * 100) : 0;
+
+        return j({
+          summary: { total_classes: classes.length, total_booked: totalBooked, total_cancelled: totalCancelled, total_capacity: totalCapacity, fill_rate: fillRate },
+          daily_trend: dailyTrend,
+          by_sport: bySportArr,
+          top_classes: topClasses,
+          top_members: topMembers,
+        });
+      }
+
+      // Detailed bookings list
+      if (route === '/admin/reports/bookings/detailed' && method === 'GET') {
+        const url = new URL(request.url);
+        const range = url.searchParams.get('range') || '30';
+        const days = Math.min(parseInt(range) || 30, 365);
+        const since = new Date();
+        since.setDate(since.getDate() - days);
+        const sinceStr = since.toISOString().slice(0, 10);
+
+        // All classes in range
+        const classes = await db.collection('classes').find({ date: { $gte: sinceStr } }).sort({ date: 1 }).toArray();
+        const classIds = classes.map(c => c.id);
+
+        // All bookings for those classes
+        const bookings = classIds.length
+          ? await db.collection('bookings').find({ class_id: { $in: classIds } }).toArray()
+          : [];
+
+        // Get all user details
+        const userIds = [...new Set(bookings.map(b => b.user_id))];
+        const users = userIds.length
+          ? await db.collection('users').find({ id: { $in: userIds } }).toArray()
+          : [];
+        const userMap = Object.fromEntries(users.map(u => [u.id, u]));
+
+        // Build detailed list
+        const detailedList = bookings
+          .sort((a, b) => {
+            const clsA = classes.find(c => c.id === a.class_id);
+            const clsB = classes.find(c => c.id === b.class_id);
+            return new Date(clsB?.date + ' ' + clsB?.start_time) - new Date(clsA?.date + ' ' + clsA?.start_time);
+          })
+          .map(b => {
+            const cls = classes.find(c => c.id === b.class_id);
+            const user = userMap[b.user_id];
+            const sport = SPORTS.find(s => s.id === cls?.sport_id);
+            return {
+              date: cls?.date,
+              sport: sport?.name || cls?.sport_id || 'Unknown',
+              start_time: cls?.start_time,
+              end_time: cls?.end_time,
+              member_name: user?.full_name || 'Unknown',
+              email: user?.email || '',
+              phone: user?.phone || '',
+              status: b.status,
+            };
+          });
+
+        return j({ bookings: detailedList });
       }
 
       // -------- Settings (admin read/write) --------
@@ -1917,13 +2133,18 @@ async function handleRoute(request, { params }) {
         const uid = grantMatch[1];
         const target = await db.collection('users').findOne({ id: uid });
         if (!target) return err('User not found', 404);
-        const { membership_id, child_profile_id, note } = await request.json();
+        const { membership_id, child_profile_id, note, slot_quantity } = await request.json();
         const mem = MEMBERSHIPS.find(m => m.id === membership_id);
         if (!mem) return err('Invalid membership');
         if (!child_profile_id) return err('Athlete profile required');
 
         const now = new Date();
         const expiry = new Date(now); expiry.setMonth(expiry.getMonth() + mem.duration_months);
+        
+        // For slot-based memberships, use the provided quantity
+        const isSlotPlan = mem.type === 'slot';
+        const slotQty = isSlotPlan ? Math.max(1, parseInt(slot_quantity) || 1) : null;
+        
         const um = {
           id: uuidv4(),
           user_id: uid,
@@ -1934,6 +2155,7 @@ async function handleRoute(request, { params }) {
           selected_sports: [mem.sport_id],
           start_date: now, expiry_date: expiry,
           status: 'active', pause_days: 0, paused_at: null,
+          ...(isSlotPlan && { slots_remaining: slotQty, slots_total: slotQty }),
           created_at: now, granted_by_admin: auth.user.id,
           admin_note: note || '',
         };

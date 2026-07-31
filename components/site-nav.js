@@ -66,7 +66,7 @@ export default function SiteNav({ dark = false }) {
                 <DropdownMenuItem asChild><Link href="/profile">Profile</Link></DropdownMenuItem>
                 <DropdownMenuItem asChild><Link href="/classes">Book Class</Link></DropdownMenuItem>
                 <DropdownMenuItem asChild><Link href="/games">Games</Link></DropdownMenuItem>
-                {user.role === 'admin' && <DropdownMenuItem asChild><Link href="/admin">Admin Panel</Link></DropdownMenuItem>}
+                {(user.role === 'admin' || user.role === 'coach') && <DropdownMenuItem asChild><Link href="/admin">{user.role === 'admin' ? 'Admin Panel' : 'Coach Dashboard'}</Link></DropdownMenuItem>}
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={logout} className="text-destructive">Sign out</DropdownMenuItem>
               </DropdownMenuContent>
@@ -101,7 +101,7 @@ export default function SiteNav({ dark = false }) {
               <>
                 <Link href="/dashboard" className={`text-sm font-medium ${textColor} py-2`} onClick={() => setOpen(false)}>Dashboard</Link>
                 <Link href="/profile" className={`text-sm font-medium ${textColor} py-2`} onClick={() => setOpen(false)}>Profile</Link>
-                {user.role === 'admin' && <Link href="/admin" className={`text-sm font-medium ${textColor} py-2`} onClick={() => setOpen(false)}>Admin</Link>}
+                {(user.role === 'admin' || user.role === 'coach') && <Link href="/admin" className={`text-sm font-medium ${textColor} py-2`} onClick={() => setOpen(false)}>{user.role === 'admin' ? 'Admin Panel' : 'Coach Dashboard'}</Link>}
                 <button onClick={logout} className="text-sm text-destructive text-left py-2">Sign out</button>
               </>
             ) : (

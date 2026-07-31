@@ -19,8 +19,13 @@ import { SPORTS, MEMBERSHIPS as MEMBERSHIPS_LOCAL } from '@/lib/flowternity/conf
 import {
   Trash2, Plus, Users, Calendar, Activity, Sparkles, Search, CreditCard,
   Megaphone, UserCog, ClipboardList, CheckCircle2, XCircle, Save, Flame,
-  LayoutDashboard, ArrowLeft, LogOut, ChevronRight, Home, TrendingUp, Gift, CalendarPlus, RotateCcw
+  LayoutDashboard, ArrowLeft, LogOut, ChevronRight, Home, TrendingUp, Gift, CalendarPlus, RotateCcw,
+  BarChart2, FileText, TrendingDown, Percent, BookOpen
 } from 'lucide-react';
+import {
+  BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, Cell, Legend
+} from 'recharts';
 
 // ---- Friendly time selector (30-min slots) + manual entry toggle ----
 function TimeSelect({ value, onChange, placeholder = 'Pick time', className = '' }) {
@@ -122,6 +127,7 @@ const NAV = [
   { id: 'trials', label: 'Free Trials', icon: Sparkles },
   { id: 'attendance', label: 'Attendance', icon: CheckCircle2 },
   { id: 'payments', label: 'Payments', icon: CreditCard },
+  { id: 'reports', label: 'Reports', icon: BarChart2 },
   { id: 'coaches', label: 'Coaches', icon: UserCog },
   { id: 'announcements', label: 'Announcements', icon: Megaphone },
   { id: 'settings', label: 'Settings', icon: Activity },
@@ -137,16 +143,20 @@ export default function AdminPage() {
   useEffect(() => {
     if (!loading) {
       if (!user) { router.push('/auth?mode=login&next=/admin'); return; }
-      if (user.role !== 'admin') { toast.error('Admin only'); router.push('/dashboard'); return; }
+      if (user.role !== 'admin' && user.role !== 'coach') { toast.error('Admin/Coach only'); router.push('/dashboard'); return; }
       fetch('/api/admin/stats', { credentials: 'include' }).then(r => r.json()).then(setStats);
     }
   }, [user, loading, router]);
 
-  if (loading || !user || user.role !== 'admin') {
+  if (loading || !user || (user.role !== 'admin' && user.role !== 'coach')) {
     return <div className="min-h-screen bg-slate-950" />;
   }
 
-  const current = NAV.find(n => n.id === tab) || NAV[0];
+  const isAdmin = user.role === 'admin';
+  const isCoach = user.role === 'coach';
+
+  // Filter nav based on role
+  const visibleNav = isAdmin ? NAV : NAV.filter(n => ['overview', 'classes', 'games', 'performance', 'trials', 'attendance', 'reports', 'announcements'].includes(n.id));
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 admin-scope">
@@ -165,11 +175,11 @@ export default function AdminPage() {
               <div className="w-7 h-7 rounded bg-lime-400 text-slate-900 flex items-center justify-center font-black text-sm">F</div>
               <div className="flex items-center gap-2">
                 <span className="font-semibold tracking-tight">Flowternity</span>
-                <span className="text-xs px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 uppercase tracking-widest font-semibold">Admin</span>
+                <span className="text-xs px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 uppercase tracking-widest font-semibold">{isAdmin ? 'Admin' : 'Coach'}</span>
               </div>
             </div>
             <span className="hidden md:inline text-slate-600">/</span>
-            <span className="hidden md:inline text-sm text-slate-300">{current.label}</span>
+            <span className="hidden md:inline text-sm text-slate-300">{visibleNav.find(n => n.id === tab)?.label || 'Dashboard'}</span>
           </div>
           <div className="flex items-center gap-2">
             <Link href="/dashboard" className="hidden sm:inline-flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-100 px-2 py-1 rounded hover:bg-slate-800">
@@ -195,8 +205,8 @@ export default function AdminPage() {
         {/* Sidebar */}
         <aside className={`${mobileNav ? 'block' : 'hidden'} md:block fixed md:sticky top-14 z-20 md:z-0 h-[calc(100vh-3.5rem)] w-64 border-r border-slate-800 bg-slate-950 overflow-y-auto`}>
           <nav className="p-3">
-            <p className="text-[10px] uppercase tracking-widest text-slate-500 px-3 py-2">Console</p>
-            {NAV.map(n => {
+            <p className="text-[10px] uppercase tracking-widest text-slate-500 px-3 py-2">{isAdmin ? 'Console' : 'Coach Tools'}</p>
+            {visibleNav.map(n => {
               const active = tab === n.id;
               const Icon = n.icon;
               return (
@@ -235,14 +245,15 @@ export default function AdminPage() {
             {tab === 'overview' && <OverviewSection stats={stats} />}
             {tab === 'classes' && <ClassesSection />}
             {tab === 'games' && <GamesSection />}
-            {tab === 'members' && <MembersSection />}
             {tab === 'performance' && <PerformanceSection />}
             {tab === 'trials' && <TrialsSection />}
             {tab === 'attendance' && <AttendanceSection />}
-            {tab === 'payments' && <PaymentsSection />}
-            {tab === 'coaches' && <CoachesSection />}
+            {tab === 'reports' && <ReportsSection />}
             {tab === 'announcements' && <AnnouncementsSection />}
-            {tab === 'settings' && <SettingsSection />}
+            {isAdmin && tab === 'members' && <MembersSection />}
+            {isAdmin && tab === 'payments' && <PaymentsSection />}
+            {isAdmin && tab === 'coaches' && <CoachesSection />}
+            {isAdmin && tab === 'settings' && <SettingsSection />}
           </div>
         </main>
       </div>
@@ -981,7 +992,7 @@ function MembersSection() {
   // Grant/extend state
   const [grantOpen, setGrantOpen] = useState(false);
   const [granting, setGranting] = useState(false);
-  const [grantForm, setGrantForm] = useState({ membership_id: '', note: '', child_profile_id: '', new_athlete_name: '', new_dob: '', new_gender: '' });
+  const [grantForm, setGrantForm] = useState({ membership_id: '', note: '', child_profile_id: '', new_athlete_name: '', new_dob: '', new_gender: '', slot_quantity: 1 });
   const [extendTarget, setExtendTarget] = useState(null);
   const [extendDays, setExtendDays] = useState(30);
   const [extendNote, setExtendNote] = useState('');
@@ -1038,7 +1049,7 @@ function MembersSection() {
       child_profile_id = cd.child.id;
     }
 
-    const payload = { membership_id: grantForm.membership_id, child_profile_id, note: grantForm.note };
+    const payload = { membership_id: grantForm.membership_id, child_profile_id, note: grantForm.note, slot_quantity: grantForm.slot_quantity };
     const res = await fetch(`/api/admin/members/${detail.user.id}/grant-membership`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
       body: JSON.stringify(payload),
@@ -1047,7 +1058,7 @@ function MembersSection() {
     if (!res.ok) { const d = await res.json(); toast.error(d.error || 'Failed'); return; }
     toast.success('Membership granted');
     setGrantOpen(false);
-    setGrantForm({ membership_id: '', note: '', child_profile_id: '', new_athlete_name: '', new_dob: '', new_gender: '' });
+    setGrantForm({ membership_id: '', note: '', child_profile_id: '', new_athlete_name: '', new_dob: '', new_gender: '', slot_quantity: 1 });
     refreshDetail(detail.user.id); load();
   };
 
@@ -1450,6 +1461,14 @@ function MembersSection() {
                 <Label className="text-slate-300 text-xs uppercase tracking-widest">Note (optional)</Label>
                 <Textarea rows={2} value={grantForm.note} onChange={e => setGrantForm({ ...grantForm, note: e.target.value })} placeholder="Reason: complimentary, promo, etc." />
               </div>
+
+              {grantForm.membership_id && MEMBERSHIPS_LOCAL.find(m => m.id === grantForm.membership_id)?.type === 'slot' && (
+                <div>
+                  <Label className="text-slate-300 text-xs uppercase tracking-widest">Number of slots</Label>
+                  <Input type="number" min="1" max="100" required className="h-11 mt-1 bg-slate-950 border-slate-800 text-slate-100" value={grantForm.slot_quantity} onChange={e => setGrantForm({ ...grantForm, slot_quantity: Math.max(1, parseInt(e.target.value) || 1) })} />
+                  <p className="text-xs text-slate-500 mt-1">Each slot = 1 class booking, valid for 30 days.</p>
+                </div>
+              )}
 
               <DialogFooter className="pt-3 flex-col-reverse sm:flex-row gap-2">
                 <Button type="button" variant="outline" onClick={() => setGrantOpen(false)} className="border-slate-700 bg-transparent hover:bg-slate-800 text-slate-100">Cancel</Button>
@@ -2184,6 +2203,309 @@ function PerformanceSection() {
           )}
         </div>
       </div>
+    </>
+  );
+}
+
+
+// -------- Reports Section --------
+const REPORT_COLORS = ['#a3e635', '#34d399', '#60a5fa', '#f472b6', '#fb923c', '#a78bfa'];
+
+function ReportsSection() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [range, setRange] = useState('30');
+  const [showDetailedBookings, setShowDetailedBookings] = useState(false);
+  const [detailedBookingsData, setDetailedBookingsData] = useState([]);
+  const [detailedLoading, setDetailedLoading] = useState(false);
+
+  const load = async (r) => {
+    setLoading(true);
+    const res = await fetch(`/api/admin/reports/bookings?range=${r}`, { credentials: 'include' });
+    if (res.ok) setData(await res.json());
+    setLoading(false);
+  };
+
+  const loadDetailedBookings = async () => {
+    setDetailedLoading(true);
+    const res = await fetch(`/api/admin/reports/bookings/detailed?range=${range}`, { credentials: 'include' });
+    if (res.ok) {
+      const d = await res.json();
+      setDetailedBookingsData(d.bookings || []);
+    }
+    setDetailedLoading(false);
+    setShowDetailedBookings(true);
+  };
+
+  useEffect(() => { load(range); }, [range]);
+
+  const ranges = [
+    { label: '7 days', value: '7' },
+    { label: '30 days', value: '30' },
+    { label: '90 days', value: '90' },
+    { label: '1 year', value: '365' },
+  ];
+
+  return (
+    <>
+      <SectionHeader
+        title="Reports"
+        description="Booking analytics and class fill rates."
+        action={
+          <div className="flex gap-1.5">
+            {ranges.map(r => (
+              <button
+                key={r.value}
+                onClick={() => setRange(r.value)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition ${range === r.value ? 'bg-lime-400 text-slate-900' : 'bg-slate-800 text-slate-400 hover:text-slate-100 border border-slate-700'}`}
+              >{r.label}</button>
+            ))}
+          </div>
+        }
+      />
+
+      {loading ? (
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+          {[...Array(4)].map((_, i) => <div key={i} className="h-28 rounded-2xl bg-slate-900 animate-pulse" />)}
+        </div>
+      ) : !data ? (
+        <p className="text-slate-500">Failed to load reports.</p>
+      ) : (
+        <div className="space-y-6">
+
+          {/* Summary stat cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            {[
+              { label: 'Total Classes', value: data.summary.total_classes, icon: BookOpen, color: 'text-lime-400' },
+              { label: 'Total Bookings', value: data.summary.total_booked, icon: CheckCircle2, color: 'text-emerald-400' },
+              { label: 'Cancellations', value: data.summary.total_cancelled, icon: XCircle, color: 'text-red-400' },
+              { label: 'Fill Rate', value: `${data.summary.fill_rate}%`, icon: Percent, color: 'text-blue-400' },
+            ].map((s, i) => (
+              <Card key={i} className="bg-slate-900 border-slate-800 p-5 rounded-2xl">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-xs uppercase tracking-widest text-slate-500 font-semibold">{s.label}</span>
+                  <s.icon className={`w-4 h-4 ${s.color}`} />
+                </div>
+                <div className={`font-display font-black text-4xl ${s.color}`}>{s.value}</div>
+                <div className="text-xs text-slate-600 mt-1">Last {range} days</div>
+              </Card>
+            ))}
+          </div>
+
+          {/* Daily bookings trend */}
+          <Card className="bg-slate-900 border-slate-800 p-6 rounded-2xl">
+            <div className="flex items-center gap-2 mb-6">
+              <TrendingUp className="w-4 h-4 text-lime-400" />
+              <h3 className="font-semibold text-slate-100">Daily Bookings Trend</h3>
+              <span className="text-xs text-slate-500 ml-auto">Booked vs Cancelled</span>
+            </div>
+            {data.daily_trend.length === 0 ? (
+              <p className="text-slate-500 text-sm py-8 text-center">No bookings in this period.</p>
+            ) : (
+              <div className="h-64">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={data.daily_trend} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
+                    <XAxis dataKey="date" tick={{ fill: '#64748b', fontSize: 11 }} tickLine={false} axisLine={false}
+                      tickFormatter={d => { const [, m, day] = d.split('-'); return `${day}/${m}`; }} />
+                    <YAxis tick={{ fill: '#64748b', fontSize: 11 }} tickLine={false} axisLine={false} allowDecimals={false} />
+                    <Tooltip
+                      contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10 }}
+                      labelStyle={{ color: '#94a3b8', fontSize: 11 }}
+                      itemStyle={{ color: '#e2e8f0' }}
+                    />
+                    <Legend wrapperStyle={{ fontSize: 12, color: '#64748b' }} />
+                    <Bar dataKey="booked" name="Booked" fill="#a3e635" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="cancelled" name="Cancelled" fill="#ef4444" radius={[4, 4, 0, 0]} opacity={0.7} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </Card>
+
+          <div className="grid lg:grid-cols-2 gap-6">
+            {/* Bookings by sport */}
+            <Card className="bg-slate-900 border-slate-800 p-6 rounded-2xl">
+              <div className="flex items-center gap-2 mb-6">
+                <BarChart2 className="w-4 h-4 text-lime-400" />
+                <h3 className="font-semibold text-slate-100">Bookings by Sport</h3>
+              </div>
+              {data.by_sport.length === 0 ? (
+                <p className="text-slate-500 text-sm py-8 text-center">No data.</p>
+              ) : (
+                <div className="h-52">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={data.by_sport} layout="vertical" margin={{ top: 0, right: 8, left: 0, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
+                      <XAxis type="number" tick={{ fill: '#64748b', fontSize: 11 }} tickLine={false} axisLine={false} allowDecimals={false} />
+                      <YAxis type="category" dataKey="sport" tick={{ fill: '#94a3b8', fontSize: 12 }} tickLine={false} axisLine={false} width={80} />
+                      <Tooltip
+                        contentStyle={{ background: '#0f172a', border: '1px solid #1e293b', borderRadius: 10 }}
+                        labelStyle={{ color: '#94a3b8' }}
+                        itemStyle={{ color: '#e2e8f0' }}
+                      />
+                      <Bar dataKey="bookings" name="Bookings" radius={[0, 4, 4, 0]}>
+                        {data.by_sport.map((_, i) => <Cell key={i} fill={REPORT_COLORS[i % REPORT_COLORS.length]} />)}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+              {/* Fill rate per sport */}
+              {data.by_sport.length > 0 && (
+                <div className="mt-4 space-y-2">
+                  {data.by_sport.map((s, i) => {
+                    const fill = s.capacity > 0 ? Math.round((s.bookings / s.capacity) * 100) : 0;
+                    return (
+                      <div key={i} className="flex items-center gap-3">
+                        <span className="text-xs text-slate-400 w-24 truncate">{s.sport}</span>
+                        <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${Math.min(fill, 100)}%`, backgroundColor: REPORT_COLORS[i % REPORT_COLORS.length] }} />
+                        </div>
+                        <span className="text-xs font-mono text-slate-400 w-10 text-right">{fill}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </Card>
+
+            {/* Most active members */}
+            <Card className="bg-slate-900 border-slate-800 p-6 rounded-2xl">
+              <div className="flex items-center gap-2 mb-6">
+                <Users className="w-4 h-4 text-lime-400" />
+                <h3 className="font-semibold text-slate-100">Most Active Members</h3>
+              </div>
+              {data.top_members.length === 0 ? (
+                <p className="text-slate-500 text-sm py-8 text-center">No bookings yet.</p>
+              ) : (
+                <div className="space-y-2">
+                  {data.top_members.map((m, i) => (
+                    <div key={i} className="flex items-center gap-3 py-2 border-b border-slate-800 last:border-0">
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black flex-shrink-0 ${i === 0 ? 'bg-lime-400 text-slate-900' : i === 1 ? 'bg-slate-300 text-slate-900' : i === 2 ? 'bg-amber-600 text-white' : 'bg-slate-800 text-slate-400'}`}>
+                        {i + 1}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-slate-200 truncate">{m.name}</div>
+                        <div className="text-xs text-slate-500 truncate">{m.email}</div>
+                      </div>
+                      <div className="text-right flex-shrink-0">
+                        <div className="font-display font-black text-lg text-lime-400">{m.bookings}</div>
+                        <div className="text-[10px] text-slate-500">bookings</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </Card>
+          </div>
+
+          {/* Top classes table */}
+          <Card className="bg-slate-900 border-slate-800 p-6 rounded-2xl">
+            <div className="flex items-center gap-2 mb-6">
+              <FileText className="w-4 h-4 text-lime-400" />
+              <h3 className="font-semibold text-slate-100">Top Booked Classes</h3>
+            </div>
+            {data.top_classes.length === 0 ? (
+              <p className="text-slate-500 text-sm py-8 text-center">No classes booked in this period.</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-800">
+                      {['Date', 'Sport', 'Coach', 'Time', 'Booked', 'Capacity', 'Fill'].map(h => (
+                        <th key={h} className="text-left text-xs uppercase tracking-widest text-slate-500 font-semibold pb-3 pr-4">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.top_classes.map((c, i) => {
+                      const fill = c.capacity > 0 ? Math.round((c.booked / c.capacity) * 100) : 0;
+                      return (
+                        <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition">
+                          <td className="py-3 pr-4 text-slate-300 whitespace-nowrap">{new Date(c.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</td>
+                          <td className="py-3 pr-4"><Badge className="bg-lime-400/10 text-lime-400 border-lime-400/20 text-xs">{c.sport}</Badge></td>
+                          <td className="py-3 pr-4 text-slate-400 truncate max-w-[100px]">{c.coach || '—'}</td>
+                          <td className="py-3 pr-4 text-slate-400 whitespace-nowrap">{c.start_time}–{c.end_time}</td>
+                          <td className="py-3 pr-4 font-display font-black text-lime-400">{c.booked}</td>
+                          <td className="py-3 pr-4 text-slate-500">{c.capacity}</td>
+                          <td className="py-3">
+                            <div className="flex items-center gap-2">
+                              <div className="w-16 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                                <div className={`h-full rounded-full ${fill >= 80 ? 'bg-lime-400' : fill >= 50 ? 'bg-yellow-400' : 'bg-slate-500'}`} style={{ width: `${fill}%` }} />
+                              </div>
+                              <span className="text-xs text-slate-400">{fill}%</span>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Card>
+
+          {/* Detailed bookings list button */}
+          <div className="flex justify-center">
+            <Button onClick={loadDetailedBookings} className="bg-lime-400 text-slate-900 hover:bg-lime-300 font-semibold">
+              <FileText className="w-4 h-4 mr-2" /> View Detailed Booking List
+            </Button>
+          </div>
+
+        </div>
+      )}
+
+      {/* Detailed Bookings Dialog */}
+      <Dialog open={showDetailedBookings} onOpenChange={setShowDetailedBookings}>
+        <DialogContent className="max-w-6xl max-h-[90vh] bg-slate-900 border-slate-800 text-slate-100 overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-slate-50">All Class Bookings - Last {range} days</DialogTitle>
+          </DialogHeader>
+          
+          {detailedLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-lime-400"></div>
+            </div>
+          ) : detailedBookingsData.length === 0 ? (
+            <p className="text-slate-500 text-center py-8">No bookings found in this period.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-800">
+                    <th className="text-left text-xs uppercase tracking-widest text-slate-500 font-semibold pb-3 pr-4 py-2">Date</th>
+                    <th className="text-left text-xs uppercase tracking-widest text-slate-500 font-semibold pb-3 pr-4 py-2">Sport</th>
+                    <th className="text-left text-xs uppercase tracking-widest text-slate-500 font-semibold pb-3 pr-4 py-2">Time</th>
+                    <th className="text-left text-xs uppercase tracking-widest text-slate-500 font-semibold pb-3 pr-4 py-2">Member Name</th>
+                    <th className="text-left text-xs uppercase tracking-widest text-slate-500 font-semibold pb-3 pr-4 py-2">Email</th>
+                    <th className="text-left text-xs uppercase tracking-widest text-slate-500 font-semibold pb-3 pr-4 py-2">Phone</th>
+                    <th className="text-left text-xs uppercase tracking-widest text-slate-500 font-semibold pb-3 pr-4 py-2">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {detailedBookingsData.map((b, i) => (
+                    <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition">
+                      <td className="py-3 pr-4 text-slate-300 whitespace-nowrap">{new Date(b.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })}</td>
+                      <td className="py-3 pr-4"><Badge className="bg-lime-400/10 text-lime-400 border-lime-400/20 text-xs">{b.sport}</Badge></td>
+                      <td className="py-3 pr-4 text-slate-400 whitespace-nowrap">{b.start_time}–{b.end_time}</td>
+                      <td className="py-3 pr-4 text-slate-100 font-medium truncate">{b.member_name}</td>
+                      <td className="py-3 pr-4 text-slate-400 truncate text-xs">{b.email}</td>
+                      <td className="py-3 pr-4 text-slate-400 whitespace-nowrap text-xs">{b.phone || '—'}</td>
+                      <td className="py-3 pr-4">
+                        <Badge className={b.status === 'booked' ? 'bg-lime-400/20 text-lime-400 border-lime-400/20' : 'bg-red-500/20 text-red-400 border-red-500/20 text-xs capitalize'}>
+                          {b.status}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <p className="text-xs text-slate-500 mt-4 text-center">Total: {detailedBookingsData.length} bookings</p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
