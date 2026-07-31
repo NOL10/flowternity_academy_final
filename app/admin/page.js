@@ -981,7 +981,7 @@ function MembersSection() {
   // Grant/extend state
   const [grantOpen, setGrantOpen] = useState(false);
   const [granting, setGranting] = useState(false);
-  const [grantForm, setGrantForm] = useState({ membership_id: '', note: '', child_profile_id: '' });
+  const [grantForm, setGrantForm] = useState({ membership_id: '', note: '', child_profile_id: '', new_athlete_name: '', new_dob: '', new_gender: '' });
   const [extendTarget, setExtendTarget] = useState(null);
   const [extendDays, setExtendDays] = useState(30);
   const [extendNote, setExtendNote] = useState('');
@@ -1012,12 +1012,33 @@ function MembersSection() {
   const grantMembership = async (e) => {
     e.preventDefault();
     if (!detail || !grantForm.membership_id) return;
+
+    // If no existing profile selected, we need a new athlete name at minimum
+    const noExistingProfiles = !detail.children?.length;
+    const creatingNew = !grantForm.child_profile_id || grantForm.child_profile_id === '__new__';
+    if (creatingNew && !grantForm.new_athlete_name.trim()) {
+      toast.error('Athlete name is required'); return;
+    }
+
     setGranting(true);
-    const payload = {
-      membership_id: grantForm.membership_id,
-      child_profile_id: grantForm.child_profile_id,
-      note: grantForm.note,
-    };
+
+    // If creating a new athlete profile inline, do that first
+    let child_profile_id = grantForm.child_profile_id;
+    if (creatingNew) {
+      const cr = await fetch(`/api/admin/members/${detail.user.id}/create-athlete`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+        body: JSON.stringify({
+          athlete_name: grantForm.new_athlete_name.trim(),
+          dob: grantForm.new_dob || '',
+          gender: grantForm.new_gender || '',
+        }),
+      });
+      const cd = await cr.json();
+      if (!cr.ok) { toast.error(cd.error || 'Failed to create athlete profile'); setGranting(false); return; }
+      child_profile_id = cd.child.id;
+    }
+
+    const payload = { membership_id: grantForm.membership_id, child_profile_id, note: grantForm.note };
     const res = await fetch(`/api/admin/members/${detail.user.id}/grant-membership`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
       body: JSON.stringify(payload),
@@ -1026,7 +1047,7 @@ function MembersSection() {
     if (!res.ok) { const d = await res.json(); toast.error(d.error || 'Failed'); return; }
     toast.success('Membership granted');
     setGrantOpen(false);
-    setGrantForm({ membership_id: '', note: '', child_profile_id: '' });
+    setGrantForm({ membership_id: '', note: '', child_profile_id: '', new_athlete_name: '', new_dob: '', new_gender: '' });
     refreshDetail(detail.user.id); load();
   };
 
@@ -1376,16 +1397,51 @@ function MembersSection() {
                 <div>
                   <Label className="text-slate-300 text-xs uppercase tracking-widest">Athlete profile</Label>
                   {detail.children?.length > 0 ? (
-                    <Select value={grantForm.child_profile_id} onValueChange={v => setGrantForm({ ...grantForm, child_profile_id: v })}>
-                      <SelectTrigger className="h-11 mt-1"><SelectValue placeholder="Pick an athlete profile" /></SelectTrigger>
-                      <SelectContent>
-                        {detail.children.map(k => (
-                          <SelectItem key={k.id} value={k.id}>{k.athlete_name || k.child_name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <>
+                      <Select value={grantForm.child_profile_id} onValueChange={v => setGrantForm({ ...grantForm, child_profile_id: v })}>
+                        <SelectTrigger className="h-11 mt-1"><SelectValue placeholder="Pick an athlete profile" /></SelectTrigger>
+                        <SelectContent>
+                          {detail.children.map(k => (
+                            <SelectItem key={k.id} value={k.id}>{k.athlete_name || k.child_name}</SelectItem>
+                          ))}
+                          <SelectItem value="__new__">+ Create new athlete profile</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {/* Show new profile form if "create new" is selected */}
+                      {grantForm.child_profile_id === '__new__' && (
+                        <div className="mt-3 space-y-2 p-3 rounded-lg bg-slate-800 border border-slate-700">
+                          <p className="text-xs text-lime-400 font-semibold uppercase tracking-widest">New athlete profile</p>
+                          <Input required placeholder="Athlete full name *" value={grantForm.new_athlete_name} onChange={e => setGrantForm({ ...grantForm, new_athlete_name: e.target.value })} className="h-10 bg-slate-950 border-slate-700 text-slate-100" />
+                          <div className="grid grid-cols-2 gap-2">
+                            <Input type="date" placeholder="Date of birth" value={grantForm.new_dob} onChange={e => setGrantForm({ ...grantForm, new_dob: e.target.value })} className="h-10 bg-slate-950 border-slate-700 text-slate-100" />
+                            <Select value={grantForm.new_gender} onValueChange={v => setGrantForm({ ...grantForm, new_gender: v })}>
+                              <SelectTrigger className="h-10 bg-slate-950 border-slate-700"><SelectValue placeholder="Gender (optional)" /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Male">Male</SelectItem>
+                                <SelectItem value="Female">Female</SelectItem>
+                                <SelectItem value="Other">Other</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                      )}
+                    </>
                   ) : (
-                    <p className="text-xs text-slate-500 mt-1">No athlete profiles on this account yet. Have the member purchase a membership first to create one, or create one from the member detail.</p>
+                    <div className="mt-2 space-y-2 p-3 rounded-lg bg-slate-800 border border-slate-700">
+                      <p className="text-xs text-amber-400 mb-2">No athlete profile yet — create one to continue:</p>
+                      <Input required placeholder="Athlete full name *" value={grantForm.new_athlete_name} onChange={e => setGrantForm({ ...grantForm, new_athlete_name: e.target.value })} className="h-10 bg-slate-950 border-slate-700 text-slate-100" />
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input type="date" placeholder="Date of birth" value={grantForm.new_dob} onChange={e => setGrantForm({ ...grantForm, new_dob: e.target.value })} className="h-10 bg-slate-950 border-slate-700 text-slate-100" />
+                        <Select value={grantForm.new_gender} onValueChange={v => setGrantForm({ ...grantForm, new_gender: v })}>
+                          <SelectTrigger className="h-10 bg-slate-950 border-slate-700"><SelectValue placeholder="Gender (optional)" /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Male">Male</SelectItem>
+                            <SelectItem value="Female">Female</SelectItem>
+                            <SelectItem value="Other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
                   )}
                 </div>
               )}
@@ -1397,7 +1453,7 @@ function MembersSection() {
 
               <DialogFooter className="pt-3 flex-col-reverse sm:flex-row gap-2">
                 <Button type="button" variant="outline" onClick={() => setGrantOpen(false)} className="border-slate-700 bg-transparent hover:bg-slate-800 text-slate-100">Cancel</Button>
-                <Button type="submit" disabled={granting || !grantForm.membership_id || !grantForm.child_profile_id} className="bg-lime-400 text-slate-900 hover:bg-lime-300 font-semibold">
+                <Button type="submit" disabled={granting || !grantForm.membership_id || (!grantForm.child_profile_id && !grantForm.new_athlete_name.trim()) || (grantForm.child_profile_id === '__new__' && !grantForm.new_athlete_name.trim())} className="bg-lime-400 text-slate-900 hover:bg-lime-300 font-semibold">
                   <Gift className="w-4 h-4 mr-1.5" /> {granting ? 'Granting…' : 'Grant membership'}
                 </Button>
               </DialogFooter>

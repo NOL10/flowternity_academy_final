@@ -1889,6 +1889,28 @@ async function handleRoute(request, { params }) {
         return j({ ok: true, refund: razorpayRefund || { id: null, mock: true } });
       }
 
+      // Create athlete profile for a member (admin)
+      const createAthleteMatch = route.match(/^\/admin\/members\/([^/]+)\/create-athlete$/);
+      if (createAthleteMatch && method === 'POST') {
+        const uid = createAthleteMatch[1];
+        const target = await db.collection('users').findOne({ id: uid });
+        if (!target) return err('User not found', 404);
+        const { athlete_name, dob, gender } = await request.json();
+        if (!athlete_name?.trim()) return err('athlete_name is required');
+        const child = {
+          id: uuidv4(),
+          parent_id: uid,
+          athlete_name: athlete_name.trim(),
+          child_name: athlete_name.trim(),
+          dob: dob || '',
+          gender: gender || '',
+          selected_sports: [],
+          created_at: new Date(),
+        };
+        await db.collection('child_profiles').insertOne(child);
+        return j({ child: clean(child) });
+      }
+
       // Grant membership manually to a user
       const grantMatch = route.match(/^\/admin\/members\/([^/]+)\/grant-membership$/);
       if (grantMatch && method === 'POST') {
