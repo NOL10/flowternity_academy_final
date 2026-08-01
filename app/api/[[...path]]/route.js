@@ -1808,24 +1808,25 @@ async function handleRoute(request, { params }) {
 
       // -------- Members --------
       if (route === '/admin/members' && method === 'POST') {
-        // Admin creates new user, optionally with membership.
-        const body = await request.json();
-        const { full_name, email, phone, role, password, membership_id, athlete } = body || {};
-        if (!full_name || !email) return err('full_name & email required');
-        const existing = await db.collection('users').findOne({ email: email.toLowerCase() });
-        if (existing) return err('Email already registered', 409);
-        const tempPassword = password && password.length >= 6 ? password : (Math.random().toString(36).slice(-4) + Math.random().toString(36).slice(-4)).toUpperCase();
-        const finalRole = ['admin', 'member', 'coach'].includes(role) ? role : 'member';
-        const newUser = {
-          id: uuidv4(),
-          role: finalRole,
-          full_name, email: email.toLowerCase(), phone: phone || '',
-          address: '', emergency_contact: '', photo_url: '',
-          password_hash: hashPassword(tempPassword),
-          created_at: new Date(),
-          created_by_admin: auth.user.id,
-        };
-        await db.collection('users').insertOne(newUser);
+        try {
+          // Admin creates new user, optionally with membership.
+          const body = await request.json();
+          const { full_name, email, phone, role, password, membership_id, athlete } = body || {};
+          if (!full_name || !email) return err('full_name & email required');
+          const existing = await db.collection('users').findOne({ email: email.toLowerCase() });
+          if (existing) return err('Email already registered', 409);
+          const tempPassword = password && password.length >= 6 ? password : (Math.random().toString(36).slice(-4) + Math.random().toString(36).slice(-4)).toUpperCase();
+          const finalRole = ['admin', 'member', 'coach'].includes(role) ? role : 'member';
+          const newUser = {
+            id: uuidv4(),
+            role: finalRole,
+            full_name, email: email.toLowerCase(), phone: phone || '',
+            address: '', emergency_contact: '', photo_url: '',
+            password_hash: hashPassword(tempPassword),
+            created_at: new Date(),
+            created_by_admin: auth.user.id,
+          };
+          await db.collection('users').insertOne(newUser);
 
         let childProfile = null;
         let membership = null;
@@ -1887,6 +1888,10 @@ async function handleRoute(request, { params }) {
           email_sent: !!emailResult.data,
           email_error: emailResult.error || null,
         });
+        } catch (error) {
+          console.error('[CREATE_MEMBER] Error:', error);
+          return err('Failed to create member: ' + error.message, 500);
+        }
       }
 
       if (route === '/admin/members' && method === 'GET') {
