@@ -5,7 +5,7 @@ import { hashPassword, verifyPassword, createToken, setAuthCookie, clearAuthCook
 import { SPORTS, MEMBERSHIPS, MAX_PAUSE_DAYS, KIDS_LEVELS, COUPONS } from '@/lib/flowternity/config';
 import { metricsForSport, isValidMetricKey, SPORT_METRICS, GENERIC_METRICS } from '@/lib/flowternity/metrics';
 import { createOrder, verifySignature, publicKeyId, getRazorpay, verifyWebhookSignature, refundPayment } from '@/lib/flowternity/razorpay';
-import { sendPasswordResetEmail, sendWelcomeEmail, sendOnboardingEmail, sendBookingConfirmationEmail, sendMembershipPurchaseEmail } from '@/lib/flowternity/email';
+import { sendPasswordResetEmail, sendWelcomeEmail, sendOnboardingEmail, sendMembershipPurchaseEmail } from '@/lib/flowternity/email';
 
 function cors(res) {
   res.headers.set('Access-Control-Allow-Origin', process.env.CORS_ORIGINS || '*');
@@ -125,6 +125,24 @@ async function activateOrderMembership(db, { razorpay_order_id, razorpay_payment
     created_at: now,
   };
   await db.collection('user_memberships').insertOne(um);
+  
+  // Save jersey if enrollment fee was charged
+  if (paymentRec.enrollment_fee && meta.jersey) {
+    await db.collection('jerseys').insertOne({
+      id: uuidv4(),
+      user_id: user.id,
+      child_profile_id: meta.child_profile_id || null,
+      user_membership_id: um.id,
+      sport_id: mem.sport_id,
+      height: meta.jersey.height,
+      weight: meta.jersey.weight,
+      name: meta.jersey.name,
+      number: parseInt(meta.jersey.number),
+      size: meta.jersey.size,
+      created_at: now,
+    });
+  }
+  
   // Ensure the athlete profile has this sport in selected_sports
   if (meta.child_profile_id && mem.sport_id) {
     await db.collection('child_profiles').updateOne(
@@ -152,7 +170,7 @@ async function activateOrderMembership(db, { razorpay_order_id, razorpay_payment
       : `Membership: ${mem.name} for ${mem.duration_months} month(s).`;
     await sendMembershipPurchaseEmail({
       to: user.email, name: user.full_name,
-      membershipName: mem.name, months: mem.duration_months, price: mem.price, expiryDate: expiry,
+      membershipName: mem.name, months: mem.duration_months, price: mem.price + (paymentRec.enrollment_fee || 0), expiryDate: expiry,
     });
   } catch (e) { /* non-fatal */ }
   const updatedPayment = await db.collection('payments').findOne({ razorpay_order_id });
@@ -318,7 +336,7 @@ async function handleRoute(request, { params }) {
     // 1) Authenticated user creates order for existing account
     if (route === '/checkout/order' && method === 'POST') {
       const auth = await requireUser(); if (auth.error) return auth.error;
-      const { membership_id, child_profile_id, coupon_code, slot_quantity } = await request.json();
+      const { membership_id, child_profile_id, coupon_code, slot_quantity, enrollment_fee, jersey } = await request.json();
       const mem = MEMBERSHIPS.find(m => m.id === membership_id);
       if (!mem) return err('Invalid membership');
       if (!child_profile_id) return err('Child profile required');
@@ -330,22 +348,39 @@ async function handleRoute(request, { params }) {
       // Validate and apply coupon
       let finalPrice = mem.price * qty;
       let appliedCoupon = null;
+      let enrollmentFeeAmount = enrollment_fee ? parseInt(enrollment_fee) : 0;
+      
       if (coupon_code) {
         const coupon = COUPONS.find(c => c.code.toLowerCase() === coupon_code.toLowerCase());
         if (!coupon) return err('Invalid coupon code');
-        // Check if coupon applies to this plan
-        if (!coupon.applicable_plans.includes(mem.id)) {
-          return err(`This coupon only applies to: ${coupon.applicable_plans.join(', ')}`);
+        
+        // Check if it's an enrollment fee coupon
+        if (coupon.applicable_to === 'enrollment_fee') {
+          // Enrollment fee coupon
+          if (!coupon.applicable_plans.includes(mem.id)) {
+            return err(`This coupon only applies to: ${coupon.applicable_plans.join(', ')}`);
+          }
+          // Waive the enrollment fee
+          enrollmentFeeAmount = 0;
+          appliedCoupon = coupon;
+        } else {
+          // Regular membership coupon
+          if (!coupon.applicable_plans.includes(mem.id)) {
+            return err(`This coupon only applies to: ${coupon.applicable_plans.join(', ')}`);
+          }
+          finalPrice = (mem.price * qty) - coupon.discount_amount;
+          appliedCoupon = coupon;
         }
-        appliedCoupon = coupon;
-        finalPrice = (mem.price * qty) - coupon.discount_amount;
       }
+      
+      // Add enrollment fee if applicable
+      finalPrice += enrollmentFeeAmount;
       
       try {
         const order = await createOrder({
           amountRupees: finalPrice,
           receipt: `sub_${auth.user.id.slice(0, 8)}_${Date.now()}`,
-          notes: { user_id: auth.user.id, membership_id: mem.id, coupon_code: appliedCoupon?.code, slot_quantity: qty },
+          notes: { user_id: auth.user.id, membership_id: mem.id, coupon_code: appliedCoupon?.code, slot_quantity: qty, enrollment_fee: enrollmentFeeAmount },
         });
         // Save pending payment
         await db.collection('payments').insertOne({
@@ -353,15 +388,16 @@ async function handleRoute(request, { params }) {
           user_id: auth.user.id,
           amount: finalPrice, currency: 'INR',
           original_amount: mem.price * qty,
+          enrollment_fee: enrollmentFeeAmount,
           status: 'created', method: 'razorpay',
           razorpay_order_id: order.id,
           membership_id: mem.id,
           coupon_code: appliedCoupon?.code || null,
           coupon_discount_percent: appliedCoupon?.discount_percent || null,
-          pending_meta: { child_profile_id, selected_sports: [mem.sport_id], sport_id: mem.sport_id, slot_quantity: qty },
+          pending_meta: { child_profile_id, selected_sports: [mem.sport_id], sport_id: mem.sport_id, slot_quantity: qty, jersey: jersey || null },
           created_at: new Date(),
         });
-        return j({ order_id: order.id, amount: order.amount, currency: order.currency, key_id: publicKeyId(), membership: mem, applied_coupon: appliedCoupon, final_price: finalPrice, slot_quantity: qty });
+        return j({ order_id: order.id, amount: order.amount, currency: order.currency, key_id: publicKeyId(), membership: mem, applied_coupon: appliedCoupon, final_price: finalPrice, slot_quantity: qty, enrollment_fee: enrollmentFeeAmount });
       } catch (e) {
         return err('Order creation failed: ' + e.message, 500);
       }
@@ -370,7 +406,7 @@ async function handleRoute(request, { params }) {
     // 2) Public: register + create order
     if (route === '/checkout/register-order' && method === 'POST') {
       const body = await request.json();
-      const { full_name, email, password, phone, membership_id, child, coupon_code, slot_quantity } = body || {};
+      const { full_name, email, password, phone, membership_id, child, coupon_code, slot_quantity, enrollment_fee, jersey } = body || {};
       if (!full_name || !email || !password || !membership_id) return err('full_name, email, password, membership_id are required');
       if (password.length < 6) return err('Password must be 6+ chars');
       const mem = MEMBERSHIPS.find(m => m.id === membership_id);
@@ -382,16 +418,33 @@ async function handleRoute(request, { params }) {
       // Validate and apply coupon
       let finalPrice = mem.price * qty;
       let appliedCoupon = null;
+      let enrollmentFeeAmount = enrollment_fee ? parseInt(enrollment_fee) : 0;
+      
       if (coupon_code) {
         const coupon = COUPONS.find(c => c.code.toLowerCase() === coupon_code.toLowerCase());
         if (!coupon) return err('Invalid coupon code');
-        // Check if coupon applies to this plan
-        if (!coupon.applicable_plans.includes(mem.id)) {
-          return err(`This coupon only applies to: ${coupon.applicable_plans.join(', ')}`);
+        
+        // Check if it's an enrollment fee coupon
+        if (coupon.applicable_to === 'enrollment_fee') {
+          // Enrollment fee coupon
+          if (!coupon.applicable_plans.includes(mem.id)) {
+            return err(`This coupon only applies to: ${coupon.applicable_plans.join(', ')}`);
+          }
+          // Waive the enrollment fee
+          enrollmentFeeAmount = 0;
+          appliedCoupon = coupon;
+        } else {
+          // Regular membership coupon
+          if (!coupon.applicable_plans.includes(mem.id)) {
+            return err(`This coupon only applies to: ${coupon.applicable_plans.join(', ')}`);
+          }
+          finalPrice = (mem.price * qty) - coupon.discount_amount;
+          appliedCoupon = coupon;
         }
-        appliedCoupon = coupon;
-        finalPrice = (mem.price * qty) - coupon.discount_amount;
       }
+      
+      // Add enrollment fee if applicable
+      finalPrice += enrollmentFeeAmount;
       
       if (!child || (!child.athlete_name && !child.child_name) || !child.dob) return err('Athlete name & DOB required');
 
@@ -422,12 +475,13 @@ async function handleRoute(request, { params }) {
         const order = await createOrder({
           amountRupees: finalPrice,
           receipt: `reg_${newUser.id.slice(0, 8)}_${Date.now()}`,
-          notes: { user_id: newUser.id, membership_id: mem.id, flow: 'register-and-pay', coupon_code: appliedCoupon?.code },
+          notes: { user_id: newUser.id, membership_id: mem.id, flow: 'register-and-pay', coupon_code: appliedCoupon?.code, enrollment_fee: enrollmentFeeAmount },
         });
         await db.collection('payments').insertOne({
           id: uuidv4(), user_id: newUser.id,
           amount: finalPrice, currency: 'INR',
           original_amount: mem.price,
+          enrollment_fee: enrollmentFeeAmount,
           status: 'created', method: 'razorpay',
           razorpay_order_id: order.id,
           membership_id: mem.id,
@@ -438,6 +492,7 @@ async function handleRoute(request, { params }) {
             selected_sports: [mem.sport_id],
             sport_id: mem.sport_id,
             flow: 'register-and-pay',
+            jersey: jersey || null,
           },
           created_at: new Date(),
         });
@@ -649,6 +704,22 @@ async function handleRoute(request, { params }) {
       return j({ children: kids.map(clean) });
     }
 
+    // -------- JERSEY INFO --------
+    if (route === '/jerseys' && method === 'GET') {
+      const auth = await requireUser(); if (auth.error) return auth.error;
+      const jerseys = await db.collection('jerseys').find({ user_id: auth.user.id }).toArray();
+      return j({ jerseys: jerseys.map(clean) });
+    }
+
+    const jerseyMatch = route.match(/^\/jerseys\/([^/]+)$/);
+    if (jerseyMatch && method === 'GET') {
+      const auth = await requireUser(); if (auth.error) return auth.error;
+      const jerseyId = jerseyMatch[1];
+      const jersey = await db.collection('jerseys').findOne({ id: jerseyId, user_id: auth.user.id });
+      if (!jersey) return err('Jersey not found', 404);
+      return j({ jersey: clean(jersey) });
+    }
+
     // -------- FREE TRIAL (public, no auth) --------
     if (route === '/trial/classes' && method === 'GET') {
       const url = new URL(request.url);
@@ -707,13 +778,7 @@ async function handleRoute(request, { params }) {
       try {
         if (classInfo) {
           const sport = SPORTS.find(s => s.id === classInfo.sport_id);
-          const r = await sendBookingConfirmationEmail({
-            to: lead.email, name: lead.full_name,
-            sport: sport?.name || classInfo.sport_id,
-            date: classInfo.date, startTime: classInfo.start_time, endTime: classInfo.end_time,
-            coach: classInfo.coach_name,
-          });
-          email_sent = !!r?.data;
+          // Booking confirmation email removed
         }
       } catch (e) { /* non-fatal */ }
 
@@ -723,7 +788,7 @@ async function handleRoute(request, { params }) {
     // -------- REGISTER + PAY (combined signup) --------
     if (route === '/checkout/register-and-pay' && method === 'POST') {
       const body = await request.json();
-      const { full_name, email, password, phone, membership_id, child } = body || {};
+      const { full_name, email, password, phone, membership_id, child, enrollment_fee, jersey } = body || {};
       if (!full_name || !email || !password || !membership_id) {
         return err('full_name, email, password, membership_id are required');
       }
@@ -782,11 +847,29 @@ async function handleRoute(request, { params }) {
       // Seed default level 1 for the sport
       await seedKidLevels(db, { user_id: newUser.id, child_profile_id: childProfile.id, sport_ids: [mem.sport_id] });
 
+      // Save jersey if enrollment fee was charged
+      if (enrollment_fee && jersey) {
+        await db.collection('jerseys').insertOne({
+          id: uuidv4(),
+          user_id: newUser.id,
+          child_profile_id: childProfile.id,
+          user_membership_id: um.id,
+          sport_id: mem.sport_id,
+          height: jersey.height,
+          weight: jersey.weight,
+          name: jersey.name,
+          number: parseInt(jersey.number),
+          size: jersey.size,
+          created_at: now,
+        });
+      }
+
+      const enrollmentFeeAmount = enrollment_fee ? parseInt(enrollment_fee) : 0;
       const payment = {
-        id: uuidv4(), user_id: newUser.id, amount: mem.price, currency: 'INR',
+        id: uuidv4(), user_id: newUser.id, amount: mem.price + enrollmentFeeAmount, currency: 'INR',
         status: 'success', method: 'mock',
         ref: 'MOCK_' + uuidv4().slice(0, 8).toUpperCase(),
-        membership_id: mem.id, user_membership_id: um.id, created_at: now,
+        membership_id: mem.id, user_membership_id: um.id, enrollment_fee: enrollmentFeeAmount, created_at: now,
       };
       await db.collection('payments').insertOne(payment);
 
@@ -798,7 +881,7 @@ async function handleRoute(request, { params }) {
       try {
         await sendMembershipPurchaseEmail({
           to: newUser.email, name: newUser.full_name,
-          membershipName: mem.name, months: mem.duration_months, price: mem.price, expiryDate: expiry,
+          membershipName: mem.name, months: mem.duration_months, price: mem.price + enrollmentFeeAmount, expiryDate: expiry,
         });
       } catch (e) { /* non-fatal */ }
       // Also send onboarding email since this is a new user
@@ -1044,11 +1127,7 @@ async function handleRoute(request, { params }) {
 
       // Booking confirmation email
       const sport = SPORTS.find(s => s.id === cls.sport_id);
-      await sendBookingConfirmationEmail({
-        to: auth.user.email, name: auth.user.full_name,
-        sport: sport?.name || cls.sport_id,
-        date: cls.date, startTime: cls.start_time, endTime: cls.end_time, coach: cls.coach_name
-      });
+      // Booking confirmation email removed
 
       return j({ booking: clean(booking) });
     }

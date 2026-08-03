@@ -165,6 +165,11 @@ export default function DashboardPage() {
           </div>
         )}
 
+        {/* Jersey info if available */}
+        <div className="mt-6 md:mt-8">
+          <JerseySection user={user} onDataUpdate={load} />
+        </div>
+
         <div className="grid md:grid-cols-3 gap-4 md:gap-6 mt-6 md:mt-8">
           {/* Upcoming classes */}
           <div className="md:col-span-2">
@@ -534,5 +539,62 @@ function PerformanceTrendChart({ monthlyData, metrics, selectedMetric, onMetricS
         </div>
       </div>
     </Card>
+  );
+}
+
+// ============================
+// Jersey Section
+// ============================
+function JerseySection({ user }) {
+  const [jerseys, setJerseys] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    loadJerseys();
+  }, [user]);
+
+  const loadJerseys = async () => {
+    setLoading(true);
+    const res = await fetch('/api/jerseys', { credentials: 'include' });
+    if (res.ok) {
+      const d = await res.json();
+      setJerseys(d.jerseys || []);
+    }
+    setLoading(false);
+  };
+
+  if (loading || jerseys.length === 0) return null;
+
+  return (
+    <div>
+      <h3 className="font-display font-bold text-xl md:text-2xl mb-3 md:mb-4">Jersey Details</h3>
+      <div className="grid md:grid-cols-2 gap-4">
+        {jerseys.map(j => (
+          <Card key={j.id} className="p-4 md:p-6 rounded-2xl">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <div className="font-semibold text-lg">{j.name}</div>
+                <div className="text-xs text-muted-foreground mt-1">Jersey #{j.number}</div>
+              </div>
+              <Badge variant="outline" className="text-accent border-accent">{j.size}</Badge>
+            </div>
+            <div className="grid grid-cols-2 gap-4 text-sm">
+              <div>
+                <span className="text-muted-foreground text-xs">Height</span>
+                <div className="font-semibold mt-1">{j.height} cm</div>
+              </div>
+              <div>
+                <span className="text-muted-foreground text-xs">Weight</span>
+                <div className="font-semibold mt-1">{j.weight} kg</div>
+              </div>
+            </div>
+            <div className="text-xs text-muted-foreground mt-3">
+              Created {new Date(j.created_at).toLocaleDateString('en-IN')}
+            </div>
+          </Card>
+        ))}
+      </div>
+    </div>
   );
 }

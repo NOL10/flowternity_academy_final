@@ -46,12 +46,20 @@ function CheckoutInner() {
     dob: '', gender: '',
   });
 
+  // Jersey form for first-time basketball monthly/half-yearly
+  const [jerseyForm, setJerseyForm] = useState({
+    height: '', weight: '', name: '', number: '', size: '',
+  });
+  const [showJerseyForm, setShowJerseyForm] = useState(false);
+
   const [couponCode, setCouponCode] = useState('');
   const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [appliedEnrollmentCoupon, setAppliedEnrollmentCoupon] = useState(null); // Separate for enrollment fee
   const [finalPrice, setFinalPrice] = useState(plan?.price || 0);
   const [slotQuantity, setSlotQuantity] = useState(1); // For slot-type plans
+  const [enrollmentFee, setEnrollmentFee] = useState(0); // ₹2000 for first-time basketball
 
-  // Pre-fill from logged-in user + fetch existing athlete profile
+  // Pre-fill from logged-in user + fetch existing athlete profile + check enrollment fee eligibility
   useEffect(() => {
     if (user) {
       setForm(f => ({ ...f, full_name: user.full_name || '', email: user.email || '', phone: user.phone || '' }));
@@ -66,13 +74,59 @@ function CheckoutInner() {
           }
         });
     }
-    // Calculate final price based on plan type
+  }, [user]);
+  
+  // Separate effect for calculating enrollment fee
+  useEffect(() => {
+    if (!plan) return;
+    
+    const isBasketball = plan.sport_id === 'basketball';
+    const isMonthlyHalfOrYearly = plan.duration_months === 1 || plan.duration_months === 6 || plan.duration_months === 12;
+    const chargesEnrollmentFee = plan.duration_months === 1 || plan.duration_months === 6; // Only 1m and 6m
+    const notSlotPlan = plan.type !== 'slot';
+    
+    if (isBasketball && isMonthlyHalfOrYearly && notSlotPlan) {
+      if (user) {
+        // Check if user already has basketball monthly/half-yearly/yearly membership (not slots)
+        fetch('/api/auth/me', { credentials: 'include' })
+          .then(r => r.json())
+          .then(d => {
+            const hasBasketballMonthly = d.active_memberships?.some(m => 
+              m.sport_id === 'basketball' && m.membership_snapshot?.type !== 'slot'
+            );
+            if (!hasBasketballMonthly) {
+              setEnrollmentFee(chargesEnrollmentFee ? 2000 : 0);
+              setShowJerseyForm(true);
+            } else {
+              setEnrollmentFee(0);
+              setShowJerseyForm(false);
+            }
+          })
+          .catch(() => {
+            // If fetch fails, assume first-time (safer)
+            setEnrollmentFee(chargesEnrollmentFee ? 2000 : 0);
+            setShowJerseyForm(true);
+          });
+      } else {
+        // Guest user — first time, charge enrollment fee only if 1m or 6m
+        setEnrollmentFee(chargesEnrollmentFee ? 2000 : 0);
+        setShowJerseyForm(true);
+      }
+    } else {
+      setEnrollmentFee(0);
+      setShowJerseyForm(false);
+    }
+  }, [user, plan]);
+  
+  // Update final price when enrollment fee or slot quantity changes
+  useEffect(() => {
     if (plan) {
       const isSlotPlan = plan.type === 'slot';
       const qty = isSlotPlan ? slotQuantity : 1;
-      setFinalPrice(plan.price * qty);
+      const basePrice = plan.price * qty;
+      setFinalPrice(basePrice + enrollmentFee);
     }
-  }, [user, plan, slotQuantity]);
+  }, [plan, slotQuantity, enrollmentFee]);
 
   if (!plan || !sport) {
     return (
@@ -92,14 +146,37 @@ function CheckoutInner() {
     // Check if coupon is valid and applicable to this plan
     const coupon = COUPONS.find(c => c.code.toUpperCase() === couponCode.toUpperCase());
     if (!coupon) { toast.error('Invalid coupon code'); return; }
-    if (!coupon.applicable_plans.includes(plan.id)) { 
-      toast.error(`This coupon only applies to: ${coupon.applicable_plans.join(', ')}`); 
-      return; 
-    }
     
-    setAppliedCoupon(coupon);
-    setFinalPrice(plan.price - coupon.discount_amount);
-    toast.success(`Coupon applied! ₹${coupon.discount_amount.toLocaleString('en-IN')} off`);
+    // Check if it's an enrollment fee coupon
+    if (coupon.applicable_to === 'enrollment_fee') {
+      // Enrollment fee coupon
+      if (!coupon.applicable_plans.includes(plan.id)) { 
+        toast.error(`This coupon only applies to: ${coupon.applicable_plans.join(', ')}`); 
+        return; 
+      }
+      if (enrollmentFee === 0) {
+        toast.error('This coupon is for enrollment fee only');
+        return;
+      }
+      setAppliedEnrollmentCoupon(coupon);
+      setEnrollmentFee(0); // This will trigger the useEffect to recalculate finalPrice
+      toast.success(`Coupon applied! ₹${coupon.discount_amount.toLocaleString('en-IN')} enrollment fee waived`);
+    } else {
+      // Regular membership coupon
+      if (!coupon.applicable_plans.includes(plan.id)) { 
+        toast.error(`This coupon only applies to: ${coupon.applicable_plans.join(', ')}`); 
+        return; 
+      }
+      setAppliedCoupon(coupon);
+      // Calculate final price with membership discount
+      const isSlotPlan = plan.type === 'slot';
+      const qty = isSlotPlan ? slotQuantity : 1;
+      const basePrice = plan.price * qty;
+      const newTotal = (basePrice - coupon.discount_amount) + enrollmentFee;
+      setFinalPrice(newTotal);
+      toast.success(`Coupon applied! ₹${coupon.discount_amount.toLocaleString('en-IN')} off`);
+    }
+    setCouponCode('');
   };
 
   const validate = () => {
@@ -112,6 +189,16 @@ function CheckoutInner() {
     }
     // DOB only required if no existing profile
     if (!existingProfile && !form.dob) return 'Date of birth is required';
+    
+    // Jersey validation if enrollment fee applies
+    if (showJerseyForm) {
+      if (!jerseyForm.height.trim()) return 'Student height is required';
+      if (!jerseyForm.weight.trim()) return 'Student weight is required';
+      if (!jerseyForm.name.trim()) return 'Name for jersey is required';
+      if (!jerseyForm.number || jerseyForm.number < 0 || jerseyForm.number > 999) return 'Jersey number must be 0-999';
+      if (!jerseyForm.size) return 'Jersey size is required';
+    }
+    
     return null;
   };
 
@@ -168,8 +255,10 @@ function CheckoutInner() {
           body: JSON.stringify({ 
             membership_id: plan.id, 
             child_profile_id, 
-            coupon_code: appliedCoupon?.code || null,
+            coupon_code: (appliedCoupon?.code || appliedEnrollmentCoupon?.code) || null,
             slot_quantity: slotQuantity,
+            enrollment_fee: enrollmentFee,
+            jersey: showJerseyForm ? jerseyForm : null,
           }),
         });
         orderData = await ores.json();
@@ -189,6 +278,8 @@ function CheckoutInner() {
               password: form.password,
               membership_id: plan.id,
               child: { athlete_name: form.full_name, dob: form.dob, gender: form.gender },
+              enrollment_fee: enrollmentFee,
+              jersey: showJerseyForm ? jerseyForm : null,
             }),
           });
           const mdata = await mres.json();
@@ -218,8 +309,10 @@ function CheckoutInner() {
             password: form.password,
             membership_id: plan.id,
             child: { athlete_name: form.full_name, dob: form.dob, gender: form.gender },
-            coupon_code: appliedCoupon?.code || null,
+            coupon_code: (appliedCoupon?.code || appliedEnrollmentCoupon?.code) || null,
             slot_quantity: slotQuantity,
+            enrollment_fee: enrollmentFee,
+            jersey: showJerseyForm ? jerseyForm : null,
           }),
         });
         orderData = await ores.json();
@@ -429,6 +522,88 @@ function CheckoutInner() {
                 </div>
               )}
 
+              {/* Jersey customization — first-time basketball monthly/half-yearly/yearly only */}
+              {showJerseyForm && (
+                <div className="mt-6 pt-6 border-t border-border">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Info className="w-5 h-5 text-accent" />
+                    <div>
+                      <Label className="text-base font-semibold block">Jersey Details</Label>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        {enrollmentFee > 0 
+                          ? `One-time enrollment fee (₹${enrollmentFee.toLocaleString('en-IN')}) includes 2 sets of uniforms (jerseys)`
+                          : `Collect your 2 sets of uniforms (jerseys) — included with your membership`}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-4">
+                    <div>
+                      <Label className="text-sm">Height (cm)</Label>
+                      <Input
+                        type="number"
+                        className="h-10 mt-1"
+                        placeholder="e.g., 170"
+                        value={jerseyForm.height}
+                        onChange={(e) => setJerseyForm({ ...jerseyForm, height: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-sm">Weight (kg)</Label>
+                      <Input
+                        type="number"
+                        className="h-10 mt-1"
+                        placeholder="e.g., 65"
+                        value={jerseyForm.weight}
+                        onChange={(e) => setJerseyForm({ ...jerseyForm, weight: e.target.value })}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-sm">Name on Jersey</Label>
+                      <Input
+                        type="text"
+                        className="h-10 mt-1"
+                        placeholder="e.g., AARAV"
+                        maxLength="12"
+                        value={jerseyForm.name}
+                        onChange={(e) => setJerseyForm({ ...jerseyForm, name: e.target.value.toUpperCase() })}
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-sm">Jersey Number (0-999)</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        max="999"
+                        className="h-10 mt-1"
+                        placeholder="e.g., 23"
+                        value={jerseyForm.number}
+                        onChange={(e) => setJerseyForm({ ...jerseyForm, number: e.target.value })}
+                      />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Label className="text-sm">Jersey Size</Label>
+                      <p className="text-xs text-muted-foreground mb-2">One size bigger for comfort</p>
+                      <div className="flex gap-2 flex-wrap">
+                        {['XS', 'S', 'M', 'L', 'XL', 'XXL'].map(size => (
+                          <button
+                            key={size}
+                            type="button"
+                            onClick={() => setJerseyForm({ ...jerseyForm, size })}
+                            className={`px-3 py-2 rounded-lg border text-sm transition ${
+                              jerseyForm.size === size
+                                ? 'bg-primary text-primary-foreground border-primary'
+                                : 'border-input hover:border-primary/50'
+                            }`}
+                          >
+                            {size}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {!user && (
                 <p className="text-xs text-muted-foreground mt-4">
                   Already have an account?{' '}
@@ -491,10 +666,26 @@ function CheckoutInner() {
                     <span>-₹{appliedCoupon.discount_amount.toLocaleString('en-IN')}</span>
                   </div>
                 )}
+                {enrollmentFee > 0 && (
+                  <div className="flex justify-between">
+                    <div>
+                      <span className="text-muted-foreground">Enrollment Fee</span>
+                      <div className="text-[10px] text-muted-foreground">One-time (2 Uniforms)</div>
+                    </div>
+                    <span>₹{enrollmentFee.toLocaleString('en-IN')}</span>
+                  </div>
+                )}
                 <div className="flex justify-between"><span className="text-muted-foreground">Per month</span><span>₹{perMonth.toLocaleString('en-IN')}</span></div>
               </div>
               <div className="mt-4 pt-4 border-t flex justify-between items-baseline">
-                <span className="font-semibold">Total</span>
+                <div>
+                  <span className="font-semibold">Total</span>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {enrollmentFee > 0 
+                      ? `${plan.duration_months}M membership + one-time jersey fee`
+                      : `${plan.duration_months}M membership`}
+                  </p>
+                </div>
                 <span className="font-display font-black text-3xl">₹{finalPrice.toLocaleString('en-IN')}</span>
               </div>
 
@@ -506,14 +697,32 @@ function CheckoutInner() {
                     type="text" placeholder="Enter code"
                     value={couponCode}
                     onChange={e => setCouponCode(e.target.value.toUpperCase())}
-                    disabled={processing || !!appliedCoupon}
+                    disabled={processing || (!!appliedCoupon && !!appliedEnrollmentCoupon)}
                     className="flex-1 h-10"
                   />
-                  {!appliedCoupon
+                  {!(appliedCoupon && appliedEnrollmentCoupon)
                     ? <Button type="button" variant="outline" onClick={applyCoupon} disabled={processing || !couponCode.trim()} className="h-10">Apply</Button>
-                    : <Button type="button" variant="ghost" onClick={() => { setAppliedCoupon(null); setCouponCode(''); setFinalPrice(plan.price); }} disabled={processing} className="h-10">Remove</Button>
+                    : <Button type="button" variant="ghost" onClick={() => { 
+                        setAppliedCoupon(null); 
+                        setAppliedEnrollmentCoupon(null); 
+                        setCouponCode(''); 
+                        if (enrollmentFee > 0) setEnrollmentFee(2000);
+                      }} disabled={processing} className="h-10">Remove All</Button>
                   }
                 </div>
+                {/* Show applied coupons */}
+                {appliedCoupon && (
+                  <div className="mt-2 text-xs text-green-600 flex items-center justify-between">
+                    <span>✓ {appliedCoupon.code}: {appliedCoupon.description}</span>
+                    <button onClick={() => { setAppliedCoupon(null); }} className="text-xs hover:underline">Remove</button>
+                  </div>
+                )}
+                {appliedEnrollmentCoupon && (
+                  <div className="mt-2 text-xs text-green-600 flex items-center justify-between">
+                    <span>✓ {appliedEnrollmentCoupon.code}: {appliedEnrollmentCoupon.description}</span>
+                    <button onClick={() => { setAppliedEnrollmentCoupon(null); setEnrollmentFee(2000); }} className="text-xs hover:underline">Remove</button>
+                  </div>
+                )}
               </div>
 
               {/* Pay button — always enabled, loads Razorpay on click */}
