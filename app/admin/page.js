@@ -20,7 +20,7 @@ import {
   Trash2, Plus, Users, Calendar, Activity, Sparkles, Search, CreditCard,
   Megaphone, UserCog, ClipboardList, CheckCircle2, XCircle, Save, Flame,
   LayoutDashboard, ArrowLeft, LogOut, ChevronRight, Home, TrendingUp, Gift, CalendarPlus, RotateCcw,
-  BarChart2, FileText, TrendingDown, Percent, BookOpen
+  BarChart2, FileText, TrendingDown, Percent, BookOpen, Printer, Download
 } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -2218,6 +2218,7 @@ function ReportsSection() {
   const [showDetailedBookings, setShowDetailedBookings] = useState(false);
   const [detailedBookingsData, setDetailedBookingsData] = useState([]);
   const [detailedLoading, setDetailedLoading] = useState(false);
+  const [selectedDate, setSelectedDate] = useState(null);
 
   const load = async (r) => {
     setLoading(true);
@@ -2231,10 +2232,158 @@ function ReportsSection() {
     const res = await fetch(`/api/admin/reports/bookings/detailed?range=${range}`, { credentials: 'include' });
     if (res.ok) {
       const d = await res.json();
-      setDetailedBookingsData(d.bookings || []);
+      // Sort by date in descending order (newest first)
+      const sorted = (d.bookings || []).sort((a, b) => new Date(b.date) - new Date(a.date));
+      setDetailedBookingsData(sorted);
+      setSelectedDate(null); // Reset date filter when loading
     }
     setDetailedLoading(false);
     setShowDetailedBookings(true);
+  };
+
+  // Filter bookings by selected date
+  const filteredBookings = selectedDate
+    ? detailedBookingsData.filter(b => new Date(b.date).toLocaleDateString('en-IN') === new Date(selectedDate).toLocaleDateString('en-IN'))
+    : detailedBookingsData;
+
+  // Export to Excel
+  const exportToExcel = () => {
+    if (filteredBookings.length === 0) {
+      alert('No data to export');
+      return;
+    }
+
+    const data = [
+      ['Flowternity Academy - Class Booking Report'],
+      [selectedDate ? `Date: ${new Date(selectedDate).toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}` : `Range: Last ${range} days`],
+      ['Generated: ' + new Date().toLocaleDateString('en-IN')],
+      [],
+      ['Date', 'Sport', 'Time', 'Member Name', 'Email', 'Phone', 'Status'],
+      ...filteredBookings.map(b => [
+        new Date(b.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' }),
+        b.sport,
+        `${b.start_time}–${b.end_time}`,
+        b.member_name,
+        b.email,
+        b.phone || '—',
+        b.status.toUpperCase(),
+      ]),
+      [],
+      ['SUMMARY'],
+      ['Total Bookings', filteredBookings.length],
+      ['Booked', filteredBookings.filter(b => b.status === 'booked').length],
+      ['Cancelled', filteredBookings.filter(b => b.status === 'cancelled').length],
+    ];
+
+    // Create CSV
+    const csv = data.map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `bookings-${selectedDate ? new Date(selectedDate).toLocaleDateString('en-IN') : `${range}days`}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+  };
+
+  // Print report
+  const printReport = () => {
+    if (filteredBookings.length === 0) {
+      alert('No data to print');
+      return;
+    }
+
+    const printWindow = window.open('', '_blank');
+    const dateStr = selectedDate 
+      ? new Date(selectedDate).toLocaleDateString('en-IN', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
+      : `Last ${range} days`;
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Flowternity - Booking Report</title>
+          <style>
+            * { margin: 0; padding: 0; box-sizing: border-box; }
+            body { font-family: Arial, sans-serif; padding: 20px; background: white; color: #333; }
+            .header { text-align: center; margin-bottom: 30px; border-bottom: 3px solid #a3e635; padding-bottom: 20px; }
+            .header h1 { font-size: 28px; color: #1f2937; margin-bottom: 5px; }
+            .header p { color: #666; font-size: 14px; }
+            .info { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 12px; color: #666; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+            thead { background: #a3e635; color: #1f2937; }
+            th { padding: 12px; text-align: left; font-weight: bold; border: 1px solid #ddd; }
+            td { padding: 10px 12px; border: 1px solid #ddd; }
+            tbody tr:nth-child(even) { background: #f9fafb; }
+            .summary { margin-top: 30px; border-top: 2px solid #a3e635; padding-top: 20px; }
+            .summary h3 { margin-bottom: 10px; color: #1f2937; }
+            .summary-row { display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid #eee; }
+            .summary-row span:first-child { font-weight: bold; }
+            .summary-row span:last-child { color: #a3e635; font-weight: bold; font-size: 16px; }
+            @media print { body { padding: 0; } }
+          </style>
+        </head>
+        <body>
+          <div class="header">
+            <h1>Flowternity Academy</h1>
+            <p>Class Booking Report</p>
+          </div>
+          
+          <div class="info">
+            <div><strong>Period:</strong> ${dateStr}</div>
+            <div><strong>Generated:</strong> ${new Date().toLocaleDateString('en-IN')} ${new Date().toLocaleTimeString('en-IN')}</div>
+          </div>
+
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Sport</th>
+                <th>Time</th>
+                <th>Member Name</th>
+                <th>Email</th>
+                <th>Phone</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filteredBookings.map(b => `
+                <tr>
+                  <td>${new Date(b.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })}</td>
+                  <td>${b.sport}</td>
+                  <td>${b.start_time}–${b.end_time}</td>
+                  <td>${b.member_name}</td>
+                  <td>${b.email}</td>
+                  <td>${b.phone || '—'}</td>
+                  <td><strong>${b.status.toUpperCase()}</strong></td>
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+
+          <div class="summary">
+            <h3>Summary</h3>
+            <div class="summary-row">
+              <span>Total Bookings:</span>
+              <span>${filteredBookings.length}</span>
+            </div>
+            <div class="summary-row">
+              <span>Booked:</span>
+              <span>${filteredBookings.filter(b => b.status === 'booked').length}</span>
+            </div>
+            <div class="summary-row">
+              <span>Cancelled:</span>
+              <span>${filteredBookings.filter(b => b.status === 'cancelled').length}</span>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+    printWindow.document.write(html);
+    printWindow.document.close();
+    printWindow.print();
   };
 
   useEffect(() => { load(range); }, [range]);
@@ -2460,15 +2609,45 @@ function ReportsSection() {
       <Dialog open={showDetailedBookings} onOpenChange={setShowDetailedBookings}>
         <DialogContent className="max-w-6xl max-h-[90vh] bg-slate-900 border-slate-800 text-slate-100 overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="text-slate-50">All Class Bookings - Last {range} days</DialogTitle>
+            <DialogTitle className="text-slate-50">
+              All Class Bookings {selectedDate ? `- ${new Date(selectedDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}` : `- Last ${range} days`}
+            </DialogTitle>
+            <div className="flex gap-3 items-center mt-4">
+              <input
+                type="date"
+                value={selectedDate ? selectedDate.toISOString().split('T')[0] : ''}
+                onChange={(e) => setSelectedDate(e.target.value ? new Date(e.target.value) : null)}
+                className="px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 text-sm focus:outline-none focus:border-lime-400"
+              />
+              <span className="text-xs text-slate-500">
+                {selectedDate && `${filteredBookings.length} booking${filteredBookings.length !== 1 ? 's' : ''}`}
+              </span>
+              <div className="flex-1" />
+              <Button
+                onClick={printReport}
+                disabled={filteredBookings.length === 0}
+                className="bg-blue-600 hover:bg-blue-700 text-white text-sm gap-2"
+              >
+                <Printer className="w-4 h-4" /> Print
+              </Button>
+              <Button
+                onClick={exportToExcel}
+                disabled={filteredBookings.length === 0}
+                className="bg-green-600 hover:bg-green-700 text-white text-sm gap-2"
+              >
+                <Download className="w-4 h-4" /> Export CSV
+              </Button>
+            </div>
           </DialogHeader>
           
           {detailedLoading ? (
             <div className="flex items-center justify-center py-12">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-lime-400"></div>
             </div>
-          ) : detailedBookingsData.length === 0 ? (
-            <p className="text-slate-500 text-center py-8">No bookings found in this period.</p>
+          ) : filteredBookings.length === 0 ? (
+            <p className="text-slate-500 text-center py-8">
+              {selectedDate ? 'No bookings found for this date.' : 'No bookings found in this period.'}
+            </p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -2484,7 +2663,7 @@ function ReportsSection() {
                   </tr>
                 </thead>
                 <tbody>
-                  {detailedBookingsData.map((b, i) => (
+                  {filteredBookings.map((b, i) => (
                     <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition">
                       <td className="py-3 pr-4 text-slate-300 whitespace-nowrap">{new Date(b.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: '2-digit' })}</td>
                       <td className="py-3 pr-4"><Badge className="bg-lime-400/10 text-lime-400 border-lime-400/20 text-xs">{b.sport}</Badge></td>
@@ -2501,7 +2680,7 @@ function ReportsSection() {
                   ))}
                 </tbody>
               </table>
-              <p className="text-xs text-slate-500 mt-4 text-center">Total: {detailedBookingsData.length} bookings</p>
+              <p className="text-xs text-slate-500 mt-4 text-center">Total: {filteredBookings.length} booking{filteredBookings.length !== 1 ? 's' : ''}</p>
             </div>
           )}
         </DialogContent>
