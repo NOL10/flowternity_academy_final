@@ -1003,6 +1003,8 @@ function MembersSection() {
     if (filterMembership) params.append('membership_id', filterMembership);
     if (filterCoupon) params.append('coupon_code', filterCoupon);
     if (filterExpiring === 'expiring') params.append('expiring', 'true');
+    // Load all members by increasing limit to 200
+    params.append('limit', '300');
     const url = `/api/admin/members?${params.toString()}`;
     const d = await fetch(url, { credentials: 'include' }).then(r => r.json());
     setMembers(d.members || []);
@@ -1597,7 +1599,7 @@ function AttendanceSection() {
 // ===================== PAYMENTS =====================
 function PaymentsSection() {
   const [payments, setPayments] = useState([]);
-  const load = () => fetch('/api/admin/payments', { credentials: 'include' }).then(r => r.json()).then(d => setPayments(d.payments || []));
+  const load = () => fetch('/api/admin/payments?limit=300', { credentials: 'include' }).then(r => r.json()).then(d => setPayments(d.payments || []));
   useEffect(() => { load(); }, []);
 
   const total = payments.filter(p => p.status === 'success').reduce((s, p) => s + p.amount, 0);
