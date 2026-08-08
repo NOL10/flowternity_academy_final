@@ -189,14 +189,20 @@ export default function ClassesPage() {
                               <Check className="w-5 h-5 text-black" />
                             </div>
                           ) : (
-                            <Button
-                              onClick={() => book(c.id)}
-                              disabled={busyId === c.id || isFull || (upcomingCount >= maxBookings && user?.role !== 'admin')}
-                              title={upcomingCount >= maxBookings && user?.role !== 'admin' ? 'Cancel a booking to free up a slot' : undefined}
-                              className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-                            >
-                              {busyId === c.id ? 'Booking...' : isFull ? 'Full' : upcomingCount >= maxBookings && user?.role !== 'admin' ? 'Limit reached' : 'Book'}
-                            </Button>
+                            (() => {
+                              const classDateTime = new Date(`${c.date}T${c.start_time}`);
+                              const classHasStarted = new Date() >= classDateTime;
+                              return (
+                                <Button
+                                  onClick={() => book(c.id)}
+                                  disabled={busyId === c.id || isFull || (upcomingCount >= maxBookings && user?.role !== 'admin') || classHasStarted}
+                                  title={classHasStarted ? 'This class has already started' : upcomingCount >= maxBookings && user?.role !== 'admin' ? 'Cancel a booking to free up a slot' : undefined}
+                                  className="bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+                                >
+                                  {busyId === c.id ? 'Booking...' : classHasStarted ? 'Started' : isFull ? 'Full' : upcomingCount >= maxBookings && user?.role !== 'admin' ? 'Limit reached' : 'Book'}
+                                </Button>
+                              );
+                            })()
                           )}
                         </div>
                       </Card>

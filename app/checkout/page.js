@@ -10,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/app/providers';
-import { MEMBERSHIPS, SPORTS, COUPONS } from '@/lib/flowternity/config';
+import { MEMBERSHIPS, SPORTS, COUPONS, JERSEY_SIZES } from '@/lib/flowternity/config';
 import { toast } from 'sonner';
 import { Check, CreditCard, Loader2, Lock, User, ShieldCheck, Info } from 'lucide-react';
 
@@ -581,10 +581,10 @@ function CheckoutInner() {
                       />
                     </div>
                     <div className="sm:col-span-2">
-                      <Label className="text-sm">Jersey Size</Label>
-                      <p className="text-xs text-muted-foreground mb-2">One size bigger for comfort</p>
+                      <Label className="text-sm">Jersey Size (Shirt Sizing)</Label>
+                      <p className="text-xs text-muted-foreground mb-2">Select your shirt size</p>
                       <div className="flex gap-2 flex-wrap">
-                        {['XS', 'S', 'M', 'L', 'XL', 'XXL'].map(size => (
+                        {JERSEY_SIZES.map(size => (
                           <button
                             key={size}
                             type="button"

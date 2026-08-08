@@ -720,6 +720,39 @@ async function handleRoute(request, { params }) {
       return j({ jersey: clean(jersey) });
     }
 
+    // -------- ADMIN JERSEY MANAGEMENT --------
+    if (route === '/admin/jerseys' && method === 'GET') {
+      const auth = await requireUser(); if (auth.error) return auth.error;
+      if (auth.user.role !== 'admin') return err('Admin only', 403);
+      
+      const jerseys = await db.collection('jerseys').find({}).toArray();
+      const userIds = [...new Set(jerseys.map(j => j.user_id))];
+      const users = userIds.length ? await db.collection('users').find({ id: { $in: userIds } }).toArray() : [];
+      
+      return j({
+        jerseys: jerseys.map(j => {
+          const u = users.find(x => x.id === j.user_id);
+          return { ...clean(j), user_name: u?.full_name || 'Unknown', user_email: u?.email || '' };
+        }),
+      });
+    }
+
+    const adminJerseyMatch = route.match(/^\/admin\/jerseys\/([^/]+)$/);
+    if (adminJerseyMatch && method === 'PATCH') {
+      const auth = await requireUser(); if (auth.error) return auth.error;
+      if (auth.user.role !== 'admin') return err('Admin only', 403);
+      
+      const jerseyId = adminJerseyMatch[1];
+      const { status } = await request.json();
+      
+      if (!['given', 'not_given'].includes(status)) return err('Invalid status');
+      
+      await db.collection('jerseys').updateOne({ id: jerseyId }, { $set: { status } });
+      const jersey = await db.collection('jerseys').findOne({ id: jerseyId });
+      
+      return j({ jersey: clean(jersey) });
+    }
+
     // -------- FREE TRIAL (public, no auth) --------
     if (route === '/trial/classes' && method === 'GET') {
       const url = new URL(request.url);
@@ -742,9 +775,30 @@ async function handleRoute(request, { params }) {
     }
 
     if (route === '/trial/book' && method === 'POST') {
+      const session = getSession();
+      
+      // If user is logged in, check if they have an active membership
+      if (session) {
+        const um = await db.collection('user_memberships').findOne({
+          user_id: session.sub,
+          status: 'active',
+          expiry_date: { $gt: new Date() },
+        });
+        // If they have active membership, deny free trial
+        if (um) return err('Members cannot book free trials. Please book regular classes instead.', 403);
+        
+        // If no active membership, check if they already used their one free trial
+        const alreadyUsedFreeTrial = await db.collection('trial_leads').findOne({
+          user_id: session.sub,
+          status: 'scheduled', // Only count if they actually attended/booked
+        });
+        if (alreadyUsedFreeTrial) return err('You have already used your free trial. Please purchase a membership to book classes.', 403);
+      }
+
       const body = await request.json();
       const { full_name, email, phone, sport_id, class_id, message } = body || {};
       if (!full_name || !email || !phone || !sport_id) return err('full_name, email, phone, sport_id required');
+      
       const existingLead = await db.collection('trial_leads').findOne({
         email: email.toLowerCase(),
         created_at: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
@@ -755,6 +809,14 @@ async function handleRoute(request, { params }) {
       if (class_id) {
         const cls = await db.collection('classes').findOne({ id: class_id });
         if (!cls) return err('Selected class not found', 404);
+        
+        // Check if class has already started
+        const now = new Date();
+        const classDateTime = new Date(`${cls.date}T${cls.start_time}`);
+        if (now >= classDateTime) {
+          return err('This class has already started. You can only book classes before they begin.', 409);
+        }
+        
         const activeCount = await db.collection('bookings').countDocuments({ class_id, status: 'booked' });
         if (activeCount >= cls.capacity) return err('That class is full — please pick another slot.', 409);
         classInfo = cls;
@@ -762,6 +824,7 @@ async function handleRoute(request, { params }) {
 
       const lead = {
         id: uuidv4(),
+        user_id: session?.sub || null, // Track if booked by logged-in user
         full_name,
         email: email.toLowerCase(),
         phone,
@@ -860,6 +923,7 @@ async function handleRoute(request, { params }) {
           name: jersey.name,
           number: parseInt(jersey.number),
           size: jersey.size,
+          status: 'not_given',
           created_at: now,
         });
       }
@@ -1065,6 +1129,13 @@ async function handleRoute(request, { params }) {
       const { class_id, child_profile_id } = await request.json();
       const cls = await db.collection('classes').findOne({ id: class_id });
       if (!cls) return err('Class not found', 404);
+
+      // Check if class has already started
+      const now = new Date();
+      const classDateTime = new Date(`${cls.date}T${cls.start_time}`);
+      if (now >= classDateTime) {
+        return err('This class has already started. You can only book classes before they begin.', 409);
+      }
 
       // Must have an active membership for this specific sport.
       // Check sport_id field first (new memberships), then fall back to
@@ -2123,6 +2194,11 @@ async function handleRoute(request, { params }) {
         const skip = (page - 1) * limit;
         const total = await db.collection('payments').countDocuments({});
         const payments = await db.collection('payments').find({}).sort({ created_at: -1 }).skip(skip).limit(limit).toArray();
+        
+        // Calculate total amount from successful payments across ALL records
+        const successfulPayments = await db.collection('payments').find({ status: 'success' }).toArray();
+        const total_success_amount = successfulPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
+        
         const uids = [...new Set(payments.map(p => p.user_id))];
         const users = uids.length ? await db.collection('users').find({ id: { $in: uids } }).toArray() : [];
         return j({
@@ -2130,7 +2206,7 @@ async function handleRoute(request, { params }) {
             const u = users.find(x => x.id === p.user_id);
             return { ...clean(p), user_name: u?.full_name || 'Unknown', user_email: u?.email || '' };
           }),
-          total, page, limit,
+          total, page, limit, total_success_amount,
         });
       }
 

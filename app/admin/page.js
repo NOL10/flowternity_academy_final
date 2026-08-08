@@ -123,6 +123,7 @@ const NAV = [
   { id: 'classes', label: 'Classes', icon: ClipboardList },
   { id: 'games', label: 'Games', icon: Flame },
   { id: 'members', label: 'Members', icon: Users },
+  { id: 'jerseys', label: 'Jerseys', icon: Gift },
   { id: 'performance', label: 'Performance', icon: TrendingUp },
   { id: 'trials', label: 'Free Trials', icon: Sparkles },
   { id: 'attendance', label: 'Attendance', icon: CheckCircle2 },
@@ -245,12 +246,13 @@ export default function AdminPage() {
             {tab === 'overview' && <OverviewSection stats={stats} />}
             {tab === 'classes' && <ClassesSection />}
             {tab === 'games' && <GamesSection />}
+            {tab === 'members' && <MembersSection />}
+            {isAdmin && tab === 'jerseys' && <JerseysSection />}
             {tab === 'performance' && <PerformanceSection />}
             {tab === 'trials' && <TrialsSection />}
             {tab === 'attendance' && <AttendanceSection />}
             {tab === 'reports' && <ReportsSection />}
             {tab === 'announcements' && <AnnouncementsSection />}
-            {isAdmin && tab === 'members' && <MembersSection />}
             {isAdmin && tab === 'payments' && <PaymentsSection />}
             {isAdmin && tab === 'coaches' && <CoachesSection />}
             {isAdmin && tab === 'settings' && <SettingsSection />}
@@ -996,20 +998,28 @@ function MembersSection() {
   const [extendTarget, setExtendTarget] = useState(null);
   const [extendDays, setExtendDays] = useState(30);
   const [extendNote, setExtendNote] = useState('');
+  // Pagination
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [limit] = useState(50);
 
-  const load = async () => {
+  const load = async (p = 1) => {
     const params = new URLSearchParams();
     if (q) params.append('q', q);
     if (filterMembership) params.append('membership_id', filterMembership);
     if (filterCoupon) params.append('coupon_code', filterCoupon);
     if (filterExpiring === 'expiring') params.append('expiring', 'true');
-    // Load all members by increasing limit to 200
-    params.append('limit', '300');
+    params.append('page', p.toString());
+    params.append('limit', limit.toString());
     const url = `/api/admin/members?${params.toString()}`;
     const d = await fetch(url, { credentials: 'include' }).then(r => r.json());
     setMembers(d.members || []);
+    setTotal(d.total || 0);
+    setPage(p);
   };
-  useEffect(() => { load(); }, [q, filterMembership, filterCoupon, filterExpiring]);
+
+  useEffect(() => { setPage(1); }, [q, filterMembership, filterCoupon, filterExpiring]);
+  useEffect(() => { load(page); }, [page, q, filterMembership, filterCoupon, filterExpiring]);
 
   const openDetail = async (m) => {
     setSelected(m);
@@ -1170,56 +1180,105 @@ function MembersSection() {
       {members.length === 0 ? (
         <EmptyState icon={Users} title="No members found" cta="Register first member" onClick={() => setAddOpen(true)} />
       ) : (
-        <Card className="rounded-lg bg-slate-900 border-slate-800 overflow-hidden">
-          <div className="hidden md:grid grid-cols-12 gap-3 px-4 py-2.5 text-[10px] uppercase tracking-widest text-slate-500 border-b border-slate-800">
-            <div className="col-span-4">Member</div>
-            <div className="col-span-3">Contact</div>
-            <div className="col-span-2">Role</div>
-            <div className="col-span-2">Membership</div>
-            <div className="col-span-1 text-right">Actions</div>
-          </div>
-          {members.map(m => (
-            <div key={m.id} className="grid grid-cols-12 gap-3 px-4 py-3 items-center border-b border-slate-800 last:border-0 hover:bg-slate-800/40">
-              <div className="col-span-12 md:col-span-4 flex items-center gap-3 min-w-0">
-                <div className="w-9 h-9 rounded-full bg-lime-400/20 text-lime-400 flex items-center justify-center font-bold text-sm flex-shrink-0">{m.full_name?.[0]?.toUpperCase()}</div>
-                <div className="min-w-0">
-                  <div className="font-medium text-slate-100 truncate">{m.full_name}</div>
-                  {m.status === 'inactive' && <Badge variant="destructive" className="text-[10px] mt-0.5">Inactive</Badge>}
+        <>
+          <Card className="rounded-lg bg-slate-900 border-slate-800 overflow-hidden">
+            <div className="hidden md:grid grid-cols-12 gap-3 px-4 py-2.5 text-[10px] uppercase tracking-widest text-slate-500 border-b border-slate-800">
+              <div className="col-span-4">Member</div>
+              <div className="col-span-3">Contact</div>
+              <div className="col-span-2">Role</div>
+              <div className="col-span-2">Membership</div>
+              <div className="col-span-1 text-right">Actions</div>
+            </div>
+            {members.map(m => (
+              <div key={m.id} className="grid grid-cols-12 gap-3 px-4 py-3 items-center border-b border-slate-800 last:border-0 hover:bg-slate-800/40">
+                <div className="col-span-12 md:col-span-4 flex items-center gap-3 min-w-0">
+                  <div className="w-9 h-9 rounded-full bg-lime-400/20 text-lime-400 flex items-center justify-center font-bold text-sm flex-shrink-0">{m.full_name?.[0]?.toUpperCase()}</div>
+                  <div className="min-w-0">
+                    <div className="font-medium text-slate-100 truncate">{m.full_name}</div>
+                    {m.status === 'inactive' && <Badge variant="destructive" className="text-[10px] mt-0.5">Inactive</Badge>}
+                  </div>
+                </div>
+                <div className="col-span-6 md:col-span-3 min-w-0 text-xs text-slate-400 truncate">
+                  <div className="truncate">{m.email}</div>
+                  <div className="truncate">{m.phone || '—'}</div>
+                </div>
+                <div className="col-span-6 md:col-span-2"><Badge variant="secondary" className="bg-slate-800 text-slate-300 border-0 capitalize">{m.role}</Badge></div>
+                <div className="col-span-6 md:col-span-2 text-xs">
+                  {m.active_memberships?.length > 0 ? (
+                    <div className="space-y-1">
+                      {m.active_memberships.map(am => {
+                        const sport = SPORTS.find(s => s.id === am.sport_id || s.id === am.membership_snapshot?.sport_id);
+                        const daysLeft = Math.max(0, Math.ceil((new Date(am.expiry_date) - new Date()) / (1000 * 60 * 60 * 24)));
+                        return (
+                          <div key={am.id} className="flex items-center gap-1.5">
+                            <div className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold ${am.status === 'active' ? 'bg-lime-400/20 text-lime-400' : 'bg-amber-400/20 text-amber-400'}`}>{am.status}</div>
+                            <span className="text-slate-400">{sport?.name || am.membership_snapshot?.name}</span>
+                            {daysLeft <= 7 && daysLeft > 0 && <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30 text-[10px] px-1 py-0 animate-pulse">{daysLeft}d</Badge>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : m.latest_membership ? (
+                    <div className="flex items-center gap-1.5">
+                      <div className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-400`}>{m.latest_membership.status}</div>
+                      <span className="text-slate-500 truncate">{m.latest_membership.membership_snapshot?.name}</span>
+                    </div>
+                  ) : <span className="text-slate-600">None</span>}
+                </div>
+                <div className="col-span-6 md:col-span-1 flex justify-end">
+                  <Button size="sm" variant="outline" onClick={() => openDetail(m)} className="border-slate-700 bg-transparent hover:bg-slate-800 text-slate-100 h-8">View</Button>
                 </div>
               </div>
-              <div className="col-span-6 md:col-span-3 min-w-0 text-xs text-slate-400 truncate">
-                <div className="truncate">{m.email}</div>
-                <div className="truncate">{m.phone || '—'}</div>
-              </div>
-              <div className="col-span-6 md:col-span-2"><Badge variant="secondary" className="bg-slate-800 text-slate-300 border-0 capitalize">{m.role}</Badge></div>
-              <div className="col-span-6 md:col-span-2 text-xs">
-                {m.active_memberships?.length > 0 ? (
-                  <div className="space-y-1">
-                    {m.active_memberships.map(am => {
-                      const sport = SPORTS.find(s => s.id === am.sport_id || s.id === am.membership_snapshot?.sport_id);
-                      const daysLeft = Math.max(0, Math.ceil((new Date(am.expiry_date) - new Date()) / (1000 * 60 * 60 * 24)));
-                      return (
-                        <div key={am.id} className="flex items-center gap-1.5">
-                          <div className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold ${am.status === 'active' ? 'bg-lime-400/20 text-lime-400' : 'bg-amber-400/20 text-amber-400'}`}>{am.status}</div>
-                          <span className="text-slate-400">{sport?.name || am.membership_snapshot?.name}</span>
-                          {daysLeft <= 7 && daysLeft > 0 && <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30 text-[10px] px-1 py-0 animate-pulse">{daysLeft}d</Badge>}
-                        </div>
-                      );
-                    })}
-                  </div>
-                ) : m.latest_membership ? (
-                  <div className="flex items-center gap-1.5">
-                    <div className={`inline-block px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-800 text-slate-400`}>{m.latest_membership.status}</div>
-                    <span className="text-slate-500 truncate">{m.latest_membership.membership_snapshot?.name}</span>
-                  </div>
-                ) : <span className="text-slate-600">None</span>}
-              </div>
-              <div className="col-span-6 md:col-span-1 flex justify-end">
-                <Button size="sm" variant="outline" onClick={() => openDetail(m)} className="border-slate-700 bg-transparent hover:bg-slate-800 text-slate-100 h-8">View</Button>
-              </div>
+            ))}
+          </Card>
+
+          {/* Pagination Controls */}
+          <div className="flex items-center justify-between mt-4 px-4 py-3 bg-slate-900 rounded-lg border border-slate-800">
+            <div className="text-base font-bold text-slate-100">
+              <span className="text-lime-300 text-lg">📄 Showing</span> <span className="text-lime-400 text-xl font-black">{(page - 1) * limit + 1}</span>–<span className="text-lime-400 text-xl font-black">{Math.min(page * limit, total)}</span> <span className="text-slate-300">of</span> <span className="text-lime-400 text-xl font-black">{total}</span> <span className="text-slate-300">members</span>
             </div>
-          ))}
-        </Card>
+            <div className="flex items-center gap-3">
+              <Button
+                onClick={() => setPage(Math.max(1, page - 1))}
+                disabled={page === 1}
+                variant="outline"
+                size="sm"
+                className="h-11 px-5 border-3 border-lime-400 bg-lime-400/30 hover:bg-lime-400/50 text-slate-900 font-bold text-base disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                ← Previous
+              </Button>
+              <div className="flex items-center gap-2 bg-slate-800/60 px-3 py-2 rounded-lg border-2 border-lime-400/50">
+                {Array.from({ length: Math.ceil(total / limit) }).map((_, i) => {
+                  const pageNum = i + 1;
+                  const isCurrent = pageNum === page;
+                  const isVisible = Math.abs(pageNum - page) <= 1 || pageNum === 1 || pageNum === Math.ceil(total / limit);
+                  if (!isVisible && pageNum !== Math.ceil(total / limit) && pageNum !== 1) return null;
+                  if (!isVisible) return <span key={pageNum} className="text-lime-400 font-black text-lg">•••</span>;
+                  return (
+                    <Button
+                      key={pageNum}
+                      onClick={() => setPage(pageNum)}
+                      variant={isCurrent ? 'default' : 'outline'}
+                      size="sm"
+                      className={`h-10 w-10 p-0 font-black text-base rounded-lg ${isCurrent ? 'bg-lime-400 text-slate-900 hover:bg-lime-300 shadow-lg shadow-lime-400/60 border-2 border-lime-300' : 'bg-slate-700 border-2 border-lime-400/70 hover:border-lime-400 hover:bg-slate-600 text-lime-300 font-bold'}`}
+                    >
+                      {pageNum}
+                    </Button>
+                  );
+                })}
+              </div>
+              <Button
+                onClick={() => setPage(Math.min(Math.ceil(total / limit), page + 1))}
+                disabled={page >= Math.ceil(total / limit)}
+                variant="outline"
+                size="sm"
+                className="h-11 px-5 border-3 border-lime-400 bg-lime-400/30 hover:bg-lime-400/50 text-slate-900 font-bold text-base disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Next →
+              </Button>
+            </div>
+          </div>
+        </>
       )}
 
       {/* Add member dialog */}
@@ -1599,10 +1658,24 @@ function AttendanceSection() {
 // ===================== PAYMENTS =====================
 function PaymentsSection() {
   const [payments, setPayments] = useState([]);
-  const load = () => fetch('/api/admin/payments?limit=300', { credentials: 'include' }).then(r => r.json()).then(d => setPayments(d.payments || []));
-  useEffect(() => { load(); }, []);
+  const [page, setPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalSuccessAmount, setTotalSuccessAmount] = useState(0);
+  const [limit] = useState(50);
 
-  const total = payments.filter(p => p.status === 'success').reduce((s, p) => s + p.amount, 0);
+  const load = (p = 1) => {
+    fetch(`/api/admin/payments?page=${p}&limit=${limit}`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => {
+        setPayments(d.payments || []);
+        setTotalCount(d.total || 0);
+        setTotalSuccessAmount(d.total_success_amount || 0);
+        setPage(p);
+      });
+  };
+  useEffect(() => { load(1); }, []);
+
+  // Calculate payment stats (from current page only for refunded)
   const refunded = payments.filter(p => p.status === 'refunded').reduce((s, p) => s + p.amount, 0);
   const download = (p) => {
     const html = `<html><body style="font-family:Inter,sans-serif;padding:40px"><h1>Flowternity Invoice</h1><p>Ref: ${p.ref}</p><p>User: ${p.user_name} (${p.user_email})</p><p>Amount: ₹${p.amount.toLocaleString('en-IN')}</p><p>Status: ${p.status}</p><p>Date: ${new Date(p.created_at).toLocaleString('en-IN')}</p></body></html>`;
@@ -1622,7 +1695,7 @@ function PaymentsSection() {
     <>
       <SectionHeader title="Payments" description="All transactions and invoices." />
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        <StatCard icon={CreditCard} label="Total Collected" value={`₹${total.toLocaleString('en-IN')}`} tone="accent" />
+        <StatCard icon={CreditCard} label="Total Collected (Successful)" value={`₹${totalSuccessAmount.toLocaleString('en-IN')}`} tone="accent" />
         <StatCard icon={Activity} label="Transactions" value={payments.length} />
         <StatCard icon={RotateCcw} label="Refunded" value={`₹${refunded.toLocaleString('en-IN')}`} />
         <StatCard icon={TrendingUp} label="Success Rate" value={`${payments.length ? Math.round(100 * payments.filter(p => p.status === 'success').length / payments.length) : 0}%`} />
@@ -1630,38 +1703,87 @@ function PaymentsSection() {
       {payments.length === 0 ? (
         <EmptyState icon={CreditCard} title="No payments yet" />
       ) : (
-        <Card className="rounded-lg bg-slate-900 border-slate-800 overflow-hidden">
-          <div className="hidden md:grid grid-cols-12 gap-3 px-4 py-2.5 text-[10px] uppercase tracking-widest text-slate-500 border-b border-slate-800">
-            <div className="col-span-3">User</div>
-            <div className="col-span-3">Reference</div>
-            <div className="col-span-2">Date</div>
-            <div className="col-span-2">Amount</div>
-            <div className="col-span-2 text-right">Actions</div>
-          </div>
-          {payments.map(p => (
-            <div key={p.id} className="grid grid-cols-12 gap-3 px-4 py-3 items-center border-b border-slate-800 last:border-0 hover:bg-slate-800/40">
-              <div className="col-span-12 md:col-span-3 min-w-0">
-                <div className="font-medium text-slate-100 truncate">{p.user_name}</div>
-                <div className="text-xs text-slate-500 truncate">{p.user_email}</div>
-              </div>
-              <div className="col-span-6 md:col-span-3 font-mono text-xs text-slate-400 truncate">
-                {p.ref}
-                {p.method === 'admin_granted' && <span className="ml-1 text-lime-400/80">· granted</span>}
-              </div>
-              <div className="col-span-6 md:col-span-2 text-sm text-slate-300">{new Date(p.created_at).toLocaleDateString('en-IN')}</div>
-              <div className="col-span-6 md:col-span-2">
-                <div className="font-mono font-semibold text-slate-100">₹{p.amount.toLocaleString('en-IN')}</div>
-                <div className={`inline-block text-[10px] px-1.5 py-0.5 rounded font-semibold mt-0.5 ${p.status === 'success' ? 'bg-lime-400/20 text-lime-400' : p.status === 'refunded' ? 'bg-red-500/20 text-red-400' : 'bg-slate-800 text-slate-400'}`}>{p.status}</div>
-              </div>
-              <div className="col-span-6 md:col-span-2 flex justify-end gap-1.5">
-                <Button size="sm" variant="outline" onClick={() => download(p)} className="border-slate-700 bg-transparent hover:bg-slate-800 text-slate-100 h-8">Invoice</Button>
-                {p.status === 'success' && p.amount > 0 && (
-                  <Button size="sm" variant="outline" onClick={() => refund(p)} className="border-slate-700 bg-transparent hover:bg-red-500/10 hover:text-red-400 text-slate-100 h-8"><RotateCcw className="w-3.5 h-3.5" /></Button>
-                )}
-              </div>
+        <>
+          <Card className="rounded-lg bg-slate-900 border-slate-800 overflow-hidden">
+            <div className="hidden md:grid grid-cols-12 gap-3 px-4 py-2.5 text-[10px] uppercase tracking-widest text-slate-500 border-b border-slate-800">
+              <div className="col-span-3">User</div>
+              <div className="col-span-3">Reference</div>
+              <div className="col-span-2">Date</div>
+              <div className="col-span-2">Amount</div>
+              <div className="col-span-2 text-right">Actions</div>
             </div>
-          ))}
-        </Card>
+            {payments.map(p => (
+              <div key={p.id} className="grid grid-cols-12 gap-3 px-4 py-3 items-center border-b border-slate-800 last:border-0 hover:bg-slate-800/40">
+                <div className="col-span-12 md:col-span-3 min-w-0">
+                  <div className="font-medium text-slate-100 truncate">{p.user_name}</div>
+                  <div className="text-xs text-slate-500 truncate">{p.user_email}</div>
+                </div>
+                <div className="col-span-6 md:col-span-3 font-mono text-xs text-slate-400 truncate">
+                  {p.ref}
+                  {p.method === 'admin_granted' && <span className="ml-1 text-lime-400/80">· granted</span>}
+                </div>
+                <div className="col-span-6 md:col-span-2 text-sm text-slate-300">{new Date(p.created_at).toLocaleDateString('en-IN')}</div>
+                <div className="col-span-6 md:col-span-2">
+                  <div className="font-mono font-semibold text-slate-100">₹{p.amount.toLocaleString('en-IN')}</div>
+                  <div className={`inline-block text-[10px] px-1.5 py-0.5 rounded font-semibold mt-0.5 ${p.status === 'success' ? 'bg-lime-400/20 text-lime-400' : p.status === 'refunded' ? 'bg-red-500/20 text-red-400' : 'bg-slate-800 text-slate-400'}`}>{p.status}</div>
+                </div>
+                <div className="col-span-6 md:col-span-2 flex justify-end gap-1.5">
+                  <Button size="sm" variant="outline" onClick={() => download(p)} className="border-slate-700 bg-transparent hover:bg-slate-800 text-slate-100 h-8">Invoice</Button>
+                  {p.status === 'success' && p.amount > 0 && (
+                    <Button size="sm" variant="outline" onClick={() => refund(p)} className="border-slate-700 bg-transparent hover:bg-red-500/10 hover:text-red-400 text-slate-100 h-8"><RotateCcw className="w-3.5 h-3.5" /></Button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </Card>
+
+          {/* Pagination Controls */}
+          <div className="flex flex-col md:flex-row items-center justify-between gap-4 mt-6 px-6 py-5 bg-lime-400/20 rounded-xl border-3 border-lime-400 shadow-2xl shadow-lime-400/40">
+            <div className="text-sm font-semibold text-slate-100">
+              <span className="text-lime-400">Showing</span> <span className="text-lime-300">{(page - 1) * limit + 1}</span>–<span className="text-lime-300">{Math.min(page * limit, totalCount)}</span> <span className="text-slate-400">of</span> <span className="text-lime-300">{totalCount}</span> <span className="text-slate-400">payments</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <Button
+                onClick={() => load(Math.max(1, page - 1))}
+                disabled={page === 1}
+                variant="outline"
+                size="sm"
+                className="h-9 px-4 border-2 border-lime-400/50 hover:border-lime-400 hover:bg-lime-400/10 text-slate-100 font-semibold disabled:opacity-50"
+              >
+                ← Previous
+              </Button>
+              <div className="flex items-center gap-1.5">
+                {Array.from({ length: Math.ceil(totalCount / limit) }).map((_, i) => {
+                  const pageNum = i + 1;
+                  const isCurrent = pageNum === page;
+                  const isVisible = Math.abs(pageNum - page) <= 1 || pageNum === 1 || pageNum === Math.ceil(totalCount / limit);
+                  if (!isVisible && pageNum !== Math.ceil(totalCount / limit) && pageNum !== 1) return null;
+                  if (!isVisible) return <span key={pageNum} className="text-slate-500 font-bold">…</span>;
+                  return (
+                    <Button
+                      key={pageNum}
+                      onClick={() => load(pageNum)}
+                      variant={isCurrent ? 'default' : 'outline'}
+                      size="sm"
+                      className={`h-10 w-10 p-0 font-black text-base rounded-lg ${isCurrent ? 'bg-lime-400 text-slate-900 hover:bg-lime-300 shadow-lg shadow-lime-400/60 border-2 border-lime-300' : 'bg-slate-700 border-2 border-lime-400/70 hover:border-lime-400 hover:bg-slate-600 text-lime-300 font-bold'}`}
+                    >
+                      {pageNum}
+                    </Button>
+                  );
+                })}
+              </div>
+              <Button
+                onClick={() => load(Math.min(Math.ceil(totalCount / limit), page + 1))}
+                disabled={page >= Math.ceil(totalCount / limit)}
+                variant="outline"
+                size="sm"
+                className="h-9 px-4 border-2 border-lime-400/50 hover:border-lime-400 hover:bg-lime-400/10 text-slate-100 font-semibold disabled:opacity-50"
+              >
+                Next →
+              </Button>
+            </div>
+          </div>
+        </>
       )}
     </>
   );
@@ -1757,6 +1879,106 @@ function TrialsSection() {
               {l.message && (
                 <div className="col-span-12 mt-1 text-xs text-slate-400 italic px-1">&quot;{l.message}&quot;</div>
               )}
+            </div>
+          ))}
+        </Card>
+      )}
+    </>
+  );
+}
+
+// ===================== JERSEYS =====================
+function JerseysSection() {
+  const [jerseys, setJerseys] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [updating, setUpdating] = useState(null);
+
+  useEffect(() => {
+    loadJerseys();
+  }, []);
+
+  const loadJerseys = async () => {
+    setLoading(true);
+    const res = await fetch('/api/admin/jerseys', { credentials: 'include' });
+    if (res.ok) {
+      const d = await res.json();
+      setJerseys(d.jerseys || []);
+    }
+    setLoading(false);
+  };
+
+  const updateStatus = async (jerseyId, status) => {
+    setUpdating(jerseyId);
+    const res = await fetch(`/api/admin/jerseys/${jerseyId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ status }),
+    });
+    setUpdating(null);
+    if (res.ok) {
+      toast.success(`Jersey marked as ${status}`);
+      loadJerseys();
+    } else {
+      toast.error('Failed to update jersey');
+    }
+  };
+
+  return (
+    <>
+      <SectionHeader
+        title="Jerseys"
+        description={`${jerseys.length} jerseys · manage jersey distribution`}
+      />
+
+      {loading ? (
+        <div className="flex justify-center py-12">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-lime-400"></div>
+        </div>
+      ) : jerseys.length === 0 ? (
+        <EmptyState icon={Gift} title="No jerseys yet" />
+      ) : (
+        <Card className="rounded-lg bg-slate-900 border-slate-800 overflow-hidden">
+          <div className="hidden md:grid grid-cols-12 gap-3 px-4 py-2.5 text-[10px] uppercase tracking-widest text-slate-500 border-b border-slate-800">
+            <div className="col-span-2">Name</div>
+            <div className="col-span-2">Email</div>
+            <div className="col-span-1">Number</div>
+            <div className="col-span-1">Size</div>
+            <div className="col-span-1">Height</div>
+            <div className="col-span-1">Weight</div>
+            <div className="col-span-2">Status</div>
+            <div className="col-span-2 text-right">Action</div>
+          </div>
+          {jerseys.map(j => (
+            <div key={j.id} className="grid grid-cols-12 gap-3 px-4 py-3 items-center border-b border-slate-800 last:border-0 hover:bg-slate-800/40">
+              <div className="col-span-12 md:col-span-2 min-w-0">
+                <div className="font-medium text-slate-100 truncate">{j.user_name}</div>
+              </div>
+              <div className="col-span-12 md:col-span-2 min-w-0 text-xs text-slate-400 truncate">
+                {j.user_email}
+              </div>
+              <div className="col-span-6 md:col-span-1 text-sm text-slate-100">#{j.number}</div>
+              <div className="col-span-6 md:col-span-1">
+                <Badge variant="outline" className="text-lime-400 border-lime-400/30 text-xs">{j.size}</Badge>
+              </div>
+              <div className="col-span-6 md:col-span-1 text-sm text-slate-400">{j.height}cm</div>
+              <div className="col-span-6 md:col-span-1 text-sm text-slate-400">{j.weight}kg</div>
+              <div className="col-span-6 md:col-span-2">
+                <Badge className={`text-xs ${j.status === 'given' ? 'bg-lime-400/20 text-lime-400' : 'bg-amber-400/20 text-amber-400'}`}>
+                  {j.status === 'given' ? '✓ Given' : '○ Not Given'}
+                </Badge>
+              </div>
+              <div className="col-span-6 md:col-span-2 flex justify-end gap-2">
+                <Select value={j.status || 'not_given'} onValueChange={(v) => updateStatus(j.id, v)} disabled={updating === j.id}>
+                  <SelectTrigger className="h-8 w-32 text-xs bg-slate-800 border-slate-700 text-slate-100">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="not_given">Not Given</SelectItem>
+                    <SelectItem value="given">Given</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           ))}
         </Card>
@@ -2309,7 +2531,7 @@ function ReportsSection() {
           <title>Flowternity - Booking Report</title>
           <style>
             * { margin: 0; padding: 0; box-sizing: border-box; }
-            body { font-family: Arial, sans-serif; padding: 20px; background: white; color: #333; }
+            body { font-family: Arial, sans-serif; padding: 20px; background: ; color: #333; }
             .header { text-align: center; margin-bottom: 30px; border-bottom: 3px solid #a3e635; padding-bottom: 20px; }
             .header h1 { font-size: 28px; color: #1f2937; margin-bottom: 5px; }
             .header p { color: #666; font-size: 14px; }
