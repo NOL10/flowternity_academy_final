@@ -375,11 +375,11 @@ export default function GamesPage() {
             </DialogHeader>
             <form onSubmit={handleGuestCheckout} className="space-y-4">
               <div>
-                <Label htmlFor="guest-name">Full Name *</Label>
+                <Label htmlFor="guest-name">Full Name or Team Name *</Label>
                 <Input
                   id="guest-name"
                   type="text"
-                  placeholder="John Doe"
+                  placeholder="John Doe / Team Warriors"
                   value={guestDetails.name}
                   onChange={(e) => setGuestDetails({...guestDetails, name: e.target.value})}
                   required
