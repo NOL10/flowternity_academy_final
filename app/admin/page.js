@@ -1097,8 +1097,18 @@ function GameBookingsSection() {
                 </div>
                 <div className="col-span-6 md:col-span-2 text-sm text-slate-400">{b.sport_name}</div>
                 <div className="col-span-6 md:col-span-2 min-w-0">
-                  <div className="text-sm text-slate-100 truncate">{b.user_name}</div>
-                  <div className="text-xs text-slate-500 truncate">{b.user_email}</div>
+                  {b.user_name ? (
+                    <>
+                      <div className="text-sm text-slate-100 truncate">{b.user_name}</div>
+                      <div className="text-xs text-slate-500 truncate">{b.user_email}</div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-sm text-slate-100 truncate">{b.guest_name}</div>
+                      <div className="text-xs text-slate-500 truncate">{b.guest_email}</div>
+                      <div className="text-xs text-slate-600">{b.guest_phone}</div>
+                    </>
+                  )}
                 </div>
                 <div className="col-span-4 md:col-span-2">
                   <Badge className={b.status === 'active' ? 'bg-green-500/20 text-green-300 border-green-500/30' : 'bg-slate-700 text-slate-300'}>

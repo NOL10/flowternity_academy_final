@@ -7,6 +7,15 @@ import SiteNav from '@/components/site-nav';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 import { toast } from 'sonner';
 import { useAuth } from '@/app/providers';
 import { SPORTS } from '@/lib/flowternity/config';
@@ -19,6 +28,11 @@ export default function GamesPage() {
   const [sport, setSport] = useState('all');
   const [pageLoading, setPageLoading] = useState(true);
   const [busy, setBusy] = useState(null);
+  const [guestModalOpen, setGuestModalOpen] = useState(false);
+  const [guestGameId, setGuestGameId] = useState(null);
+  const [guestGameFee, setGuestGameFee] = useState(null);
+  const [guestDetails, setGuestDetails] = useState({ name: '', email: '', phone: '' });
+  const [guestSubmitting, setGuestSubmitting] = useState(false);
 
   // Allow non-members to view games, but redirect non-logged-in users for join/payment
   const load = async () => {
@@ -40,8 +54,100 @@ export default function GamesPage() {
     setBusy(null);
   };
 
+  const handleGuestCheckout = async (e) => {
+    e.preventDefault();
+    
+    if (!guestDetails.name || !guestDetails.email || !guestDetails.phone) {
+      toast.error('Please fill in all fields');
+      return;
+    }
+
+    setGuestSubmitting(true);
+    
+    try {
+      // Create order on backend
+      const orderRes = await fetch(`/api/games/${guestGameId}/create-order`, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        credentials: 'include', 
+        body: JSON.stringify({ amount: guestGameFee, guest_details: guestDetails }) 
+      });
+      const orderData = await orderRes.json();
+      
+      if (!orderRes.ok) {
+        toast.error(orderData.error || 'Failed to create payment order');
+        setGuestSubmitting(false);
+        return;
+      }
+
+      // Initialize Razorpay
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.async = true;
+      script.onload = () => {
+        const options = {
+          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+          amount: orderData.amount,
+          currency: 'INR',
+          name: 'Flowternity',
+          description: `Game Booking - ₹${guestGameFee}`,
+          order_id: orderData.id,
+          handler: async (response) => {
+            // Verify and confirm booking
+            const verifyRes = await fetch(`/api/games/${guestGameId}/verify-guest-payment`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                amount: guestGameFee,
+                guest_details: guestDetails,
+              })
+            });
+            
+            const verifyData = await verifyRes.json();
+            if (verifyRes.ok) {
+              toast.success('Payment successful! See you on the court.');
+              setGuestModalOpen(false);
+              setGuestDetails({ name: '', email: '', phone: '' });
+              load();
+            } else {
+              toast.error(verifyData.error || 'Payment verification failed');
+            }
+            setGuestSubmitting(false);
+          },
+          prefill: {
+            name: guestDetails.name,
+            email: guestDetails.email,
+            contact: guestDetails.phone,
+          },
+          theme: {
+            color: '#10b981',
+          },
+        };
+        
+        const rzp = new window.Razorpay(options);
+        rzp.open();
+      };
+      document.body.appendChild(script);
+    } catch (err) {
+      console.error('Payment error:', err);
+      toast.error('Payment failed');
+      setGuestSubmitting(false);
+    }
+  };
+
   const payToPlay = async (gameId, fee) => {
-    if (!user) { router.push(`/auth?mode=login&next=/games`); return; }
+    if (!user) { 
+      // Show guest checkout modal instead of redirecting
+      setGuestGameId(gameId);
+      setGuestGameFee(fee);
+      setGuestModalOpen(true);
+      return;
+    }
+    
     setBusy(gameId);
     
     try {
@@ -133,7 +239,7 @@ export default function GamesPage() {
     </div>
   );
 
-  const isParent = user.role === 'parent';
+  const isParent = user?.role === 'parent';
 
   return (
     <div className="min-h-screen bg-background">
@@ -217,7 +323,11 @@ export default function GamesPage() {
                         <div className="mt-4 flex gap-2">
                           <Link href={`/games/${g.id}`} className="flex-1"><Button variant="outline" className="w-full">View <ArrowRight className="w-3 h-3 ml-1" /></Button></Link>
                           {g.i_joined ? (
-                            <Button onClick={() => leave(g.id)} disabled={busy === g.id} variant="outline" className="border-destructive text-destructive hover:bg-destructive/10">Leave</Button>
+                            g.is_paid ? (
+                              <Button disabled variant="outline" className="text-muted-foreground">Booked</Button>
+                            ) : (
+                              <Button onClick={() => leave(g.id)} disabled={busy === g.id} variant="outline" className="border-destructive text-destructive hover:bg-destructive/10">Leave</Button>
+                            )
                           ) : (
                             (() => {
                               const isFree = !g.is_paid || g.is_paid === false;
@@ -253,6 +363,63 @@ export default function GamesPage() {
             </div>
           </Card>
         )}
+
+        {/* Guest Checkout Modal */}
+        <Dialog open={guestModalOpen} onOpenChange={setGuestModalOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>Enter Your Details</DialogTitle>
+              <DialogDescription>
+                Complete your booking by entering your information
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleGuestCheckout} className="space-y-4">
+              <div>
+                <Label htmlFor="guest-name">Full Name *</Label>
+                <Input
+                  id="guest-name"
+                  type="text"
+                  placeholder="John Doe"
+                  value={guestDetails.name}
+                  onChange={(e) => setGuestDetails({...guestDetails, name: e.target.value})}
+                  required
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label htmlFor="guest-email">Email *</Label>
+                <Input
+                  id="guest-email"
+                  type="email"
+                  placeholder="john@example.com"
+                  value={guestDetails.email}
+                  onChange={(e) => setGuestDetails({...guestDetails, email: e.target.value})}
+                  required
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label htmlFor="guest-phone">Phone Number *</Label>
+                <Input
+                  id="guest-phone"
+                  type="tel"
+                  placeholder="+91 9999999999"
+                  value={guestDetails.phone}
+                  onChange={(e) => setGuestDetails({...guestDetails, phone: e.target.value})}
+                  required
+                  className="mt-1"
+                />
+              </div>
+              <Button 
+                type="submit" 
+                disabled={guestSubmitting}
+                className="w-full bg-accent text-black hover:bg-accent/90"
+              >
+                {guestSubmitting ? 'Processing...' : `Pay ₹${guestGameFee || 0} & Continue`}
+              </Button>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
