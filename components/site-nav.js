@@ -17,6 +17,7 @@ export default function SiteNav({ dark = false }) {
   const baseLinks = [
     { href: '/memberships', label: 'Memberships' },
     { href: '/coaches', label: 'Coaches' },
+    { href: '/games', label: 'Games' },
     { href: '/about', label: 'About' },
     { href: '/contact', label: 'Contact' },
   ];
@@ -25,7 +26,6 @@ export default function SiteNav({ dark = false }) {
   const authedLinks = [];
   if (user) {
     authedLinks.push({ href: '/classes', label: 'Classes' });
-    authedLinks.push({ href: '/games', label: 'Games' });
   }
 
   const links = [...baseLinks, ...authedLinks];

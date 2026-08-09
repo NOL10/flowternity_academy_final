@@ -122,6 +122,7 @@ const NAV = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
   { id: 'classes', label: 'Classes', icon: ClipboardList },
   { id: 'games', label: 'Games', icon: Flame },
+  { id: 'game-bookings', label: 'Game Bookings', icon: Flame },
   { id: 'members', label: 'Members', icon: Users },
   { id: 'jerseys', label: 'Jerseys', icon: Gift },
   { id: 'performance', label: 'Performance', icon: TrendingUp },
@@ -246,6 +247,7 @@ export default function AdminPage() {
             {tab === 'overview' && <OverviewSection stats={stats} />}
             {tab === 'classes' && <ClassesSection />}
             {tab === 'games' && <GamesSection />}
+            {tab === 'game-bookings' && <GameBookingsSection />}
             {tab === 'members' && <MembersSection />}
             {isAdmin && tab === 'jerseys' && <JerseysSection />}
             {tab === 'performance' && <PerformanceSection />}
@@ -721,9 +723,9 @@ function GamesSection() {
   const [games, setGames] = useState([]);
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState('single');
-  const emptyForm = { sport_id: 'basketball', title: '', description: '', date: '', start_time: '', end_time: '', max_players: 10, host_name: 'Flowternity', skill_level: 'all_levels' };
+  const emptyForm = { sport_id: 'basketball', title: '', description: '', date: '', start_time: '', end_time: '', max_players: 10, host_name: 'Flowternity', skill_level: 'all_levels', is_paid: false, fee: 0 };
   const [form, setForm] = useState(emptyForm);
-  const emptyBulk = { sport_id: 'basketball', title: '', description: '', host_name: 'Flowternity', skill_level: 'all_levels', max_players: 10, start_date: '', end_date: '', weekdays: [5, 6], slots: [{ start_time: '18:00', end_time: '19:30' }] };
+  const emptyBulk = { sport_id: 'basketball', title: '', description: '', host_name: 'Flowternity', skill_level: 'all_levels', max_players: 10, start_date: '', end_date: '', weekdays: [5, 6], slots: [{ start_time: '18:00', end_time: '19:30' }], is_paid: false, fee: 0 };
   const [bulk, setBulk] = useState(emptyBulk);
   const [saving, setSaving] = useState(false);
   const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -796,25 +798,26 @@ function GamesSection() {
         <EmptyState icon={Flame} title="No games scheduled" cta="Schedule your first game" onClick={() => setOpen(true)} />
       ) : (
         <Card className="rounded-lg bg-slate-900 border-slate-800 overflow-hidden">
-          <div className="hidden md:grid grid-cols-12 gap-3 px-4 py-2.5 text-[10px] uppercase tracking-widest text-slate-500 border-b border-slate-800">
+          <div className="hidden md:grid grid-cols-14 gap-3 px-4 py-2.5 text-[10px] uppercase tracking-widest text-slate-500 border-b border-slate-800">
             <div className="col-span-1">Date</div>
-            <div className="col-span-4">Game</div>
+            <div className="col-span-3">Game</div>
             <div className="col-span-2">Sport</div>
             <div className="col-span-2">Time</div>
             <div className="col-span-2">Players</div>
-            <div className="col-span-1 text-right">Actions</div>
+            <div className="col-span-2">Pricing</div>
+            <div className="col-span-2 text-right">Actions</div>
           </div>
           {games.map(g => {
             const sport = SPORTS.find(s => s.id === g.sport_id);
             return (
-              <div key={g.id} className="grid grid-cols-12 gap-3 px-4 py-3 items-center border-b border-slate-800 last:border-0 hover:bg-slate-800/40">
+              <div key={g.id} className="grid grid-cols-14 gap-3 px-4 py-3 items-center border-b border-slate-800 last:border-0 hover:bg-slate-800/40">
                 <div className="col-span-4 md:col-span-1">
                   <div className="w-10 h-10 rounded bg-slate-800 flex flex-col items-center justify-center leading-none">
                     <span className="text-[9px] uppercase text-slate-500">{new Date(g.date).toLocaleDateString('en-IN', { month: 'short' })}</span>
                     <span className="text-sm font-bold text-slate-100">{new Date(g.date).getDate()}</span>
                   </div>
                 </div>
-                <div className="col-span-8 md:col-span-4 min-w-0">
+                <div className="col-span-8 md:col-span-3 min-w-0">
                   <div className="font-medium text-slate-100 truncate">{g.title || `${sport?.name} pickup`}</div>
                   <div className="text-xs text-slate-500 truncate">Host: {g.host_name} · {g.skill_level?.replace('_', ' ')}</div>
                 </div>
@@ -824,7 +827,14 @@ function GamesSection() {
                   <span className="font-mono font-semibold text-slate-100">{g.participants_count}</span>
                   <span className="text-slate-500">/{g.max_players}</span>
                 </div>
-                <div className="col-span-6 md:col-span-1 flex justify-end">
+                <div className="col-span-6 md:col-span-2 text-sm">
+                  {g.is_paid ? (
+                    <span className="inline-block px-2 py-1 rounded bg-blue-500/20 text-blue-300 text-xs font-mono">₹{g.fee}</span>
+                  ) : (
+                    <span className="inline-block px-2 py-1 rounded bg-green-500/20 text-green-300 text-xs font-mono">Free</span>
+                  )}
+                </div>
+                <div className="col-span-6 md:col-span-2 flex justify-end">
                   <button onClick={() => remove(g.id)} className="p-2 rounded hover:bg-red-500/10 text-slate-500 hover:text-red-400"><Trash2 className="w-4 h-4" /></button>
                 </div>
               </div>
@@ -876,6 +886,29 @@ function GamesSection() {
               <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Title <span className="text-slate-500 normal-case">(optional)</span></Label><Input className="h-11 mt-1" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Friday Night Hoops" /></div>
               <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Description</Label><Textarea rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Casual 5v5" /></div>
               <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2 flex items-center gap-3 p-3 rounded-lg bg-slate-800/50 border border-slate-800">
+                  <input type="checkbox" id="is_paid" checked={form.is_paid} onChange={e => setForm({ ...form, is_paid: e.target.checked })} className="w-4 h-4 rounded cursor-pointer" />
+                  <Label htmlFor="is_paid" className="text-slate-300 text-xs uppercase tracking-widest cursor-pointer flex-1">Paid Game</Label>
+                  {form.is_paid && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400 text-xs">Fee:</span>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        step="0.01" 
+                        className="h-8 w-20 bg-slate-800 text-white border-slate-700 hover:border-slate-600 focus:border-lime-400 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
+                        style={{ MozAppearance: 'textfield' }}
+                        value={form.fee === 0 ? '' : form.fee} 
+                        onChange={e => setForm({ ...form, fee: e.target.value ? parseFloat(e.target.value) : 0 })} 
+                        onFocus={e => e.target.select()}
+                        placeholder="0.00" 
+                      />
+                      <span className="text-slate-400 text-xs">₹</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2"><QuickDateInput label="Date" required value={form.date} onChange={v => setForm({ ...form, date: v })} /></div>
                 <div>
                   <Label className="text-slate-300 text-xs uppercase tracking-widest mb-1 block">Start</Label>
@@ -885,7 +918,7 @@ function GamesSection() {
                   <Label className="text-slate-300 text-xs uppercase tracking-widest mb-1 block">End</Label>
                   <TimeSelect value={form.end_time} onChange={v => setForm({ ...form, end_time: v })} placeholder="End time" />
                 </div>
-                <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Max players</Label><Input type="number" min="2" required className="h-11 mt-1" value={form.max_players} onChange={e => setForm({ ...form, max_players: e.target.value })} /></div>
+                <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Max players</Label><Input type="number" min="2" required className="h-11 mt-1 bg-slate-800 text-white border-slate-700 hover:border-slate-600 focus:border-lime-400 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" style={{ MozAppearance: 'textfield' }} value={form.max_players} onChange={e => setForm({ ...form, max_players: e.target.value ? parseInt(e.target.value) : '' })} onFocus={e => { e.target.value = ''; setForm({ ...form, max_players: '' }); }} placeholder="10" /></div>
                 <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Host</Label><Input className="h-11 mt-1" value={form.host_name} onChange={e => setForm({ ...form, host_name: e.target.value })} /></div>
               </div>
               <DialogFooter className="pt-3 flex-col-reverse sm:flex-row gap-2">
@@ -916,9 +949,30 @@ function GamesSection() {
                     </SelectContent>
                   </Select>
                 </div>
-                <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Max players</Label><Input type="number" min="2" required className="h-11 mt-1" value={bulk.max_players} onChange={e => setBulk({ ...bulk, max_players: e.target.value })} /></div>
+                <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Max players</Label><Input type="number" min="2" required className="h-11 mt-1 bg-slate-800 text-white border-slate-700 hover:border-slate-600 focus:border-lime-400 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" style={{ MozAppearance: 'textfield' }} value={bulk.max_players} onChange={e => setBulk({ ...bulk, max_players: e.target.value ? parseInt(e.target.value) : '' })} onFocus={e => { e.target.value = ''; setBulk({ ...bulk, max_players: '' }); }} placeholder="10" /></div>
                 <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Host</Label><Input className="h-11 mt-1" value={bulk.host_name} onChange={e => setBulk({ ...bulk, host_name: e.target.value })} /></div>
                 <div className="col-span-2"><Label className="text-slate-300 text-xs uppercase tracking-widest">Title <span className="text-slate-500 normal-case">(optional)</span></Label><Input className="h-11 mt-1" value={bulk.title} onChange={e => setBulk({ ...bulk, title: e.target.value })} placeholder="Friday Night Hoops" /></div>
+                <div className="col-span-2 flex items-center gap-3 p-3 rounded-lg bg-slate-800/50 border border-slate-800">
+                  <input type="checkbox" id="bulk_is_paid" checked={bulk.is_paid} onChange={e => setBulk({ ...bulk, is_paid: e.target.checked })} className="w-4 h-4 rounded cursor-pointer" />
+                  <Label htmlFor="bulk_is_paid" className="text-slate-300 text-xs uppercase tracking-widest cursor-pointer flex-1">Paid Games</Label>
+                  {bulk.is_paid && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400 text-xs">Fee:</span>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        step="0.01" 
+                        className="h-8 w-20 bg-slate-800 text-white border-slate-700 hover:border-slate-600 focus:border-lime-400 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
+                        style={{ MozAppearance: 'textfield' }}
+                        value={bulk.fee === 0 ? '' : bulk.fee} 
+                        onChange={e => setBulk({ ...bulk, fee: e.target.value ? parseFloat(e.target.value) : 0 })} 
+                        onFocus={e => e.target.select()}
+                        placeholder="0.00" 
+                      />
+                      <span className="text-slate-400 text-xs">₹</span>
+                    </div>
+                  )}
+                </div>
                 <div className="col-span-2">
                   <QuickDateInput label="Start date" required value={bulk.start_date} onChange={v => setBulk({ ...bulk, start_date: v })} />
                 </div>
@@ -973,6 +1027,130 @@ function GamesSection() {
           )}
         </DialogContent>
       </Dialog>
+    </>
+  );
+}
+
+// ===================== GAME BOOKINGS =====================
+function GameBookingsSection() {
+  const [bookings, setBookings] = useState([]);
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [limit] = useState(50);
+  const [loading, setLoading] = useState(true);
+
+  const load = async (p = 1) => {
+    setLoading(true);
+    const res = await fetch(`/api/admin/game-bookings?page=${p}&limit=${limit}`, { credentials: 'include' });
+    if (res.ok) {
+      const d = await res.json();
+      setBookings(d.bookings || []);
+      setTotal(d.total || 0);
+      setPage(p);
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => { load(1); }, []);
+
+  const goToPage = (p) => {
+    if (p > 0 && p <= Math.ceil(total / limit)) load(p);
+  };
+
+  const totalPages = Math.ceil(total / limit);
+
+  return (
+    <>
+      <SectionHeader
+        title="Game Bookings"
+        description={`${total} game bookings · tracking player participation and payments`}
+      />
+
+      {loading ? (
+        <div className="space-y-3">
+          {[1,2,3,4,5].map(i => <div key={i} className="h-16 bg-slate-800 animate-pulse rounded-lg" />)}
+        </div>
+      ) : total === 0 ? (
+        <EmptyState icon={Flame} title="No game bookings yet" cta="Create games to start tracking" />
+      ) : (
+        <>
+          <Card className="rounded-lg bg-slate-900 border-slate-800 overflow-hidden">
+            <div className="hidden md:grid grid-cols-12 gap-3 px-4 py-2.5 text-[10px] uppercase tracking-widest text-slate-500 border-b border-slate-800">
+              <div className="col-span-2">Date</div>
+              <div className="col-span-3">Game</div>
+              <div className="col-span-2">Sport</div>
+              <div className="col-span-2">Player</div>
+              <div className="col-span-2">Status</div>
+              <div className="col-span-1 text-right">Amount</div>
+            </div>
+            {bookings.map(b => (
+              <div key={b.id} className="grid grid-cols-12 gap-3 px-4 py-3 items-center border-b border-slate-800 last:border-0 hover:bg-slate-800/40">
+                <div className="col-span-4 md:col-span-2">
+                  <div className="text-sm font-mono text-slate-300">
+                    {new Date(b.game_date).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
+                  </div>
+                  <div className="text-xs text-slate-500">{b.game_time}</div>
+                </div>
+                <div className="col-span-8 md:col-span-3 min-w-0">
+                  <div className="font-medium text-slate-100 truncate">{b.game_title}</div>
+                  <div className="text-xs text-slate-500">{b.sport_name}</div>
+                </div>
+                <div className="col-span-6 md:col-span-2 text-sm text-slate-400">{b.sport_name}</div>
+                <div className="col-span-6 md:col-span-2 min-w-0">
+                  <div className="text-sm text-slate-100 truncate">{b.user_name}</div>
+                  <div className="text-xs text-slate-500 truncate">{b.user_email}</div>
+                </div>
+                <div className="col-span-4 md:col-span-2">
+                  <Badge className={b.status === 'active' ? 'bg-green-500/20 text-green-300 border-green-500/30' : 'bg-slate-700 text-slate-300'}>
+                    {b.status}
+                  </Badge>
+                </div>
+                <div className="col-span-8 md:col-span-1 text-right">
+                  <span className="font-mono font-semibold text-slate-100">
+                    {b.is_paid ? `₹${b.amount_paid?.toFixed(2) || '0.00'}` : 'Free'}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </Card>
+
+          {/* Pagination */}
+          <div className="flex items-center justify-between mt-6">
+            <div className="text-sm text-muted-foreground">
+              Showing {(page - 1) * limit + 1} to {Math.min(page * limit, total)} of {total}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => goToPage(page - 1)}
+                disabled={page === 1}
+                className="px-3 py-2 rounded-lg border border-lime-400/30 text-lime-400 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-lime-400/10"
+              >
+                ←
+              </button>
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+                <button
+                  key={p}
+                  onClick={() => goToPage(p)}
+                  className={`px-3 py-2 rounded-lg border font-mono text-sm ${
+                    page === p
+                      ? 'bg-lime-400 text-slate-900 border-lime-400'
+                      : 'border-slate-700 text-slate-400 hover:text-slate-100'
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+              <button
+                onClick={() => goToPage(page + 1)}
+                disabled={page === totalPages}
+                className="px-3 py-2 rounded-lg border border-lime-400/30 text-lime-400 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-lime-400/10"
+              >
+                →
+              </button>
+            </div>
+          </div>
+        </>
+      )}
     </>
   );
 }

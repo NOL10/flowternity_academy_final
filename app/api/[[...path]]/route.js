@@ -1380,6 +1380,165 @@ async function handleRoute(request, { params }) {
       return j({ ok: true });
     }
 
+    const gamePlayMatch = route.match(/^\/games\/([^/]+)\/play$/);
+    if (gamePlayMatch && method === 'POST') {
+      const auth = await requireUser(); if (auth.error) return auth.error;
+      const gameId = gamePlayMatch[1];
+      const { amount } = await request.json();
+      const game = await db.collection('games').findOne({ id: gameId });
+      if (!game) return err('Game not found', 404);
+
+      // Check if already playing
+      const already = await db.collection('game_bookings').findOne({ game_id: gameId, user_id: auth.user.id, status: 'active' });
+      if (already) return err('You already booked this game', 409);
+
+      // Check if game is full
+      const count = await db.collection('game_bookings').countDocuments({ game_id: gameId, status: 'active' });
+      if (count >= (game.max_players || 999)) return err('Game is full', 409);
+
+      // If paid game, process payment
+      if (game.is_paid && amount > 0) {
+        // Create payment record
+        const payment = {
+          id: uuidv4(),
+          type: 'game_booking',
+          user_id: auth.user.id,
+          game_id: gameId,
+          amount: parseFloat(amount),
+          status: 'success',
+          payment_method: 'card',
+          created_at: new Date(),
+        };
+        await db.collection('payments').insertOne(payment);
+      }
+
+      // Create game booking record
+      const booking = {
+        id: uuidv4(),
+        game_id: gameId,
+        user_id: auth.user.id,
+        is_paid: game.is_paid,
+        amount_paid: game.is_paid ? parseFloat(amount) : 0,
+        status: 'active',
+        booked_at: new Date(),
+      };
+      await db.collection('game_bookings').insertOne(booking);
+
+      return j({ ok: true, booking: clean(booking) });
+    }
+
+    // Razorpay: Create order for game booking
+    const gameOrderMatch = route.match(/^\/games\/([^/]+)\/create-order$/);
+    if (gameOrderMatch && method === 'POST') {
+      const auth = await requireUser(); if (auth.error) return auth.error;
+      const gameId = gameOrderMatch[1];
+      const { amount } = await request.json();
+      
+      if (!amount || amount <= 0) return err('Invalid amount', 400);
+      
+      const game = await db.collection('games').findOne({ id: gameId });
+      if (!game) return err('Game not found', 404);
+      if (!game.is_paid) return err('This is a free game', 400);
+      
+      try {
+        const crypto = require('crypto');
+        const Razorpay = require('razorpay');
+        
+        const rzp = new Razorpay({
+          key_id: process.env.RAZORPAY_KEY_ID,
+          key_secret: process.env.RAZORPAY_KEY_SECRET,
+        });
+
+        const orderOptions = {
+          amount: Math.round(parseFloat(amount) * 100), // Convert to paise
+          currency: 'INR',
+          receipt: `gb_${gameId.slice(0, 8)}_${auth.user.id.slice(0, 8)}`,
+          notes: {
+            game_id: gameId,
+            user_id: auth.user.id,
+            game_title: game.title,
+          }
+        };
+
+        const order = await rzp.orders.create(orderOptions);
+        return j({ id: order.id, amount: order.amount, currency: order.currency });
+      } catch (e) {
+        console.error('Razorpay order creation failed:', e);
+        return err('Failed to create payment order: ' + e.message, 500);
+      }
+    }
+
+    // Razorpay: Verify payment and book game
+    const gameVerifyMatch = route.match(/^\/games\/([^/]+)\/verify-payment$/);
+    if (gameVerifyMatch && method === 'POST') {
+      const auth = await requireUser(); if (auth.error) return auth.error;
+      const gameId = gameVerifyMatch[1];
+      const { razorpay_order_id, razorpay_payment_id, razorpay_signature, amount } = await request.json();
+
+      if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+        return err('Missing payment details', 400);
+      }
+
+      try {
+        const crypto = require('crypto');
+        
+        // Verify signature
+        const text = razorpay_order_id + '|' + razorpay_payment_id;
+        const expectedSignature = crypto
+          .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+          .update(text)
+          .digest('hex');
+
+        if (expectedSignature !== razorpay_signature) {
+          return err('Invalid payment signature', 400);
+        }
+
+        const game = await db.collection('games').findOne({ id: gameId });
+        if (!game) return err('Game not found', 404);
+
+        // Check if already booked
+        const already = await db.collection('game_bookings').findOne({ game_id: gameId, user_id: auth.user.id, status: 'active' });
+        if (already) return err('Already booked this game', 409);
+
+        // Check if game is full
+        const count = await db.collection('game_bookings').countDocuments({ game_id: gameId, status: 'active' });
+        if (count >= (game.max_players || 999)) return err('Game is full', 409);
+
+        // Create payment record
+        const payment = {
+          id: uuidv4(),
+          type: 'game_booking',
+          user_id: auth.user.id,
+          game_id: gameId,
+          amount: parseFloat(amount),
+          razorpay_order_id,
+          razorpay_payment_id,
+          status: 'success',
+          payment_method: 'razorpay',
+          created_at: new Date(),
+        };
+        await db.collection('payments').insertOne(payment);
+
+        // Create game booking
+        const booking = {
+          id: uuidv4(),
+          game_id: gameId,
+          user_id: auth.user.id,
+          is_paid: true,
+          amount_paid: parseFloat(amount),
+          razorpay_payment_id,
+          status: 'active',
+          booked_at: new Date(),
+        };
+        await db.collection('game_bookings').insertOne(booking);
+
+        return j({ ok: true, booking: clean(booking), payment: clean(payment) });
+      } catch (e) {
+        console.error('Payment verification failed:', e);
+        return err('Payment verification failed: ' + e.message, 500);
+      }
+    }
+
     // -------- SETTINGS (public read) --------
     if (route === '/settings' && method === 'GET') {
       const settingsDoc = await db.collection('settings').findOne({ key: 'global' });
@@ -1525,7 +1684,7 @@ async function handleRoute(request, { params }) {
       // -------- Bulk games (recurring) --------
       if (route === '/admin/games/bulk' && method === 'POST') {
         const body = await request.json();
-        const { sport_id, host_name, max_players, skill_level, start_date, end_date, weekdays, slots, title, description } = body || {};
+        const { sport_id, host_name, max_players, skill_level, start_date, end_date, weekdays, slots, title, description, is_paid, fee } = body || {};
         if (!sport_id || !start_date || !end_date || !max_players) return err('sport_id, start_date, end_date, max_players required');
         if (!Array.isArray(weekdays) || weekdays.length === 0) return err('weekdays required');
         if (!Array.isArray(slots) || slots.length === 0) return err('slots required');
@@ -1550,6 +1709,8 @@ async function handleRoute(request, { params }) {
               max_players: parseInt(max_players),
               host_name: host_name || 'Host',
               skill_level: skill_level || 'all',
+              is_paid: is_paid || false,
+              fee: is_paid ? parseFloat(fee) || 0 : 0,
               created_at: new Date(),
               created_by: auth.user.id,
               batch_tag: `bulk_${start_date}_${end_date}`,
@@ -1914,8 +2075,10 @@ async function handleRoute(request, { params }) {
 
       // -------- Games (admin CRUD) --------
       if (route === '/admin/games' && method === 'POST') {
-        const { sport_id, title, description, date, start_time, end_time, max_players, host_name, skill_level } = await request.json();
-        if (!sport_id || !date || !start_time || !end_time || !max_players) return err('Missing fields');
+        const { sport_id, title, description, date, start_time, end_time, max_players, host_name, skill_level, is_paid, fee } = await request.json();
+        if (!sport_id || !date || !start_time || !end_time) return err('sport_id, date, start_time, end_time are required');
+        if (!max_players || max_players < 2) return err('max_players must be at least 2');
+        
         const g = {
           id: uuidv4(),
           sport_id,
@@ -1925,6 +2088,8 @@ async function handleRoute(request, { params }) {
           max_players: parseInt(max_players),
           host_name: host_name || 'Flowternity',
           skill_level: skill_level || 'all_levels',
+          is_paid: Boolean(is_paid),
+          fee: Boolean(is_paid) ? parseFloat(fee) || 0 : 0,
           created_at: new Date(),
           created_by: auth.user.id,
         };
@@ -1954,6 +2119,45 @@ async function handleRoute(request, { params }) {
         const uids = parts.map(p => p.user_id);
         const users = uids.length ? await db.collection('users').find({ id: { $in: uids } }).toArray() : [];
         return j({ participants: parts.map(p => { const u = users.find(x => x.id === p.user_id); return { user_id: p.user_id, name: u?.full_name || 'Player', email: u?.email, phone: u?.phone, joined_at: p.joined_at }; }) });
+      }
+
+      // Game bookings tracking for admin
+      if (route === '/admin/game-bookings' && method === 'GET') {
+        const url = new URL(request.url);
+        const page = parseInt(url.searchParams.get('page')) || 1;
+        const limit = parseInt(url.searchParams.get('limit')) || 50;
+        const skip = (page - 1) * limit;
+
+        const total = await db.collection('game_bookings').countDocuments();
+        const bookings = await db.collection('game_bookings')
+          .find({})
+          .sort({ booked_at: -1 })
+          .skip(skip)
+          .limit(limit)
+          .toArray();
+
+        // Enrich with game and user info
+        const gameIds = [...new Set(bookings.map(b => b.game_id))];
+        const userIds = [...new Set(bookings.map(b => b.user_id))];
+        const games = gameIds.length ? await db.collection('games').find({ id: { $in: gameIds } }).toArray() : [];
+        const users = userIds.length ? await db.collection('users').find({ id: { $in: userIds } }).toArray() : [];
+
+        const enriched = bookings.map(b => {
+          const game = games.find(g => g.id === b.game_id);
+          const user = users.find(u => u.id === b.user_id);
+          const sport = SPORTS.find(s => s.id === game?.sport_id);
+          return {
+            ...b,
+            game_title: game?.title || 'Unknown',
+            game_date: game?.date,
+            game_time: `${game?.start_time}–${game?.end_time}`,
+            sport_name: sport?.name || 'Unknown',
+            user_name: user?.full_name || 'Unknown',
+            user_email: user?.email,
+          };
+        });
+
+        return j({ bookings: enriched, total, page, limit });
       }
 
       // -------- Members --------

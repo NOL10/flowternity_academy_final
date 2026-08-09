@@ -20,19 +20,15 @@ export default function GamesPage() {
   const [pageLoading, setPageLoading] = useState(true);
   const [busy, setBusy] = useState(null);
 
-  useEffect(() => {
-    if (!loading && !user) router.push('/auth?mode=login&next=/games');
-  }, [loading, user, router]);
-
+  // Allow non-members to view games, but redirect non-logged-in users for join/payment
   const load = async () => {
-    if (!user) return;
     setPageLoading(true);
     const url = sport === 'all' ? '/api/games' : `/api/games?sport=${sport}`;
     const res = await fetch(url, { credentials: 'include' });
     if (res.ok) { const d = await res.json(); setGames(d.games || []); }
     setPageLoading(false);
   };
-  useEffect(() => { if (user) load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [sport, user]);
+  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [sport]);
 
   const join = async (gameId) => {
     if (!user) { router.push(`/auth?mode=login&next=/games`); return; }
@@ -42,6 +38,82 @@ export default function GamesPage() {
     if (res.ok) { toast.success('You\'re in! See you on the court.'); load(); }
     else toast.error(d.error || 'Failed to join');
     setBusy(null);
+  };
+
+  const payToPlay = async (gameId, fee) => {
+    if (!user) { router.push(`/auth?mode=login&next=/games`); return; }
+    setBusy(gameId);
+    
+    try {
+      // Create order on backend
+      const orderRes = await fetch(`/api/games/${gameId}/create-order`, { 
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        credentials: 'include', 
+        body: JSON.stringify({ amount: fee }) 
+      });
+      const orderData = await orderRes.json();
+      
+      if (!orderRes.ok) {
+        toast.error(orderData.error || 'Failed to create payment order');
+        setBusy(null);
+        return;
+      }
+
+      // Initialize Razorpay
+      const script = document.createElement('script');
+      script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+      script.async = true;
+      script.onload = () => {
+        const options = {
+          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+          amount: orderData.amount,
+          currency: 'INR',
+          name: 'Flowternity',
+          description: `Game Booking - ₹${fee}`,
+          order_id: orderData.id,
+          handler: async (response) => {
+            // Verify and confirm booking
+            const verifyRes = await fetch(`/api/games/${gameId}/verify-payment`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              credentials: 'include',
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                amount: fee,
+              })
+            });
+            
+            const verifyData = await verifyRes.json();
+            if (verifyRes.ok) {
+              toast.success('Payment successful! See you on the court.');
+              load();
+            } else {
+              toast.error(verifyData.error || 'Payment verification failed');
+            }
+            setBusy(null);
+          },
+          prefill: {
+            name: user.full_name,
+            email: user.email,
+            contact: user.phone,
+          },
+          theme: {
+            color: '#10b981',
+          },
+        };
+        
+        const rzp = new window.Razorpay(options);
+        rzp.open();
+      };
+      document.body.appendChild(script);
+    } catch (err) {
+      console.error('Payment error:', err);
+      toast.error('Payment failed');
+      setBusy(null);
+    }
   };
 
   const leave = async (gameId) => {
@@ -54,7 +126,12 @@ export default function GamesPage() {
   const activeSports = SPORTS.filter(s => s.status === 'active');
   const groupedByDate = games.reduce((acc, g) => { (acc[g.date] = acc[g.date] || []).push(g); return acc; }, {});
 
-  if (loading || !user) return <div className="min-h-screen bg-background"><SiteNav /><div className="container py-20"><div className="animate-pulse h-32 bg-secondary rounded-2xl" /></div></div>;
+  if (loading) return (
+    <div className="min-h-screen bg-background">
+      <SiteNav />
+      <div className="container py-20"><div className="animate-pulse h-32 bg-secondary rounded-2xl" /></div>
+    </div>
+  );
 
   const isParent = user.role === 'parent';
 
@@ -120,6 +197,8 @@ export default function GamesPage() {
                             <div className="flex items-center gap-2 flex-wrap">
                               <Badge variant="secondary">{g.sport?.name || g.sport_id}</Badge>
                               <Badge variant="outline" className="text-xs capitalize">{g.skill_level?.replace('_', ' ')}</Badge>
+                              {g.is_paid && <Badge className="bg-blue-500/20 text-blue-300 border-blue-500/30">₹{g.fee}</Badge>}
+                              {!g.is_paid && <Badge className="bg-green-500/20 text-green-300 border-green-500/30">Free</Badge>}
                               {g.i_joined && <Badge className="bg-accent text-black hover:bg-accent">You&apos;re in</Badge>}
                               {isFull && !g.i_joined && <Badge variant="destructive">Full</Badge>}
                             </div>
@@ -140,9 +219,20 @@ export default function GamesPage() {
                           {g.i_joined ? (
                             <Button onClick={() => leave(g.id)} disabled={busy === g.id} variant="outline" className="border-destructive text-destructive hover:bg-destructive/10">Leave</Button>
                           ) : (
-                            <Button onClick={() => join(g.id)} disabled={busy === g.id || isFull || isParent} className="bg-accent text-black hover:bg-accent/90">{busy === g.id ? 'Joining...' : isFull ? 'Full' : isParent ? 'Adults only' : 'Join Game'}</Button>
-                          )}
-                        </div>
+                            (() => {
+                              const isFree = !g.is_paid || g.is_paid === false;
+                              const buttonText = busy === g.id ? (isFree ? 'Joining...' : 'Processing...') : isFull ? 'Full' : isParent ? 'Adults only' : isFree ? 'Join Free' : `Pay ₹${g.fee || 0} & Play`;
+                              return (
+                                <Button 
+                                  onClick={() => isFree ? join(g.id) : payToPlay(g.id, g.fee)} 
+                                  disabled={busy === g.id || isFull || isParent} 
+                                  className="bg-accent text-black hover:bg-accent/90"
+                                >
+                                  {buttonText}
+                                </Button>
+                              );
+                            })()
+                          )}                        </div>
                       </Card>
                     );
                   })}
