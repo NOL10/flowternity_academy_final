@@ -46,6 +46,14 @@ export default function GamesPage() {
 
   const join = async (gameId) => {
     if (!user) { router.push(`/auth?mode=login&next=/games`); return; }
+    
+    // Check if user has active membership
+    if (!user.has_active_membership) {
+      toast.error('You need an active membership to join free games');
+      router.push('/memberships');
+      return;
+    }
+    
     setBusy(gameId);
     const res = await fetch(`/api/games/${gameId}/join`, { method: 'POST', credentials: 'include' });
     const d = await res.json();
