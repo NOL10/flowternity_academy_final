@@ -119,7 +119,7 @@ async function activateOrderMembership(db, { razorpay_order_id, razorpay_payment
     membership_snapshot: mem,
     sport_id: mem.sport_id,
     selected_sports: [mem.sport_id],
-    start_date: now, expiry_date: expiry,
+    start_date: now, expiry_date: expiry, original_expiry_date: expiry,
     status: 'active', pause_days: 0, paused_at: null,
     ...(isSlotPlan && { slots_remaining: slotQty, slots_total: slotQty }),
     created_at: now,
@@ -1126,7 +1126,7 @@ async function handleRoute(request, { params }) {
     // -------- BOOKINGS --------
     if (route === '/bookings' && method === 'POST') {
       const auth = await requireUser(); if (auth.error) return auth.error;
-      const { class_id, child_profile_id } = await request.json();
+      const { class_id, child_profile_id, user_membership_id } = await request.json();
       const cls = await db.collection('classes').findOne({ id: class_id });
       if (!cls) return err('Class not found', 404);
 
@@ -1137,10 +1137,8 @@ async function handleRoute(request, { params }) {
         return err('This class has already started. You can only book classes before they begin.', 409);
       }
 
-      // Must have an active membership for this specific sport.
-      // Check sport_id field first (new memberships), then fall back to
-      // membership_snapshot.sport_id and selected_sports for older records.
-      const um = await db.collection('user_memberships').findOne({
+      // Get all active memberships for this sport
+      const activeMems = await db.collection('user_memberships').find({
         user_id: auth.user.id,
         status: 'active',
         expiry_date: { $gt: new Date() },
@@ -1149,14 +1147,38 @@ async function handleRoute(request, { params }) {
           { 'membership_snapshot.sport_id': cls.sport_id },
           { selected_sports: cls.sport_id },
         ],
-      });
-      if (!um) return err(`No active ${cls.sport_id} membership. Please purchase one to book this class.`, 403);
+      }).toArray();
+      
+      if (activeMems.length === 0) {
+        return err(`No active ${cls.sport_id} membership. Please purchase one to book this class.`, 403);
+      }
 
-      // For slot-based memberships, check if slots are available
-      if (um.type === 'slot' || um.membership_snapshot?.type === 'slot') {
-        const slotsRemaining = um.slots_remaining || 0;
-        if (slotsRemaining <= 0) {
-          return err('No slots remaining. Please purchase more slots or renew your membership.', 403);
+      // If specific membership requested, use that; otherwise find one with slots
+      let selectedMembership = null;
+      if (user_membership_id) {
+        selectedMembership = activeMems.find(m => m.id === user_membership_id);
+        if (!selectedMembership) {
+          return err('Membership not found or not active', 403);
+        }
+      } else {
+        // For slot-based memberships, find one with available slots
+        for (const m of activeMems) {
+          const isSlotBased = m.type === 'slot' || m.membership_snapshot?.type === 'slot';
+          const slotsRemaining = m.slots_remaining || 0;
+          
+          if (isSlotBased && slotsRemaining <= 0) {
+            continue; // Skip, no slots
+          }
+          
+          selectedMembership = m;
+          break;
+        }
+        
+        if (!selectedMembership) {
+          if (activeMems[0].type === 'slot' || activeMems[0].membership_snapshot?.type === 'slot') {
+            return err('No slots remaining. Please purchase more slots or renew your membership.', 403);
+          }
+          selectedMembership = activeMems[0]; // Use first non-slot membership
         }
       }
 
@@ -1183,22 +1205,19 @@ async function handleRoute(request, { params }) {
         child_profile_id: child_profile_id || null,
         status: 'booked',
         created_at: new Date(),
-        user_membership_id: um.id,
+        user_membership_id: selectedMembership.id,
       };
       await db.collection('bookings').insertOne(booking);
 
-      // For slot-based memberships, deduct 1 slot
-      if (um.type === 'slot' || um.membership_snapshot?.type === 'slot') {
-        const newSlotsRemaining = Math.max(0, (um.slots_remaining || 1) - 1);
+      // For basketball_slot memberships, deduct 1 slot
+      const isBasketballSlot = selectedMembership.membership_id === 'basketball_slot';
+      if (isBasketballSlot) {
+        const newSlotsRemaining = Math.max(0, (selectedMembership.slots_remaining || 1) - 1);
         await db.collection('user_memberships').updateOne(
-          { id: um.id },
+          { id: selectedMembership.id },
           { $set: { slots_remaining: newSlotsRemaining, slots_last_used_at: new Date() } }
         );
       }
-
-      // Booking confirmation email
-      const sport = SPORTS.find(s => s.id === cls.sport_id);
-      // Booking confirmation email removed
 
       return j({ booking: clean(booking) });
     }
@@ -1212,10 +1231,12 @@ async function handleRoute(request, { params }) {
       
       await db.collection('bookings').updateOne({ id: bid }, { $set: { status: 'cancelled', cancelled_at: new Date() } });
 
-      // If this was a slot-based booking, return 1 slot to the user
+      // If basketball_slot booking, return slot
       if (b.user_membership_id) {
         const um = await db.collection('user_memberships').findOne({ id: b.user_membership_id });
-        if (um && (um.type === 'slot' || um.membership_snapshot?.type === 'slot')) {
+        const isBasketballSlot = um && um.membership_id === 'basketball_slot';
+        
+        if (um && isBasketballSlot) {
           const slotsRemaining = um.slots_remaining || 0;
           const newSlotsRemaining = Math.min(um.slots_total || slotsRemaining, slotsRemaining + 1);
           await db.collection('user_memberships').updateOne(
