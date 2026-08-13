@@ -15,7 +15,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import { useAuth } from '@/app/providers';
-import { SPORTS, MEMBERSHIPS as MEMBERSHIPS_LOCAL } from '@/lib/flowternity/config';
+import { SPORTS, MEMBERSHIPS as MEMBERSHIPS_LOCAL, LEADERSHIP_METRICS, METRIC_SCORES } from '@/lib/flowternity/config';
 import {
   Trash2, Plus, Users, Calendar, Activity, Sparkles, Search, CreditCard,
   Megaphone, UserCog, ClipboardList, CheckCircle2, XCircle, Save, Flame,
@@ -2365,11 +2365,16 @@ function PerformanceSection() {
   const [members, setMembers] = useState([]);
   const [subjects, setSubjects] = useState([]); // list of {id, label, type, sports:[]}
   const [selected, setSelected] = useState(null); // {id, label, type}
+  const [selectedMemberId, setSelectedMemberId] = useState(null); // Parent member ID for leadership metrics
   const [data, setData] = useState(null); // {subject, sports:[], levels_catalog:[]}
   const [loading, setLoading] = useState(false);
   const [activeSport, setActiveSport] = useState(null);
   const [dirty, setDirty] = useState({}); // { [metric_key]: number }
   const [saving, setSaving] = useState(false);
+  const [metricsTab, setMetricsTab] = useState('performance'); // 'performance' or 'leadership'
+  const [leadershipScores, setLeadershipScores] = useState({});
+  const [leadershipNotes, setLeadershipNotes] = useState('');
+  const [recentLeadership, setRecentLeadership] = useState([]);
 
   // Search members
   useEffect(() => {
@@ -2384,6 +2389,7 @@ function PerformanceSection() {
   // Build subject list (user + their child_profiles)
   const openMember = async (m) => {
     setLoading(true);
+    setSelectedMemberId(m.id); // Store parent member ID
     // Fetch member detail to get children
     const dr = await fetch(`/api/admin/members/${m.id}/detail`, { credentials: 'include' });
     const dd = await dr.json();
@@ -2404,10 +2410,14 @@ function PerformanceSection() {
     if (!s) return;
     setSelected(s);
     setDirty({});
+    setLeadershipScores({});
+    setLeadershipNotes('');
     const r = await fetch(`/api/admin/athletes/${s.id}/performance`, { credentials: 'include' });
     const d = await r.json();
     setData(d);
-    setActiveSport(d.sports?.[0]?.sport_id || null);
+    const sport = d.sports?.[0]?.sport_id || null;
+    setActiveSport(sport);
+    if (sport) loadRecentLeadership(s.id, sport);
   };
 
   const currentSportData = data?.sports?.find(s => s.sport_id === activeSport);
@@ -2442,6 +2452,47 @@ function PerformanceSection() {
     await pickSubject(selected);
   };
 
+  const loadRecentLeadership = async (userId, sportId) => {
+    if (!userId || !sportId) return;
+    const r = await fetch(`/api/leadership-metrics?user_id=${userId}&sport_id=${sportId}`, { credentials: 'include' });
+    const d = await r.json();
+    if (d.metrics) {
+      // Convert metrics array (with averages) to a format for display
+      setRecentLeadership(d.metrics);
+    }
+  };
+
+  const saveLeadershipMetrics = async () => {
+    if (!selected || !activeSport) { toast.error('Select a member first'); return; }
+    if (Object.keys(leadershipScores).length === 0) { toast.error('Score at least one metric'); return; }
+    setSaving(true);
+    try {
+      await Promise.all(
+        Object.entries(leadershipScores).map(([metricId, score]) =>
+          fetch('/api/leadership-metrics', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              user_id: selected.id,
+              sport_id: activeSport,
+              metric_id: metricId,
+              score: parseInt(score),
+              notes: leadershipNotes || '',
+            }),
+          }).then(r => r.json())
+        )
+      );
+      toast.success(`${Object.keys(leadershipScores).length} metric${Object.keys(leadershipScores).length > 1 ? 's' : ''} saved`);
+      setLeadershipScores({});
+      setLeadershipNotes('');
+      loadRecentLeadership(selected.id, activeSport);
+    } catch (e) {
+      toast.error('Save failed: ' + e.message);
+    }
+    setSaving(false);
+  };
+
   const setLevel = async (lvl) => {
     if (!selected || selected.type !== 'child' || !activeSport) return;
     const r = await fetch(`/api/admin/athletes/${selected.id}/level`, {
@@ -2457,9 +2508,33 @@ function PerformanceSection() {
   return (
     <>
       <SectionHeader
-        title="Performance"
-        description="Score athletes 0–10 per metric. Assign kids a progression level (SPARK → LEGACY)."
+        title="Performance & Leadership"
+        description="Score athletes on performance metrics or record leadership dimensions."
       />
+
+      {/* Metrics tab selector */}
+      <div className="flex gap-2 mb-6">
+        <button
+          onClick={() => setMetricsTab('performance')}
+          className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all ${
+            metricsTab === 'performance'
+              ? 'bg-lime-400/10 text-lime-400 border border-lime-400/20'
+              : 'border border-slate-700 text-slate-400 hover:text-slate-100 hover:border-slate-600'
+          }`}
+        >
+          📊 Performance
+        </button>
+        <button
+          onClick={() => setMetricsTab('leadership')}
+          className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all ${
+            metricsTab === 'leadership'
+              ? 'bg-lime-400/10 text-lime-400 border border-lime-400/20'
+              : 'border border-slate-700 text-slate-400 hover:text-slate-100 hover:border-slate-600'
+          }`}
+        >
+          👑 Leadership
+        </button>
+      </div>
 
       <div className="grid md:grid-cols-[320px_1fr] gap-6">
         {/* Left: member search */}
@@ -2535,7 +2610,7 @@ function PerformanceSection() {
                 <>
                   <div className="flex items-center gap-2 border-b border-slate-800">
                     {data.sports.map(sp => (
-                      <button key={sp.sport_id} onClick={() => { setActiveSport(sp.sport_id); setDirty({}); }} className={`px-4 py-2.5 text-sm font-medium border-b-2 transition ${activeSport === sp.sport_id ? 'border-lime-400 text-lime-400' : 'border-transparent text-slate-400 hover:text-slate-100'}`}>
+                      <button key={sp.sport_id} onClick={() => { setActiveSport(sp.sport_id); setDirty({}); loadRecentLeadership(selected.id, sp.sport_id); }} className={`px-4 py-2.5 text-sm font-medium border-b-2 transition ${activeSport === sp.sport_id ? 'border-lime-400 text-lime-400' : 'border-transparent text-slate-400 hover:text-slate-100'}`}>
                         {sp.sport_name}
                       </button>
                     ))}
@@ -2543,8 +2618,8 @@ function PerformanceSection() {
 
                   {currentSportData && (
                     <>
-                      {/* Kids level card */}
-                      {selected.type === 'child' && (
+                      {/* Kids level card - only for performance tab */}
+                      {metricsTab === 'performance' && selected.type === 'child' && (
                         <Card className="rounded-lg bg-gradient-to-br from-lime-400/10 to-transparent border-lime-400/20 p-5">
                           <div className="flex flex-col md:flex-row md:items-center gap-4 justify-between">
                             <div>
@@ -2569,44 +2644,167 @@ function PerformanceSection() {
                         </Card>
                       )}
 
-                      {/* Metric inputs */}
-                      <Card className="rounded-lg bg-slate-900 border-slate-800 p-5">
-                        <div className="flex items-center justify-between mb-4">
-                          <div>
-                            <h3 className="font-semibold text-slate-100">{currentSportData.sport_name} metrics</h3>
-                            <p className="text-xs text-slate-500">Score each metric 0–10 (decimals allowed).</p>
+                      {/* PERFORMANCE METRICS TAB */}
+                      {metricsTab === 'performance' && (
+                        <Card className="rounded-lg bg-slate-900 border-slate-800 p-5">
+                          <div className="flex items-center justify-between mb-4">
+                            <div>
+                              <h3 className="font-semibold text-slate-100">{currentSportData.sport_name} metrics</h3>
+                              <p className="text-xs text-slate-500">Score each metric 0–10 (decimals allowed).</p>
+                            </div>
+                            <Button onClick={saveScores} disabled={saving || Object.keys(dirty).length === 0} className="bg-lime-400 text-slate-900 hover:bg-lime-300 font-semibold">
+                              <Save className="w-4 h-4 mr-1.5" /> {saving ? 'Saving…' : `Save${Object.keys(dirty).length ? ` (${Object.keys(dirty).length})` : ''}`}
+                            </Button>
                           </div>
-                          <Button onClick={saveScores} disabled={saving || Object.keys(dirty).length === 0} className="bg-lime-400 text-slate-900 hover:bg-lime-300 font-semibold">
-                            <Save className="w-4 h-4 mr-1.5" /> {saving ? 'Saving…' : `Save${Object.keys(dirty).length ? ` (${Object.keys(dirty).length})` : ''}`}
-                          </Button>
-                        </div>
-                        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                          {(currentSportData.metrics_catalog || []).map(m => {
-                            const v = scoreValue(m.key);
-                            const isDirty = dirty[m.key] !== undefined;
-                            return (
-                              <label key={m.key} className={`block px-3 py-2.5 rounded-md border transition ${isDirty ? 'bg-lime-400/5 border-lime-400/40' : 'bg-slate-950/50 border-slate-800'}`}>
-                                <span className="text-xs text-slate-300 block mb-1.5">{m.label}</span>
-                                <div className="flex items-center gap-2">
-                                  <input
-                                    type="number" min="0" max="10" step="0.1"
-                                    value={v}
-                                    onChange={e => setScore(m.key, e.target.value)}
-                                    className="w-16 h-9 bg-slate-800 border border-slate-700 rounded px-2 text-sm text-slate-100 font-mono focus:outline-none focus:border-lime-400"
-                                    placeholder="—"
-                                  />
-                                  <span className="text-slate-500 text-xs">/ 10</span>
-                                  {v !== '' && (
-                                    <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
-                                      <div className={`h-full ${Number(v) >= 7 ? 'bg-lime-400' : Number(v) >= 4 ? 'bg-yellow-400' : 'bg-red-400'}`} style={{ width: `${Number(v) * 10}%` }} />
+                          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                            {(currentSportData.metrics_catalog || []).map(m => {
+                              const v = scoreValue(m.key);
+                              const isDirty = dirty[m.key] !== undefined;
+                              return (
+                                <label key={m.key} className={`block px-3 py-2.5 rounded-md border transition ${isDirty ? 'bg-lime-400/5 border-lime-400/40' : 'bg-slate-950/50 border-slate-800'}`}>
+                                  <span className="text-xs text-slate-300 block mb-1.5">{m.label}</span>
+                                  <div className="flex items-center gap-2">
+                                    <input
+                                      type="number" min="0" max="10" step="0.1"
+                                      value={v}
+                                      onChange={e => setScore(m.key, e.target.value)}
+                                      className="w-16 h-9 bg-slate-800 border border-slate-700 rounded px-2 text-sm text-slate-100 font-mono focus:outline-none focus:border-lime-400"
+                                      placeholder="—"
+                                    />
+                                    <span className="text-slate-500 text-xs">/ 10</span>
+                                    {v !== '' && (
+                                      <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden">
+                                        <div className={`h-full ${Number(v) >= 7 ? 'bg-lime-400' : Number(v) >= 4 ? 'bg-yellow-400' : 'bg-red-400'}`} style={{ width: `${Number(v) * 10}%` }} />
+                                      </div>
+                                    )}
+                                  </div>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </Card>
+                      )}
+
+      {/* LEADERSHIP METRICS TAB — redesigned */}
+                      {metricsTab === 'leadership' && (
+                        <div className="space-y-4">
+                          {/* Score grid card */}
+                          <Card className="rounded-xl bg-slate-900 border-slate-800 overflow-hidden">
+                            {/* Card header */}
+                            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
+                              <div>
+                                <p className="font-semibold text-slate-100 text-sm">Leadership Metrics</p>
+                                <p className="text-xs text-slate-500 mt-0.5">Tap a number to score each dimension</p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                {Object.keys(leadershipScores).length > 0 && (
+                                  <button
+                                    onClick={() => setLeadershipScores({})}
+                                    className="text-xs text-slate-500 hover:text-slate-300 transition"
+                                  >
+                                    Clear
+                                  </button>
+                                )}
+                                <Button
+                                  onClick={saveLeadershipMetrics}
+                                  disabled={saving || Object.keys(leadershipScores).length === 0}
+                                  className="bg-lime-400 text-slate-900 hover:bg-lime-300 font-semibold h-8 px-4 text-xs"
+                                >
+                                  <Save className="w-3.5 h-3.5 mr-1.5" />
+                                  {saving ? 'Saving…' : `Save${Object.keys(leadershipScores).length > 0 ? ` (${Object.keys(leadershipScores).length}/7)` : ''}`}
+                                </Button>
+                              </div>
+                            </div>
+
+                            {/* Metric rows */}
+                            <div className="divide-y divide-slate-800">
+                              {LEADERSHIP_METRICS.map(metric => {
+                                const current = leadershipScores[metric.id];
+                                return (
+                                  <div key={metric.id} className="px-5 py-3.5 flex items-center gap-4">
+                                    {/* Label */}
+                                    <div className="flex items-center gap-2.5 w-52 flex-shrink-0">
+                                      <span className="text-xl leading-none">{metric.emoji}</span>
+                                      <div>
+                                        <p className="text-sm font-medium text-slate-200 leading-tight">{metric.name}</p>
+                                      </div>
                                     </div>
-                                  )}
-                                </div>
-                              </label>
-                            );
-                          })}
+
+                                    {/* Score buttons 1–10 */}
+                                    <div className="flex gap-1 flex-1 flex-wrap">
+                                      {[1,2,3,4,5,6,7,8,9,10].map(n => {
+                                        const active = current === n;
+                                        const color = n <= 3 ? 'border-red-500/50 text-red-400 data-[active=true]:bg-red-500 data-[active=true]:border-red-500'
+                                          : n <= 6 ? 'border-yellow-500/50 text-yellow-400 data-[active=true]:bg-yellow-500 data-[active=true]:border-yellow-500'
+                                          : 'border-lime-500/50 text-lime-400 data-[active=true]:bg-lime-400 data-[active=true]:border-lime-400';
+                                        return (
+                                          <button
+                                            key={n}
+                                            data-active={active}
+                                            onClick={() => setLeadershipScores(s => ({ ...s, [metric.id]: n }))}
+                                            className={`w-8 h-8 rounded-md text-xs font-bold border transition-all ${color} ${active ? 'text-slate-900 scale-110 shadow-lg' : 'bg-slate-950 hover:bg-slate-800'}`}
+                                          >
+                                            {n}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+
+                                    {/* Selected badge or dash */}
+                                    <div className="w-10 text-right flex-shrink-0">
+                                      {current ? (
+                                        <span className={`text-lg font-black ${current <= 3 ? 'text-red-400' : current <= 6 ? 'text-yellow-400' : 'text-lime-400'}`}>
+                                          {current}
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-600 text-sm">—</span>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* Notes + submit footer */}
+                            <div className="px-5 py-4 border-t border-slate-800 flex gap-3 items-center">
+                              <input
+                                type="text"
+                                placeholder="Session notes (optional)..."
+                                value={leadershipNotes}
+                                onChange={e => setLeadershipNotes(e.target.value)}
+                                className="flex-1 px-3 py-2 rounded-lg text-sm bg-slate-950 border border-slate-700 text-slate-100 placeholder-slate-600 focus:outline-none focus:border-lime-400 transition"
+                              />
+                            </div>
+                          </Card>
+
+                          {/* Recent entries for this player */}
+                          {recentLeadership.length > 0 && (
+                            <Card className="rounded-xl bg-slate-900 border-slate-800 p-4">
+                              <p className="text-xs uppercase tracking-widest text-slate-500 mb-3">Leadership Metrics Averages</p>
+                              <div className="space-y-2">
+                                {recentLeadership.map((m, i) => {
+                                  return (
+                                    <div key={m.id || i} className="flex items-center justify-between py-1.5 border-b border-slate-800 last:border-0">
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-base">{m?.emoji || '📊'}</span>
+                                        <div>
+                                          <p className="text-xs font-medium text-slate-300">{m?.name || 'Unknown'}</p>
+                                        </div>
+                                      </div>
+                                      <div className="flex items-center gap-3">
+                                        <span className={`text-lg font-black ${m.average <= 3 ? 'text-red-400' : m.average <= 6 ? 'text-yellow-400' : 'text-lime-400'}`}>
+                                          {m.average.toFixed(1)}
+                                        </span>
+                                        <span className="text-[10px] text-slate-600">/10</span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </Card>
+                          )}
                         </div>
-                      </Card>
+                      )}
                     </>
                   )}
                 </>
@@ -3100,7 +3298,6 @@ function ReportsSection() {
     </>
   );
 }
-
 
 // -------- Settings Section --------
 function SettingsSection() {

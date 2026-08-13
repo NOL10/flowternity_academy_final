@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { getDb, clean } from '@/lib/flowternity/db';
 import { hashPassword, verifyPassword, createToken, setAuthCookie, clearAuthCookie, getSession } from '@/lib/flowternity/auth-server';
-import { SPORTS, MEMBERSHIPS, MAX_PAUSE_DAYS, KIDS_LEVELS, COUPONS } from '@/lib/flowternity/config';
+import { SPORTS, MEMBERSHIPS, MAX_PAUSE_DAYS, KIDS_LEVELS, COUPONS, LEADERSHIP_METRICS, METRIC_SCORES } from '@/lib/flowternity/config';
 import { metricsForSport, isValidMetricKey, SPORT_METRICS, GENERIC_METRICS } from '@/lib/flowternity/metrics';
 import { createOrder, verifySignature, publicKeyId, getRazorpay, verifyWebhookSignature, refundPayment } from '@/lib/flowternity/razorpay';
 import { sendPasswordResetEmail, sendWelcomeEmail, sendOnboardingEmail, sendMembershipPurchaseEmail } from '@/lib/flowternity/email';
@@ -2752,6 +2752,129 @@ async function handleRoute(request, { params }) {
         await db.collection('coaches').deleteOne({ id: coachDel[1] });
         return j({ ok: true });
       }
+
+
+      // DEBUG: Test endpoint
+      if (route === '/test-route') {
+        return j({ test: 'OK', route, method });
+      }
+    }
+
+    // -------- LEADERSHIP METRICS (outside admin block) --------
+    if (route === '/leadership-metrics' && method === 'POST') {
+      const auth = await requireUser(); if (auth.error) return auth.error;
+      if (auth.user.role !== 'admin' && auth.user.role !== 'coach') return err('Only admins and coaches can record metrics', 403);
+
+      const { user_id, sport_id, metric_id, score, notes } = await request.json();
+      if (!user_id || !sport_id || !metric_id || !score) return err('user_id, sport_id, metric_id, score required', 400);
+      if (score < 1 || score > 10) return err('Score must be between 1-10', 400);
+
+      const metric = {
+        id: uuidv4(),
+        user_id,
+        sport_id,
+        metric_id,
+        score: parseInt(score),
+        notes: notes || '',
+        recorded_by: auth.user.id,
+        recorded_at: new Date(),
+      };
+
+      await db.collection('leadership_metrics').insertOne(metric);
+      return j({ metric: clean(metric) });
+    }
+
+    if (route === '/leadership-metrics' && method === 'GET') {
+      const url = new URL(request.url);
+      const user_id = url.searchParams.get('user_id');
+      const sport_id = url.searchParams.get('sport_id');
+
+      if (!user_id) return err('user_id required', 400);
+
+      const filter = { user_id };
+      if (sport_id) filter.sport_id = sport_id;
+
+      const records = await db.collection('leadership_metrics').find(filter).sort({ recorded_at: -1 }).toArray();
+
+      const grouped = {};
+      LEADERSHIP_METRICS.forEach(m => {
+        grouped[m.id] = { ...m, scores: [], latest: null, average: 0 };
+      });
+
+      records.forEach(m => {
+        if (grouped[m.metric_id]) {
+          grouped[m.metric_id].scores.push(m.score);
+          if (!grouped[m.metric_id].latest) grouped[m.metric_id].latest = clean(m);
+        }
+      });
+
+      Object.values(grouped).forEach(m => {
+        if (m.scores.length > 0)
+          m.average = Math.round((m.scores.reduce((a, b) => a + b, 0) / m.scores.length) * 10) / 10;
+      });
+
+      return j({ metrics: Object.values(grouped), all_records: records.map(clean) });
+    }
+
+    if (route === '/leadership-metrics/leaderboard' && method === 'GET') {
+      const url = new URL(request.url);
+      const sport_id = url.searchParams.get('sport_id') || 'basketball';
+      const metric_id = url.searchParams.get('metric_id');
+      const limit = parseInt(url.searchParams.get('limit')) || 20;
+
+      const allMetrics = await db.collection('leadership_metrics').find({ sport_id }).toArray();
+
+      const userScores = {};
+      allMetrics.forEach(m => {
+        if (metric_id && m.metric_id !== metric_id) return;
+        if (!userScores[m.user_id]) {
+          userScores[m.user_id] = { user_id: m.user_id, metrics: {} };
+          LEADERSHIP_METRICS.forEach(lm => { userScores[m.user_id].metrics[lm.id] = []; });
+        }
+        if (userScores[m.user_id].metrics[m.metric_id]) {
+          userScores[m.user_id].metrics[m.metric_id].push(m.score);
+        }
+      });
+
+      const leaderboard = Object.values(userScores).map(u => {
+        let totalScore = 0, count = 0;
+        Object.values(u.metrics).forEach(scores => {
+          if (scores.length > 0) { totalScore += scores.reduce((a, b) => a + b, 0) / scores.length; count++; }
+        });
+        return {
+          user_id: u.user_id,
+          overall_score: count > 0 ? Math.round((totalScore / count) * 10) / 10 : 0,
+          metric_averages: Object.entries(u.metrics).reduce((acc, [id, scores]) => {
+            acc[id] = scores.length > 0 ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10 : 0;
+            return acc;
+          }, {}),
+          record_count: allMetrics.filter(m => m.user_id === u.user_id).length,
+        };
+      }).sort((a, b) => b.overall_score - a.overall_score).slice(0, limit);
+
+      const userIds = leaderboard.map(l => l.user_id);
+      const users = userIds.length > 0 ? await db.collection('users').find({ id: { $in: userIds } }).toArray() : [];
+      const enriched = leaderboard.map(entry => {
+        const user = users.find(u => u.id === entry.user_id);
+        return { ...entry, user: user ? publicUser(user) : null };
+      });
+
+      return j({ leaderboard: enriched });
+    }
+
+    if (route === '/admin/metrics/recent' && method === 'GET') {
+      const auth = await requireUser(); if (auth.error) return auth.error;
+      const url = new URL(request.url);
+      const limit = parseInt(url.searchParams.get('limit')) || 10;
+
+      const metrics = await db.collection('leadership_metrics').find({}).sort({ recorded_at: -1 }).limit(limit).toArray();
+      const userIds = [...new Set(metrics.map(m => m.user_id))];
+      const users = userIds.length > 0 ? await db.collection('users').find({ id: { $in: userIds } }).toArray() : [];
+      const enriched = metrics.map(m => {
+        const user = users.find(u => u.id === m.user_id);
+        return { ...clean(m), user_name: user?.full_name || 'Unknown' };
+      });
+      return j({ metrics: enriched });
     }
 
     return err(`Route ${route} not found`, 404);

@@ -12,7 +12,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { useAuth } from '@/app/providers';
-import { SPORTS, MEMBERSHIPS } from '@/lib/flowternity/config';
+import { SPORTS, MEMBERSHIPS, LEADERSHIP_METRICS } from '@/lib/flowternity/config';
 import { Calendar, Clock, User, Pause, PlayCircle, RefreshCw, CreditCard, Trophy, Sparkles, X, TrendingUp } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
@@ -248,6 +248,9 @@ export default function DashboardPage() {
 
         {/* Performance panel */}
         <PerformancePanel user={user} />
+
+        {/* Leadership panel */}
+        <LeadershipPanel user={user} />
       </div>
 
       <Dialog open={pauseOpen} onOpenChange={setPauseOpen}>
@@ -594,6 +597,113 @@ function JerseySection({ user }) {
             </div>
           </Card>
         ))}
+      </div>
+    </div>
+  );
+}
+
+function LeadershipPanel({ user }) {
+  const [metrics, setMetrics] = useState(null);
+  const [records, setRecords] = useState([]);
+  const [sport, setSport] = useState('basketball');
+  const [athleteId, setAthleteId] = useState(null);
+
+  useEffect(() => {
+    if (!user) return;
+    // Check if user has child profiles (like PerformancePanel does)
+    (async () => {
+      const r = await fetch('/api/children', { credentials: 'include' });
+      const d = await r.json();
+      const children = d.children || [];
+      
+      if (children.length > 0) {
+        // Use the child profile with most sports (same logic as PerformancePanel)
+        const best = children.reduce((b, c) =>
+          (c.selected_sports?.length || 0) >= (b.selected_sports?.length || 0) ? c : b
+        , children[0]);
+        setAthleteId(best.id);
+      } else {
+        // Fall back to user's own ID
+        setAthleteId(user.id);
+      }
+    })();
+  }, [user]);
+
+  useEffect(() => {
+    if (!athleteId) return;
+    fetch(`/api/leadership-metrics?user_id=${athleteId}&sport_id=${sport}`, { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d) {
+          setMetrics(d.metrics || []);
+          setRecords(d.all_records || []);
+        }
+      });
+  }, [athleteId, sport]);
+
+  const scored = metrics?.filter(m => m.average > 0) || [];
+  if (!metrics || scored.length === 0) return null;
+
+  const overall = scored.reduce((sum, m) => sum + m.average, 0) / scored.length;
+
+  // Get the most recent note across all records
+  const latestRecord = records.length > 0 ? records[0] : null;
+
+  return (
+    <div className="mt-8">
+      <div className="flex items-center justify-between mb-4">
+        <div>
+          <p className="text-xs uppercase tracking-widest text-muted-foreground">Leadership Board</p>
+          <h2 className="font-display font-black text-2xl md:text-3xl mt-0.5">Your Leadership Score</h2>
+        </div>
+        <div className="text-right">
+          <p className="text-4xl font-black text-accent">{overall.toFixed(1)}</p>
+          <p className="text-xs text-muted-foreground">/10 overall</p>
+        </div>
+      </div>
+
+      {/* Coach note banner — show latest note if it exists */}
+      {latestRecord?.notes && (
+        <Card className="p-4 rounded-2xl mb-4 bg-accent/10 border-accent/20">
+          <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Coach's Note</p>
+          <p className="text-sm font-medium">"{latestRecord.notes}"</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {new Date(latestRecord.recorded_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+          </p>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+        {scored.map(m => {
+          // Latest note for this specific metric
+          const latestForMetric = records.find(r => r.metric_id === m.id);
+          return (
+            <Card key={m.id} className="p-4 rounded-2xl border-primary/10">
+              <div className="flex items-center gap-2 mb-3">
+                <span className="text-2xl">{m.emoji}</span>
+                <p className="text-xs font-semibold text-muted-foreground leading-tight">{m.name}</p>
+              </div>
+              <p className="text-3xl font-black">{m.average}<span className="text-base text-muted-foreground font-normal">/10</span></p>
+              <div className="mt-2 h-1.5 bg-secondary rounded-full overflow-hidden">
+                <div className={`h-full ${m.color} rounded-full`} style={{ width: `${m.average * 10}%` }} />
+              </div>
+              
+              {/* Measures/Description */}
+              {m.description && (
+                <div className="mt-3 pt-3 border-t border-primary/10">
+                  <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-semibold mb-1.5">Measured by:</p>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{m.description}</p>
+                </div>
+              )}
+              
+              {latestForMetric?.notes && (
+                <div className="mt-3 p-2 rounded-lg bg-accent/5 border border-accent/20">
+                  <p className="text-xs italic text-muted-foreground">"{latestForMetric.notes}"</p>
+                </div>
+              )}
+            </Card>
+          );
+        })}
       </div>
     </div>
   );

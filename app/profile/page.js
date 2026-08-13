@@ -12,7 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { toast } from 'sonner';
 import { useAuth } from '@/app/providers';
-import { SPORTS } from '@/lib/flowternity/config';
+import { SPORTS, LEADERSHIP_METRICS } from '@/lib/flowternity/config';
 import { Save, User as UserIcon, Trophy, Shield, Zap } from 'lucide-react';
 
 export default function ProfilePage() {
@@ -20,6 +20,8 @@ export default function ProfilePage() {
   const { user, loading, refresh } = useAuth();
   const [data, setData] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [metrics, setMetrics] = useState(null);
+  const [selectedSport, setSelectedSport] = useState('basketball');
 
   // Only collect account-level info: name, phone, email (read-only)
   const [form, setForm] = useState({ full_name: '', phone: '' });
@@ -36,10 +38,39 @@ export default function ProfilePage() {
     }
   };
 
+  const loadMetrics = async () => {
+    if (!user) return;
+    const res = await fetch(`/api/leadership-metrics?user_id=${user.id}&sport_id=${selectedSport}`, { credentials: 'include' });
+    if (res.ok) {
+      const d = await res.json();
+      setMetrics(d);
+    }
+  };
+
   useEffect(() => {
     if (!loading && !user) router.push('/auth?mode=login&next=/profile');
     if (user) load();
   }, [user, loading, router]);
+
+  useEffect(() => {
+    if (user) loadMetrics();
+    // Poll for new metrics every 3 seconds
+    const interval = setInterval(() => {
+      if (user) loadMetrics();
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [user, selectedSport]);
+
+  // Also reload when page becomes visible (user returns to tab)
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (!document.hidden && user) {
+        loadMetrics();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [user, selectedSport]);
 
   const save = async () => {
     setSaving(true);
@@ -169,6 +200,100 @@ export default function ProfilePage() {
                 </div>
               )}
             </Card>
+
+            {/* Leadership Metrics */}
+            {metrics && (
+              <Card className="p-6 md:p-8 rounded-2xl">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <Trophy className="w-5 h-5" />
+                    <h3 className="font-display font-bold text-xl">Leadership Board</h3>
+                  </div>
+                  <select
+                    value={selectedSport}
+                    onChange={e => setSelectedSport(e.target.value)}
+                    className="px-3 py-1 rounded-lg border text-sm bg-secondary border-primary/20"
+                  >
+                    {SPORTS.filter(s => s.status === 'active').map(s => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {metrics.metrics && metrics.metrics.length > 0 ? (
+                  <div className="space-y-3">
+                    {/* Overall Score + latest coach note */}
+                    {metrics.metrics.some(m => m.average > 0) && (
+                      <div className="p-4 rounded-xl bg-accent/10 border border-accent/20">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className="text-sm text-muted-foreground">Overall Score</p>
+                            <p className="text-2xl font-bold mt-1">
+                              {(metrics.metrics.reduce((sum, m) => sum + (m.average || 0), 0) / metrics.metrics.length).toFixed(1)} <span className="text-lg text-muted-foreground">/10</span>
+                            </p>
+                          </div>
+                          <div className="text-4xl">👑</div>
+                        </div>
+                        {/* Latest coach note */}
+                        {metrics.all_records?.[0]?.notes && (
+                          <div className="mt-3 pt-3 border-t border-accent/20">
+                            <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">Coach's Note</p>
+                            <p className="text-sm italic">"{metrics.all_records[0].notes}"</p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                              {new Date(metrics.all_records[0].recorded_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Metric breakdown */}
+                    <div className="grid grid-cols-1 gap-3">
+                      {metrics.metrics.map(metric => {
+                        const latestRecord = metrics.all_records?.find(r => r.metric_id === metric.id);
+                        return (
+                          <div key={metric.id} className="space-y-2">
+                            <div className="p-3 rounded-lg border bg-secondary/50">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2 flex-1">
+                                  <span className="text-2xl">{metric.emoji}</span>
+                                  <div className="flex-1 min-w-0">
+                                    <p className="text-sm font-semibold">{metric.name}</p>
+                                  </div>
+                                </div>
+                                <div className="text-right flex-shrink-0 ml-2">
+                                  <p className="text-xl font-bold text-accent">{metric.average || '—'}</p>
+                                  <p className="text-xs text-muted-foreground">/10</p>
+                                </div>
+                              </div>
+                              {/* Measures/Description */}
+                              {metric.description && (
+                                <p className="text-xs text-muted-foreground mb-2 leading-relaxed">{metric.description}</p>
+                              )}
+                              {/* Progress bar */}
+                              <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full ${metric.color} rounded-full transition-all`}
+                                  style={{ width: `${(metric.average || 0) * 10}%` }}
+                                />
+                              </div>
+                            </div>
+                            {/* Separate note box */}
+                            {latestRecord?.notes && (
+                              <div className="p-2.5 rounded-lg bg-accent/5 border border-accent/20 ml-1">
+                                <p className="text-xs italic text-muted-foreground">"{latestRecord.notes}"</p>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground text-center py-6">No leadership metrics recorded yet.</p>
+                )}
+              </Card>
+            )}
           </div>
 
           {/* Right: memberships + security */}
