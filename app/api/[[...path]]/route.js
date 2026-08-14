@@ -786,13 +786,6 @@ async function handleRoute(request, { params }) {
         });
         // If they have active membership, deny free trial
         if (um) return err('Members cannot book free trials. Please book regular classes instead.', 403);
-        
-        // If no active membership, check if they already used their one free trial
-        const alreadyUsedFreeTrial = await db.collection('trial_leads').findOne({
-          user_id: session.sub,
-          status: 'scheduled', // Only count if they actually attended/booked
-        });
-        if (alreadyUsedFreeTrial) return err('You have already used your free trial. Please purchase a membership to book classes.', 403);
       }
 
       const body = await request.json();
