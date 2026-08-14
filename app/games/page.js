@@ -301,56 +301,107 @@ export default function GamesPage() {
                   <h2 className="font-display font-black text-3xl">{new Date(date).toLocaleDateString('en-IN', { weekday: 'long' })}</h2>
                   <span className="text-muted-foreground">{new Date(date).toLocaleDateString('en-IN', { day: 'numeric', month: 'long' })}</span>
                 </div>
-                <div className="grid md:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                   {list.map(g => {
                     const isFull = g.participants_count >= g.max_players;
                     return (
-                      <Card key={g.id} className={`p-6 rounded-2xl ${g.i_joined ? 'border-2 border-accent' : ''}`}>
-                        <div className="flex items-start justify-between gap-3 mb-3">
-                          <div>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <Badge variant="secondary">{g.sport?.name || g.sport_id}</Badge>
-                              <Badge variant="outline" className="text-xs capitalize">{g.skill_level?.replace('_', ' ')}</Badge>
-                              {g.is_paid && <Badge className="bg-blue-500/20 text-blue-300 border-blue-500/30">₹{g.fee}</Badge>}
-                              {!g.is_paid && <Badge className="bg-green-500/20 text-green-300 border-green-500/30">Free</Badge>}
-                              {g.i_joined && <Badge className="bg-accent text-black hover:bg-accent">You&apos;re in</Badge>}
-                              {isFull && !g.i_joined && <Badge variant="destructive">Full</Badge>}
+                      <Card key={g.id} className={`p-0 rounded-3xl overflow-hidden border-0 shadow-lg hover:shadow-2xl transition-all duration-300 ${g.i_joined ? 'ring-2 ring-accent' : ''}`}>
+                        {/* Card Header with color gradient */}
+                        <div className="bg-gradient-to-r from-primary to-primary/80 p-6 text-primary-foreground">
+                          <div className="flex items-start justify-between gap-4 mb-4">
+                            <div className="flex-1">
+                              <h3 className="font-display font-black text-3xl leading-tight">{g.title}</h3>
+                              {g.description && <p className="text-sm text-white/70 mt-2">{g.description}</p>}
                             </div>
-                            <h3 className="font-display font-bold text-2xl mt-2">{g.title}</h3>
-                            {g.description && <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{g.description}</p>}
+                            <div className="text-right flex-shrink-0">
+                              <div className="bg-white/20 backdrop-blur rounded-2xl px-4 py-3">
+                                <div className="font-display font-black text-2xl">{g.participants_count}</div>
+                                <div className="text-xs text-white/80">of {g.max_players}</div>
+                              </div>
+                            </div>
                           </div>
-                          <div className="text-right flex-shrink-0">
-                            <div className="font-display font-black text-2xl">{g.participants_count}<span className="text-muted-foreground text-lg">/{g.max_players}</span></div>
-                            <div className="text-xs text-muted-foreground">players</div>
+                          
+                          {/* Badges */}
+                          <div className="flex flex-wrap gap-2">
+                            <Badge className="bg-accent text-black hover:bg-accent">{g.sport?.name || g.sport_id}</Badge>
+                            <Badge className="bg-white/20 text-white hover:bg-white/30 border-white/30 capitalize">{g.skill_level?.replace('_', ' ')}</Badge>
+                            {g.is_paid && <Badge className="bg-amber-400/30 text-amber-100 border-amber-400/50 hover:bg-amber-400/40">₹{g.fee}</Badge>}
+                            {!g.is_paid && <Badge className="bg-green-400/30 text-green-100 border-green-400/50 hover:bg-green-400/40">Free</Badge>}
+                            {isFull && <Badge className="bg-red-400/30 text-red-100 border-red-400/50">Full</Badge>}
+                            {g.i_joined && <Badge className="bg-white/30 text-white border-white/50">✓ Joined</Badge>}
                           </div>
                         </div>
-                        <div className="flex flex-wrap gap-4 text-sm text-muted-foreground border-t pt-3">
-                          <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" /> {g.start_time} – {g.end_time}</span>
-                          <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5" /> Hosted by {g.host_name}</span>
-                        </div>
-                        <div className="mt-4 flex gap-2">
-                          <Link href={`/games/${g.id}`} className="flex-1"><Button variant="outline" className="w-full">View <ArrowRight className="w-3 h-3 ml-1" /></Button></Link>
-                          {g.i_joined ? (
-                            g.is_paid ? (
-                              <Button disabled variant="outline" className="text-muted-foreground">Booked</Button>
-                            ) : (
-                              <Button onClick={() => leave(g.id)} disabled={busy === g.id} variant="outline" className="border-destructive text-destructive hover:bg-destructive/10">Leave</Button>
-                            )
-                          ) : (
-                            (() => {
-                              const isFree = !g.is_paid || g.is_paid === false;
-                              const buttonText = busy === g.id ? (isFree ? 'Joining...' : 'Processing...') : isFull ? 'Full' : isParent ? 'Adults only' : isFree ? 'Join Free' : `Pay ₹${g.fee || 0} & Play`;
-                              return (
+
+                        {/* Card Content */}
+                        <div className="p-6 space-y-6">
+                          {/* Time & Location */}
+                          <div className="space-y-3">
+                            <div className="flex items-center gap-3 text-muted-foreground">
+                              <Clock className="w-5 h-5 text-accent flex-shrink-0" />
+                              <div>
+                                <p className="text-xs uppercase tracking-widest text-muted-foreground font-semibold">Time</p>
+                                <p className="font-semibold text-foreground">{g.start_time} – {g.end_time}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3 text-muted-foreground">
+                              <MapPin className="w-5 h-5 text-accent flex-shrink-0" />
+                              <div>
+                                <p className="text-xs uppercase tracking-widest text-muted-foreground font-semibold">Hosted by</p>
+                                <p className="font-semibold text-foreground">{g.host_name}</p>
+                              </div>
+                            </div>
+                          </div>
+
+                          {/* Player spots indicator */}
+                          <div className="bg-secondary/50 rounded-2xl p-4">
+                            <div className="flex items-center justify-between mb-2">
+                              <p className="text-xs uppercase tracking-widest font-semibold text-muted-foreground">Spots Available</p>
+                              <p className="font-bold text-lg text-accent">{Math.max(0, g.max_players - g.participants_count)} left</p>
+                            </div>
+                            <div className="w-full bg-secondary rounded-full h-2 overflow-hidden">
+                              <div 
+                                className={`h-full transition-all ${isFull ? 'bg-red-500' : 'bg-accent'}`}
+                                style={{ width: `${(g.participants_count / g.max_players) * 100}%` }}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Action Buttons */}
+                          <div className="flex gap-3 pt-4 border-t">
+                            <Link href={`/games/${g.id}`} className="flex-1">
+                              <Button variant="outline" className="w-full rounded-xl h-11 font-semibold">
+                                Details <ArrowRight className="w-4 h-4 ml-2" />
+                              </Button>
+                            </Link>
+                            {g.i_joined ? (
+                              g.is_paid ? (
+                                <Button disabled variant="outline" className="flex-1 rounded-xl h-11 font-semibold text-muted-foreground">Booked</Button>
+                              ) : (
                                 <Button 
-                                  onClick={() => isFree ? join(g.id) : payToPlay(g.id, g.fee)} 
-                                  disabled={busy === g.id || isFull || isParent} 
-                                  className="bg-accent text-black hover:bg-accent/90"
+                                  onClick={() => leave(g.id)} 
+                                  disabled={busy === g.id} 
+                                  className="flex-1 rounded-xl h-11 font-semibold bg-red-500/10 text-red-600 hover:bg-red-500/20 border border-red-500/30"
                                 >
-                                  {buttonText}
+                                  Leave
                                 </Button>
-                              );
-                            })()
-                          )}                        </div>
+                              )
+                            ) : (
+                              (() => {
+                                const isFree = !g.is_paid || g.is_paid === false;
+                                const buttonText = busy === g.id ? (isFree ? 'Joining...' : 'Processing...') : isFull ? 'Full' : isParent ? 'Adults only' : isFree ? 'Join Free' : `Pay ₹${g.fee || 0}`;
+                                return (
+                                  <Button 
+                                    onClick={() => isFree ? join(g.id) : payToPlay(g.id, g.fee)} 
+                                    disabled={busy === g.id || isFull || isParent} 
+                                    className="flex-1 rounded-xl h-11 font-semibold bg-accent text-black hover:bg-accent/90"
+                                  >
+                                    {buttonText}
+                                  </Button>
+                                );
+                              })()
+                            )}
+                          </div>
+                        </div>
                       </Card>
                     );
                   })}

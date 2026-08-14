@@ -2363,6 +2363,9 @@ function EmptyState({ icon: Icon, title, cta, onClick }) {
 function PerformanceSection() {
   const [q, setQ] = useState('');
   const [members, setMembers] = useState([]);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [subjects, setSubjects] = useState([]); // list of {id, label, type, sports:[]}
   const [selected, setSelected] = useState(null); // {id, label, type}
   const [selectedMemberId, setSelectedMemberId] = useState(null); // Parent member ID for leadership metrics
@@ -2375,16 +2378,52 @@ function PerformanceSection() {
   const [leadershipScores, setLeadershipScores] = useState({});
   const [leadershipNotes, setLeadershipNotes] = useState('');
   const [recentLeadership, setRecentLeadership] = useState([]);
+  const [sortOrder, setSortOrder] = useState(null); // null, 'high-to-low', 'low-to-high'
+  const [memberScores, setMemberScores] = useState({}); // { member_id: { performance: avg, leadership: avg, combined: avg } }
 
   // Search members
   useEffect(() => {
     const t = setTimeout(async () => {
-      const r = await fetch(`/api/admin/members?q=${encodeURIComponent(q)}&limit=20`, { credentials: 'include' });
+      setPage(1);
+      const r = await fetch(`/api/admin/members?q=${encodeURIComponent(q)}&page=1&limit=20`, { credentials: 'include' });
       const d = await r.json();
-      setMembers(d.members || []);
+      const membersList = d.members || [];
+      setMembers(membersList);
+      setHasMore((d.members?.length || 0) >= 20);
+      
+      // Pre-calculate scores if sort is active
+      if (sortOrder) {
+        membersList.forEach(m => {
+          if (!memberScores[m.id]) {
+            calculateCombinedScore(m.id);
+          }
+        });
+      }
     }, 250);
     return () => clearTimeout(t);
-  }, [q]);
+  }, [q, sortOrder]);
+
+  // Load more members
+  const loadMoreMembers = async () => {
+    setLoadingMore(true);
+    const nextPage = page + 1;
+    const r = await fetch(`/api/admin/members?q=${encodeURIComponent(q)}&page=${nextPage}&limit=20`, { credentials: 'include' });
+    const d = await r.json();
+    const newMembers = d.members || [];
+    setMembers(prev => [...prev, ...newMembers]);
+    setPage(nextPage);
+    setHasMore(newMembers.length >= 20);
+    
+    // Pre-calculate scores for new members if sort is active
+    if (sortOrder) {
+      newMembers.forEach(m => {
+        if (!memberScores[m.id]) {
+          calculateCombinedScore(m.id);
+        }
+      });
+    }
+    setLoadingMore(false);
+  };
 
   // Build subject list (user + their child_profiles)
   const openMember = async (m) => {
@@ -2493,16 +2532,68 @@ function PerformanceSection() {
     setSaving(false);
   };
 
-  const setLevel = async (lvl) => {
-    if (!selected || selected.type !== 'child' || !activeSport) return;
-    const r = await fetch(`/api/admin/athletes/${selected.id}/level`, {
-      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-      body: JSON.stringify({ sport_id: activeSport, level: Number(lvl) }),
-    });
-    const d = await r.json();
-    if (!r.ok) { toast.error(d.error || 'Failed'); return; }
-    toast.success(`Level set → ${d.level_info?.name}`);
-    await pickSubject(selected);
+  // Calculate combined score (performance + leadership average) for a member
+  const calculateCombinedScore = async (memberId) => {
+    try {
+      const [perfRes, leadRes] = await Promise.all([
+        fetch(`/api/admin/athletes/${memberId}/performance`, { credentials: 'include' }),
+        fetch(`/api/leadership-metrics?user_id=${memberId}&sport_id=${activeSport || 'basketball'}`, { credentials: 'include' }),
+      ]);
+
+      let perfAvg = 0;
+      let leadAvg = 0;
+
+      if (perfRes.ok) {
+        const perfData = await perfRes.json();
+        const currentSport = perfData.sports?.find(s => s.sport_id === (activeSport || 'basketball'));
+        if (currentSport?.scores) {
+          const scores = Object.values(currentSport.scores).filter(s => s > 0);
+          if (scores.length > 0) {
+            perfAvg = scores.reduce((a, b) => a + b, 0) / scores.length;
+          }
+        }
+      }
+
+      if (leadRes.ok) {
+        const leadData = await leadRes.json();
+        const metrics = leadData.metrics || [];
+        const validMetrics = metrics.filter(m => m.average > 0);
+        if (validMetrics.length > 0) {
+          leadAvg = validMetrics.reduce((sum, m) => sum + m.average, 0) / validMetrics.length;
+        }
+      }
+
+      const combined = (perfAvg + leadAvg) / 2;
+      setMemberScores(prev => ({
+        ...prev,
+        [memberId]: { performance: perfAvg, leadership: leadAvg, combined }
+      }));
+      return combined;
+    } catch (e) {
+      console.error('Error calculating score:', e);
+      return 0;
+    }
+  };
+
+  // Sort members by combined score
+  const getSortedMembers = async () => {
+    if (!sortOrder) return members;
+    
+    const membersWithScores = await Promise.all(
+      members.map(async (m) => {
+        let score = memberScores[m.id]?.combined;
+        if (score === undefined) {
+          score = await calculateCombinedScore(m.id);
+        }
+        return { ...m, combinedScore: score };
+      })
+    );
+
+    const sorted = [...membersWithScores].sort((a, b) =>
+      sortOrder === 'high-to-low' ? b.combinedScore - a.combinedScore : a.combinedScore - b.combinedScore
+    );
+    
+    return sorted;
   };
 
   return (
@@ -2512,28 +2603,54 @@ function PerformanceSection() {
         description="Score athletes on performance metrics or record leadership dimensions."
       />
 
-      {/* Metrics tab selector */}
-      <div className="flex gap-2 mb-6">
-        <button
-          onClick={() => setMetricsTab('performance')}
-          className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all ${
-            metricsTab === 'performance'
-              ? 'bg-lime-400/10 text-lime-400 border border-lime-400/20'
-              : 'border border-slate-700 text-slate-400 hover:text-slate-100 hover:border-slate-600'
-          }`}
-        >
-          📊 Performance
-        </button>
-        <button
-          onClick={() => setMetricsTab('leadership')}
-          className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all ${
-            metricsTab === 'leadership'
-              ? 'bg-lime-400/10 text-lime-400 border border-lime-400/20'
-              : 'border border-slate-700 text-slate-400 hover:text-slate-100 hover:border-slate-600'
-          }`}
-        >
-          👑 Leadership
-        </button>
+      {/* Metrics tab selector + Sort buttons */}
+      <div className="flex flex-col md:flex-row gap-3 mb-6">
+        <div className="flex gap-2">
+          <button
+            onClick={() => setMetricsTab('performance')}
+            className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all ${
+              metricsTab === 'performance'
+                ? 'bg-lime-400/10 text-lime-400 border border-lime-400/20'
+                : 'border border-slate-700 text-slate-400 hover:text-slate-100 hover:border-slate-600'
+            }`}
+          >
+            📊 Performance
+          </button>
+          <button
+            onClick={() => setMetricsTab('leadership')}
+            className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all ${
+              metricsTab === 'leadership'
+                ? 'bg-lime-400/10 text-lime-400 border border-lime-400/20'
+                : 'border border-slate-700 text-slate-400 hover:text-slate-100 hover:border-slate-600'
+            }`}
+          >
+            👑 Leadership
+          </button>
+        </div>
+        
+        {/* Sort buttons */}
+        <div className="flex gap-2 ml-auto">
+          <button
+            onClick={() => setSortOrder(sortOrder === 'high-to-low' ? null : 'high-to-low')}
+            className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all flex items-center gap-2 ${
+              sortOrder === 'high-to-low'
+                ? 'bg-blue-400/10 text-blue-400 border border-blue-400/20'
+                : 'border border-slate-700 text-slate-400 hover:text-slate-100 hover:border-slate-600'
+            }`}
+          >
+            ↓ Highest → Lowest
+          </button>
+          <button
+            onClick={() => setSortOrder(sortOrder === 'low-to-high' ? null : 'low-to-high')}
+            className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all flex items-center gap-2 ${
+              sortOrder === 'low-to-high'
+                ? 'bg-blue-400/10 text-blue-400 border border-blue-400/20'
+                : 'border border-slate-700 text-slate-400 hover:text-slate-100 hover:border-slate-600'
+            }`}
+          >
+            ↑ Lowest → Highest
+          </button>
+        </div>
       </div>
 
       <div className="grid md:grid-cols-[320px_1fr] gap-6">
@@ -2546,12 +2663,48 @@ function PerformanceSection() {
           <div className="space-y-1 max-h-[500px] overflow-y-auto">
             {members.length === 0 ? (
               <p className="text-xs text-slate-500 px-3 py-4">No members found</p>
-            ) : members.map(m => (
-              <button key={m.id} onClick={() => openMember(m)} className={`w-full text-left px-3 py-2.5 rounded-md text-sm transition ${selected?.type !== 'user' && subjects.some(s => s.id === m.id || subjects[0]?.id === m.id) ? 'bg-lime-400/10 text-lime-300' : 'hover:bg-slate-800 text-slate-300'}`}>
-                <div className="font-medium truncate">{m.full_name}</div>
-                <div className="text-[11px] text-slate-500 truncate">{m.email} · {m.role}</div>
-              </button>
-            ))}
+            ) : (
+              <>
+                {sortOrder && (
+                  <div className="sticky top-0 bg-slate-900 px-3 py-2 border-b border-slate-800 mb-1 z-10">
+                    <p className="text-[11px] text-slate-500 font-semibold">Sorted by combined score (Performance + Leadership)</p>
+                  </div>
+                )}
+                {members
+                  .map(m => ({ ...m, combinedScore: memberScores[m.id]?.combined || 0 }))
+                  .sort((a, b) => {
+                    if (!sortOrder) return 0;
+                    return sortOrder === 'high-to-low' ? b.combinedScore - a.combinedScore : a.combinedScore - b.combinedScore;
+                  })
+                  .map(m => (
+                    <button key={m.id} onClick={() => openMember(m)} className={`w-full text-left px-3 py-2.5 rounded-md text-sm transition ${selected?.type !== 'user' && subjects.some(s => s.id === m.id || subjects[0]?.id === m.id) ? 'bg-lime-400/10 text-lime-300' : 'hover:bg-slate-800 text-slate-300'}`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium truncate">{m.full_name}</div>
+                          <div className="text-[11px] text-slate-500 truncate">{m.email} · {m.role}</div>
+                        </div>
+                        {sortOrder && m.combinedScore > 0 && (
+                          <div className="text-right flex-shrink-0">
+                            <p className="text-xs font-bold text-lime-400">{m.combinedScore.toFixed(1)}</p>
+                            <p className="text-[10px] text-slate-600">/10</p>
+                          </div>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                {hasMore && (
+                  <div className="px-3 py-3 border-t border-slate-800 mt-2">
+                    <button
+                      onClick={loadMoreMembers}
+                      disabled={loadingMore}
+                      className="w-full px-3 py-2 text-xs font-semibold rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition disabled:opacity-50"
+                    >
+                      {loadingMore ? 'Loading...' : `Load More (showing ${members.length})`}
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
           </div>
         </Card>
 
