@@ -1213,6 +1213,20 @@ function MembersSection() {
     setSelected(m);
     const d = await fetch(`/api/admin/members/${m.id}/detail`, { credentials: 'include' }).then(r => r.json());
     setDetail(d);
+    
+    // Fetch member metrics (score, rank, attendance) for all children
+    if (d.children?.length > 0) {
+      const metricsPromises = d.children.map(child =>
+        fetch(`/api/admin/members/${m.id}/metrics?child_id=${child.id}`, { credentials: 'include' }).then(r => r.json()).catch(() => ({}))
+      );
+      const metricsData = await Promise.all(metricsPromises);
+      // Store metrics indexed by child_id
+      const metricsMap = {};
+      d.children.forEach((child, idx) => {
+        metricsMap[child.id] = metricsData[idx] || {};
+      });
+      setDetail(prev => ({ ...prev, childMetrics: metricsMap }));
+    }
   };
 
   const refreshDetail = async (uid) => {
@@ -1613,12 +1627,49 @@ function MembersSection() {
               {detail.children?.length > 0 && (
                 <div>
                   <h4 className="font-semibold mb-2 text-sm text-slate-200">Athlete Profiles</h4>
-                  <div className="space-y-2">{detail.children.map(k => (
-                    <div key={k.id} className="p-3 rounded-lg bg-slate-950 border border-slate-800">
-                      <div className="text-sm font-medium text-slate-100">{k.athlete_name || k.child_name}</div>
-                      <div className="text-xs text-slate-500">DOB {new Date(k.dob).toLocaleDateString('en-IN')} · Sports: {(k.selected_sports || []).map(sid => SPORTS.find(s => s.id === sid)?.name).join(', ')}</div>
-                    </div>
-                  ))}</div>
+                  <div className="space-y-2">{detail.children.map(k => {
+                    const metrics = detail.childMetrics?.[k.id] || {};
+                    return (
+                      <div key={k.id} className="p-3 rounded-lg bg-slate-950 border border-slate-800">
+                        <div className="flex items-start justify-between gap-3 mb-2">
+                          <div>
+                            <div className="text-sm font-medium text-slate-100">{k.athlete_name || k.child_name}</div>
+                            <div className="text-xs text-slate-500">DOB {new Date(k.dob).toLocaleDateString('en-IN')} · Sports: {(k.selected_sports || []).map(sid => SPORTS.find(s => s.id === sid)?.name).join(', ')}</div>
+                          </div>
+                          {k.athlete_tag && (
+                            <span className={`px-2 py-1 rounded text-[10px] font-bold whitespace-nowrap ${
+                              k.athlete_tag === 'sub_junior' ? 'bg-blue-500/20 text-blue-300' :
+                              k.athlete_tag === 'junior' ? 'bg-purple-500/20 text-purple-300' :
+                              'bg-amber-500/20 text-amber-300'
+                            }`}>
+                              {k.athlete_tag === 'sub_junior' ? 'Sub Junior' : k.athlete_tag === 'junior' ? 'Junior' : 'Senior'}
+                            </span>
+                          )}
+                        </div>
+                        
+                        {/* Metrics Row */}
+                        {metrics && Object.keys(metrics).length > 0 && (
+                          <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-slate-800">
+                            <div className="text-center">
+                              <div className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold mb-1">Overall Score</div>
+                              <div className="text-lg font-bold text-lime-400">{metrics.overall_score ? metrics.overall_score.toFixed(1) : '—'}</div>
+                              <div className="text-[10px] text-slate-500 mt-0.5">Performance + Leadership</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold mb-1">Rank</div>
+                              <div className="text-lg font-bold text-blue-400">{metrics.rank || '—'}</div>
+                              <div className="text-[10px] text-slate-500 mt-0.5">of {metrics.total_athletes || '—'}</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-[10px] uppercase tracking-widest text-slate-500 font-semibold mb-1">Attendance</div>
+                              <div className="text-lg font-bold text-amber-400">{metrics.attendance_rate !== undefined ? Math.round(metrics.attendance_rate) + '%' : '—'}</div>
+                              <div className="text-[10px] text-slate-500 mt-0.5">{metrics.classes_attended || 0} / {metrics.total_classes || 0}</div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}</div>
                 </div>
               )}
             </div>

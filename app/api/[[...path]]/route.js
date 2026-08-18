@@ -2578,7 +2578,166 @@ async function handleRoute(request, { params }) {
         return j({ user: publicUser(u), children: children.map(clean), memberships: memberships.map(clean), payments: payments.map(clean), bookings: bookings.map(clean) });
       }
 
-      // -------- Attendance / Roster --------
+      // -------- Member Metrics (score, rank, attendance) --------
+      const memberMetricsMatch = route.match(/^\/admin\/members\/([^/]+)\/metrics$/);
+      if (memberMetricsMatch && method === 'GET') {
+        const userId = memberMetricsMatch[1];
+        const url = new URL(request.url);
+        const childId = url.searchParams.get('child_id');
+
+        if (!childId) return j({});
+
+        // Get the child profile to find their sports
+        const child = await db.collection('child_profiles').findOne({ id: childId });
+        if (!child) return j({});
+
+        const sports = child?.selected_sports || [];
+
+        // Always rank against 'basketball' (matches leaderboard dashboard default)
+        // Fall back to child's first sport if somehow not basketball
+        const sportId = 'basketball';
+
+        // 1. Fetch all users (members only, not admins)
+        const allUsers = await db.collection('users').find({ role: { $in: ['member', 'coach'] } }).toArray();
+        const allUserIds = allUsers.map(u => u.id);
+
+        // 2. Fetch all child profiles for these users
+        const allChildren = allUserIds.length ? await db.collection('child_profiles').find({ parent_id: { $in: allUserIds } }).toArray() : [];
+
+        // 3. Build subject list (same as leaderboard): for each user, use child profiles if they exist, else the user themselves
+        const subjects = [];
+        for (const u of allUsers) {
+          const kids = allChildren.filter(c => c.parent_id === u.id);
+          if (kids.length > 0) {
+            kids.forEach(k => subjects.push({ athlete_id: k.id, parent_id: u.id, name: k.athlete_name || k.child_name || u.full_name, parent_name: u.full_name, athlete_tag: k.athlete_tag || null }));
+          } else {
+            subjects.push({ athlete_id: u.id, parent_id: u.id, name: u.full_name, parent_name: u.full_name, athlete_tag: u.athlete_tag || null });
+          }
+        }
+
+        const athleteIds = subjects.map(s => s.athlete_id);
+
+        // 4. Fetch all performance scores for this sport
+        const parentIds = [...new Set(subjects.map(s => s.parent_id))];
+        const allPerfScores = parentIds.length ? await db.collection('athlete_metrics').find({ user_id: { $in: parentIds }, sport_id: sportId }).toArray() : [];
+
+        // 5. Fetch all leadership metrics for this sport
+        const allLeadership = athleteIds.length ? await db.collection('leadership_metrics').find({ user_id: { $in: athleteIds }, sport_id: sportId }).toArray() : [];
+
+        // 6. Compute combined scores for each subject (same as leaderboard)
+        const rows = subjects.map(s => {
+          // Performance average — match by user_id=parent_id, and child_profile_id if applicable
+          const perfRecords = allPerfScores.filter(p => {
+            if (p.user_id !== s.parent_id) return false;
+            if (s.athlete_id !== s.parent_id) {
+              return p.child_profile_id === s.athlete_id;
+            } else {
+              return !p.child_profile_id;
+            }
+          });
+          let perfAvg = 0;
+          if (perfRecords.length > 0) {
+            const latestByKey = {};
+            perfRecords.forEach(p => {
+              if (p.scores) Object.entries(p.scores).forEach(([k, v]) => { if (v > 0) latestByKey[k] = v; });
+            });
+            const vals = Object.values(latestByKey).filter(v => v > 0);
+            if (vals.length > 0) perfAvg = vals.reduce((a, b) => a + b, 0) / vals.length;
+          }
+
+          // Leadership average
+          const leadRecords = allLeadership.filter(l => l.user_id === s.athlete_id);
+          let leadAvg = 0;
+          if (leadRecords.length > 0) {
+            const grouped = {};
+            leadRecords.forEach(l => {
+              if (!grouped[l.metric_id]) grouped[l.metric_id] = [];
+              grouped[l.metric_id].push(l.score);
+            });
+            const metricAvgs = Object.values(grouped).map(scores => scores.reduce((a, b) => a + b, 0) / scores.length);
+            if (metricAvgs.length > 0) leadAvg = metricAvgs.reduce((a, b) => a + b, 0) / metricAvgs.length;
+          }
+
+          const combined = perfAvg > 0 && leadAvg > 0
+            ? (perfAvg + leadAvg) / 2
+            : perfAvg > 0 ? perfAvg
+            : leadAvg > 0 ? leadAvg
+            : 0;
+
+          return {
+            athlete_id: s.athlete_id,
+            parent_id: s.parent_id,
+            combined: Math.round(combined * 10) / 10,
+          };
+        });
+
+        // 7. Sort by combined score desc, filter out zeros
+        const leaderboard = rows
+          .filter(r => r.combined > 0)
+          .sort((a, b) => b.combined - a.combined);
+
+        // Calculate rank for this child
+        let rank = null;
+        let totalAthletes = leaderboard.length;
+        if (leaderboard.length > 0) {
+          const rankIndex = leaderboard.findIndex(x => x.athlete_id === childId);
+          rank = rankIndex >= 0 ? rankIndex + 1 : null;
+        }
+
+        // Get this child's scores for overall_score calculation
+        const childPerfRecords = allPerfScores.filter(p => p.user_id === userId && p.child_profile_id === childId);
+        let perfScore = 0;
+        if (childPerfRecords.length > 0) {
+          const latestByKey = {};
+          childPerfRecords.forEach(p => {
+            if (p.scores) Object.entries(p.scores).forEach(([k, v]) => { if (v > 0) latestByKey[k] = v; });
+          });
+          const vals = Object.values(latestByKey).filter(v => v > 0);
+          if (vals.length > 0) perfScore = vals.reduce((a, b) => a + b, 0) / vals.length;
+        }
+
+        const childLeadRecords = allLeadership.filter(l => l.user_id === childId);
+        let leadScore = 0;
+        if (childLeadRecords.length > 0) {
+          const grouped = {};
+          childLeadRecords.forEach(l => {
+            if (!grouped[l.metric_id]) grouped[l.metric_id] = [];
+            grouped[l.metric_id].push(l.score);
+          });
+          const metricAvgs = Object.values(grouped).map(scores => scores.reduce((a, b) => a + b, 0) / scores.length);
+          if (metricAvgs.length > 0) leadScore = metricAvgs.reduce((a, b) => a + b, 0) / metricAvgs.length;
+        }
+
+        const overallScore = perfScore > 0 && leadScore > 0
+          ? (perfScore + leadScore) / 2
+          : perfScore > 0 ? perfScore
+          : leadScore > 0 ? leadScore
+          : 0;
+
+        // Fetch attendance stats
+        // Note: most bookings store child_profile_id as null, so query by user_id only
+        const childBookings = await db.collection('bookings').find({
+          user_id: userId,
+        }).toArray();
+
+        const bookingIds = childBookings.map(b => b.id);
+        const attendanceRecords = bookingIds.length
+          ? await db.collection('attendance').find({ booking_id: { $in: bookingIds } }).toArray()
+          : [];
+
+        const classesAttended = attendanceRecords.filter(a => a.present).length;
+        const totalClasses = attendanceRecords.length;
+        const attendanceRate = totalClasses > 0 ? (classesAttended / totalClasses) * 100 : 0;
+
+        return j({
+          overall_score: Math.round(overallScore * 10) / 10,
+          rank,
+          total_athletes: totalAthletes,
+          attendance_rate: Math.round(attendanceRate),
+          classes_attended: classesAttended,
+          total_classes: totalClasses,
+        });
+      }
       const rosterMatch = route.match(/^\/admin\/classes\/([^/]+)\/roster$/);
       if (rosterMatch && method === 'GET') {
         const cid = rosterMatch[1];
