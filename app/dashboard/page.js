@@ -13,8 +13,8 @@ import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { useAuth } from '@/app/providers';
 import { SPORTS, MEMBERSHIPS, LEADERSHIP_METRICS } from '@/lib/flowternity/config';
-import { Calendar, Clock, User, Pause, PlayCircle, RefreshCw, CreditCard, Trophy, Sparkles, X, TrendingUp } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { Calendar, Clock, User, Pause, PlayCircle, RefreshCw, CreditCard, Trophy, Sparkles, X, TrendingUp, CheckCircle2, XCircle } from 'lucide-react';
+import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -251,6 +251,9 @@ export default function DashboardPage() {
 
         {/* Leadership panel */}
         <LeadershipPanel user={user} />
+
+        {/* Attendance panel */}
+        <AttendancePanel />
       </div>
 
       <Dialog open={pauseOpen} onOpenChange={setPauseOpen}>
@@ -704,6 +707,130 @@ function LeadershipPanel({ user }) {
             </Card>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// ============================
+// Attendance Panel
+// ============================
+function AttendancePanel() {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch('/api/dashboard/attendance', { credentials: 'include' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setData(d); })
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return null;
+  if (!data || data.total === 0) return null;
+
+  const rateColor = data.rate >= 75 ? 'text-green-600' : data.rate >= 50 ? 'text-yellow-500' : 'text-red-500';
+  const rateBarColor = data.rate >= 75 ? 'bg-green-500' : data.rate >= 50 ? 'bg-yellow-400' : 'bg-red-400';
+
+  return (
+    <div className="mt-10">
+      <div className="flex items-center gap-2 mb-4">
+        <CheckCircle2 className="w-5 h-5 text-accent" />
+        <h3 className="font-display font-bold text-2xl">Attendance</h3>
+      </div>
+
+      {/* Stat cards */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+        <Card className="p-4 rounded-2xl text-center">
+          <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Rate</p>
+          <p className={`font-display font-black text-3xl ${rateColor}`}>{data.rate}%</p>
+          <div className="mt-2 h-1.5 bg-secondary rounded-full overflow-hidden">
+            <div className={`h-full rounded-full ${rateBarColor}`} style={{ width: `${data.rate}%` }} />
+          </div>
+        </Card>
+        <Card className="p-4 rounded-2xl text-center">
+          <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Total Classes</p>
+          <p className="font-display font-black text-3xl">{data.total}</p>
+        </Card>
+        <Card className="p-4 rounded-2xl text-center">
+          <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Present</p>
+          <p className="font-display font-black text-3xl text-green-600">{data.present}</p>
+        </Card>
+        <Card className="p-4 rounded-2xl text-center">
+          <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Absent</p>
+          <p className="font-display font-black text-3xl text-red-500">{data.absent}</p>
+        </Card>
+      </div>
+
+      <div className="grid md:grid-cols-2 gap-6">
+        {/* Monthly chart */}
+        {data.monthly && data.monthly.length > 0 && (
+          <Card className="p-6 rounded-2xl">
+            <h4 className="font-semibold mb-4">Monthly Attendance (Last 6 Months)</h4>
+            <ResponsiveContainer width="100%" height={220}>
+              <BarChart data={data.monthly} barCategoryGap="30%">
+                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
+                <XAxis dataKey="month" style={{ fontSize: '11px' }} />
+                <YAxis style={{ fontSize: '11px' }} />
+                <Tooltip
+                  formatter={(v, name) => [v, name === 'present' ? 'Present' : 'Absent']}
+                  contentStyle={{ borderRadius: '12px', border: '1px solid #e5e7eb' }}
+                />
+                <Bar dataKey="present" fill="#22c55e" radius={[6, 6, 0, 0]} name="present" />
+                <Bar dataKey="absent" fill="#f87171" radius={[6, 6, 0, 0]} name="absent" />
+              </BarChart>
+            </ResponsiveContainer>
+          </Card>
+        )}
+
+        {/* By sport + recent */}
+        <div className="space-y-4">
+          {/* By sport */}
+          {data.bySport && data.bySport.length > 0 && (
+            <Card className="p-5 rounded-2xl">
+              <h4 className="font-semibold mb-3">By Sport</h4>
+              <div className="space-y-3">
+                {data.bySport.map((s, i) => (
+                  <div key={i}>
+                    <div className="flex items-center justify-between text-sm mb-1">
+                      <span className="font-medium">{s.sport}</span>
+                      <span className={`font-bold ${s.rate >= 75 ? 'text-green-600' : s.rate >= 50 ? 'text-yellow-500' : 'text-red-500'}`}>{s.rate}%</span>
+                    </div>
+                    <div className="h-2 bg-secondary rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full ${s.rate >= 75 ? 'bg-green-500' : s.rate >= 50 ? 'bg-yellow-400' : 'bg-red-400'}`}
+                        style={{ width: `${s.rate}%` }}
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1">{s.present} present · {s.absent} absent</p>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {/* Recent attended */}
+          {data.recentAttended && data.recentAttended.length > 0 && (
+            <Card className="p-5 rounded-2xl">
+              <h4 className="font-semibold mb-3">Recent Classes Attended</h4>
+              <div className="space-y-2">
+                {data.recentAttended.map((c, i) => (
+                  <div key={i} className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center flex-shrink-0">
+                      <CheckCircle2 className="w-4 h-4 text-green-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium">{c.sport_name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(c.date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })} · {c.start_time}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+        </div>
       </div>
     </div>
   );

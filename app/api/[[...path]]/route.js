@@ -1051,6 +1051,81 @@ async function handleRoute(request, { params }) {
       });
     }
 
+    // -------- DASHBOARD ATTENDANCE --------
+    if (route === '/dashboard/attendance' && method === 'GET') {
+      const auth = await requireUser(); if (auth.error) return auth.error;
+
+      // Fetch all bookings for this user
+      const allBookings = await db.collection('bookings').find({ user_id: auth.user.id, status: 'booked' }).toArray();
+      const bookingIds = allBookings.map(b => b.id);
+      const classIds = [...new Set(allBookings.map(b => b.class_id))];
+
+      // Fetch all attendance records for these bookings
+      const attRecords = bookingIds.length ? await db.collection('attendance').find({ booking_id: { $in: bookingIds } }).toArray() : [];
+
+      // Fetch class info
+      const classes = classIds.length ? await db.collection('classes').find({ id: { $in: classIds } }).toArray() : [];
+
+      // Build stats
+      const total = attRecords.length;
+      const present = attRecords.filter(a => a.present).length;
+      const absent = total - present;
+      const rate = total > 0 ? Math.round((present / total) * 100) : 0;
+
+      // Monthly breakdown (last 6 months)
+      const sixMonthsAgo = new Date();
+      sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+      const monthly = {};
+      attRecords.forEach(a => {
+        const cls = classes.find(c => c.id === allBookings.find(b => b.id === a.booking_id)?.class_id);
+        if (!cls) return;
+        const date = new Date(cls.date);
+        if (date < sixMonthsAgo) return;
+        const key = date.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
+        if (!monthly[key]) monthly[key] = { present: 0, absent: 0 };
+        if (a.present) monthly[key].present++;
+        else monthly[key].absent++;
+      });
+      const monthlyChart = Object.entries(monthly).map(([month, d]) => ({
+        month,
+        present: d.present,
+        absent: d.absent,
+        rate: (d.present + d.absent) > 0 ? Math.round((d.present / (d.present + d.absent)) * 100) : 0,
+      }));
+
+      // By sport
+      const bySport = {};
+      attRecords.forEach(a => {
+        const booking = allBookings.find(b => b.id === a.booking_id);
+        const cls = classes.find(c => c.id === booking?.class_id);
+        const sport = SPORTS.find(s => s.id === cls?.sport_id);
+        const name = sport?.name || 'Other';
+        if (!bySport[name]) bySport[name] = { present: 0, absent: 0 };
+        if (a.present) bySport[name].present++;
+        else bySport[name].absent++;
+      });
+      const bySportList = Object.entries(bySport).map(([sport, d]) => ({
+        sport,
+        present: d.present,
+        absent: d.absent,
+        rate: (d.present + d.absent) > 0 ? Math.round((d.present / (d.present + d.absent)) * 100) : 0,
+      }));
+
+      // Recent 5 attended classes
+      const recentAttended = attRecords
+        .filter(a => a.present)
+        .sort((a, b) => new Date(b.marked_at || b.created_at) - new Date(a.marked_at || a.created_at))
+        .slice(0, 5)
+        .map(a => {
+          const booking = allBookings.find(b => b.id === a.booking_id);
+          const cls = classes.find(c => c.id === booking?.class_id);
+          const sport = SPORTS.find(s => s.id === cls?.sport_id);
+          return cls ? { date: cls.date, start_time: cls.start_time, sport_name: sport?.name || cls.sport_id } : null;
+        }).filter(Boolean);
+
+      return j({ total, present, absent, rate, monthly: monthlyChart, bySport: bySportList, recentAttended });
+    }
+
     // -------- CLASSES --------
     if (route === '/classes' && method === 'GET') {
       const auth = await requireUser(); if (auth.error) return auth.error;
@@ -1942,6 +2017,25 @@ async function handleRoute(request, { params }) {
         return j({ ok: true, sport_id, level: lvl, level_info: levelInfo(lvl) });
       }
 
+      // PATCH /admin/athletes/:target_id/tag — set Junior / Sub Junior / Senior tag
+      const tagMatch = route.match(/^\/admin\/athletes\/([^/]+)\/tag$/);
+      if (tagMatch && method === 'PATCH') {
+        const targetId = tagMatch[1];
+        const { tag } = await request.json();
+        const VALID_TAGS = ['sub_junior', 'junior', 'senior'];
+        if (tag !== null && !VALID_TAGS.includes(tag)) return err('Invalid tag. Must be sub_junior, junior, or senior (or null to clear)', 400);
+        // Try child profile first, then user
+        const child = await db.collection('child_profiles').findOne({ id: targetId });
+        if (child) {
+          await db.collection('child_profiles').updateOne({ id: targetId }, { $set: { athlete_tag: tag || null, tag_updated_at: new Date(), tag_updated_by: auth.user.id } });
+        } else {
+          const u = await db.collection('users').findOne({ id: targetId });
+          if (!u) return err('Athlete not found', 404);
+          await db.collection('users').updateOne({ id: targetId }, { $set: { athlete_tag: tag || null, tag_updated_at: new Date(), tag_updated_by: auth.user.id } });
+        }
+        return j({ ok: true, tag });
+      }
+
       // GET /admin/athletes/:target_id/performance - admin view of any athlete
       const adminPerfMatch = route.match(/^\/admin\/athletes\/([^/]+)\/performance$/);
       if (adminPerfMatch && method === 'GET') {
@@ -2530,17 +2624,155 @@ async function handleRoute(request, { params }) {
         return j({ ok: true, count: records.length });
       }
 
+      if (route === '/admin/attendance/stats' && method === 'GET') {
+        // Get all attendance records with booking and class info
+        const attendanceRecords = await db.collection('attendance').find({}).toArray();
+        const bookingIds = [...new Set(attendanceRecords.map(a => a.booking_id))];
+        const bookings = bookingIds.length ? await db.collection('bookings').find({ id: { $in: bookingIds } }).toArray() : [];
+        const classIds = [...new Set(bookings.map(b => b.class_id))];
+        const classes = classIds.length ? await db.collection('classes').find({ id: { $in: classIds } }).toArray() : [];
+        const userIds = [...new Set(bookings.map(b => b.user_id))];
+        const users = userIds.length ? await db.collection('users').find({ id: { $in: userIds } }).toArray() : [];
+
+        // Overall stats
+        const totalRecords = attendanceRecords.length;
+        const presentCount = attendanceRecords.filter(a => a.present).length;
+        const absentCount = totalRecords - presentCount;
+        const overallRate = totalRecords > 0 ? Math.round((presentCount / totalRecords) * 100) : 0;
+
+        // By sport
+        const bySport = {};
+        attendanceRecords.forEach(a => {
+          const booking = bookings.find(b => b.id === a.booking_id);
+          const cls = classes.find(c => c.id === booking?.class_id);
+          const sport = SPORTS.find(s => s.id === cls?.sport_id);
+          const sportName = sport?.name || 'Unknown';
+          
+          if (!bySport[sportName]) bySport[sportName] = { present: 0, absent: 0, rate: 0 };
+          if (a.present) bySport[sportName].present++;
+          else bySport[sportName].absent++;
+        });
+        
+        Object.keys(bySport).forEach(sport => {
+          const total = bySport[sport].present + bySport[sport].absent;
+          bySport[sport].rate = total > 0 ? Math.round((bySport[sport].present / total) * 100) : 0;
+        });
+
+        // Trends (last 30 days by week)
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+        const trends = {};
+        attendanceRecords.forEach(a => {
+          const markedAt = new Date(a.marked_at || a.created_at);
+          if (markedAt < thirtyDaysAgo) return;
+          
+          const weekStart = new Date(markedAt);
+          weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+          const weekKey = weekStart.toISOString().split('T')[0];
+          
+          if (!trends[weekKey]) trends[weekKey] = { present: 0, total: 0 };
+          trends[weekKey].total++;
+          if (a.present) trends[weekKey].present++;
+        });
+
+        const trendData = Object.entries(trends)
+          .sort(([a], [b]) => a.localeCompare(b))
+          .map(([week, data]) => ({
+            week: new Date(week).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }),
+            rate: data.total > 0 ? Math.round((data.present / data.total) * 100) : 0,
+            present: data.present,
+            total: data.total,
+          }));
+
+        // Top performers (students with 100% attendance in last 30 days)
+        const studentAttendance = {};
+        attendanceRecords.forEach(a => {
+          const markedAt = new Date(a.marked_at || a.created_at);
+          if (markedAt < thirtyDaysAgo) return;
+          
+          const booking = bookings.find(b => b.id === a.booking_id);
+          const user = users.find(u => u.id === booking?.user_id);
+          const userName = user?.full_name || 'Unknown';
+          
+          if (!studentAttendance[userName]) studentAttendance[userName] = { present: 0, total: 0 };
+          studentAttendance[userName].total++;
+          if (a.present) studentAttendance[userName].present++;
+        });
+
+        const topPerformers = Object.entries(studentAttendance)
+          .map(([name, data]) => ({
+            name,
+            rate: data.total > 0 ? Math.round((data.present / data.total) * 100) : 0,
+            total: data.total,
+          }))
+          .filter(s => s.rate === 100)
+          .sort((a, b) => b.total - a.total)
+          .slice(0, 10);
+
+        // At-risk students (under 50% attendance in last 30 days, at least 3 classes)
+        const atRisk = Object.entries(studentAttendance)
+          .map(([name, data]) => ({
+            name,
+            rate: data.total > 0 ? Math.round((data.present / data.total) * 100) : 0,
+            total: data.total,
+          }))
+          .filter(s => s.rate < 50 && s.total >= 3)
+          .sort((a, b) => a.rate - b.rate)
+          .slice(0, 10);
+
+        // Class-wise stats (last 10 classes)
+        const classStats = {};
+        attendanceRecords.forEach(a => {
+          const booking = bookings.find(b => b.id === a.booking_id);
+          const cls = classes.find(c => c.id === booking?.class_id);
+          if (!cls) return;
+          
+          const key = `${cls.sport_id}_${cls.date}_${cls.start_time}`;
+          if (!classStats[key]) classStats[key] = { sport: SPORTS.find(s => s.id === cls.sport_id)?.name || 'Unknown', date: cls.date, time: cls.start_time, present: 0, total: 0 };
+          classStats[key].total++;
+          if (a.present) classStats[key].present++;
+        });
+
+        const classWiseStats = Object.values(classStats)
+          .map(c => ({ ...c, rate: c.total > 0 ? Math.round((c.present / c.total) * 100) : 0 }))
+          .sort((a, b) => new Date(`${b.date}T${b.time}`) - new Date(`${a.date}T${a.time}`))
+          .slice(0, 10);
+
+        return j({
+          overall: { total: totalRecords, present: presentCount, absent: absentCount, rate: overallRate },
+          bySport: Object.entries(bySport).map(([sport, data]) => ({ sport, ...data })),
+          trends: trendData,
+          topPerformers,
+          atRisk,
+          classWiseStats,
+        });
+      }
+
       // -------- Payments (admin) --------
       if (route === '/admin/payments' && method === 'GET') {
         const url = new URL(request.url);
         const page = Math.max(1, parseInt(url.searchParams.get('page') || '1'));
         const limit = Math.min(200, Math.max(1, parseInt(url.searchParams.get('limit') || '50')));
         const skip = (page - 1) * limit;
-        const total = await db.collection('payments').countDocuments({});
-        const payments = await db.collection('payments').find({}).sort({ created_at: -1 }).skip(skip).limit(limit).toArray();
+        const dateFrom = url.searchParams.get('from'); // YYYY-MM-DD
+        const dateTo = url.searchParams.get('to'); // YYYY-MM-DD
+
+        // Build date range filter
+        const dateFilter = {};
+        if (dateFrom) {
+          const from = new Date(dateFrom + 'T00:00:00Z');
+          dateFilter.$gte = from;
+        }
+        if (dateTo) {
+          const to = new Date(dateTo + 'T23:59:59Z');
+          dateFilter.$lte = to;
+        }
+
+        const query = dateFilter && Object.keys(dateFilter).length > 0 ? { created_at: dateFilter } : {};
+        const total = await db.collection('payments').countDocuments(query);
+        const payments = await db.collection('payments').find(query).sort({ created_at: -1 }).skip(skip).limit(limit).toArray();
         
-        // Calculate total amount from successful payments across ALL records
-        const successfulPayments = await db.collection('payments').find({ status: 'success' }).toArray();
+        // Calculate total amount from successful payments in the filtered range
+        const successfulPayments = await db.collection('payments').find({ ...query, status: 'success' }).toArray();
         const total_success_amount = successfulPayments.reduce((sum, p) => sum + (p.amount || 0), 0);
         
         const uids = [...new Set(payments.map(p => p.user_id))];
@@ -2868,6 +3100,113 @@ async function handleRoute(request, { params }) {
         return { ...clean(m), user_name: user?.full_name || 'Unknown' };
       });
       return j({ metrics: enriched });
+    }
+
+    // -------- ADMIN COMBINED LEADERBOARD (performance + leadership) --------
+    if (route === '/admin/leaderboard' && method === 'GET') {
+      const url = new URL(request.url);
+      const sport_id = url.searchParams.get('sport_id') || 'basketball';
+      const tag = url.searchParams.get('tag') || null; // 'sub_junior', 'junior', 'senior', or null
+      const limit = Math.min(200, parseInt(url.searchParams.get('limit') || '100'));
+      const skip = Math.max(0, parseInt(url.searchParams.get('skip') || '0'));
+
+      // 1. Fetch all users (members only, not admins)
+      const allUsers = await db.collection('users').find({ role: { $in: ['member', 'coach'] } }).toArray();
+      const allUserIds = allUsers.map(u => u.id);
+
+      // 2. Fetch all child profiles for these users
+      const allChildren = allUserIds.length ? await db.collection('child_profiles').find({ parent_id: { $in: allUserIds } }).toArray() : [];
+
+      // 3. Build subject list: for each user, use child profiles if they exist, else the user themselves
+      const subjects = [];
+      for (const u of allUsers) {
+        const kids = allChildren.filter(c => c.parent_id === u.id);
+        if (kids.length > 0) {
+          kids.forEach(k => subjects.push({ athlete_id: k.id, parent_id: u.id, name: k.athlete_name || k.child_name || u.full_name, parent_name: u.full_name, athlete_tag: k.athlete_tag || null }));
+        } else {
+          subjects.push({ athlete_id: u.id, parent_id: u.id, name: u.full_name, parent_name: u.full_name, athlete_tag: u.athlete_tag || null });
+        }
+      }
+
+      // 4. Filter by tag if provided
+      let filteredSubjects = subjects;
+      if (tag) {
+        filteredSubjects = subjects.filter(s => s.athlete_tag === tag);
+      }
+
+      const athleteIds = filteredSubjects.map(s => s.athlete_id);
+
+      // 5. Fetch all performance scores for all athletes (collection is athlete_metrics)
+      // athlete_metrics stores by parent user_id + optional child_profile_id
+      // collect all parent_ids that relate to our filtered subjects
+      const parentIds = [...new Set(filteredSubjects.map(s => s.parent_id))];
+      const allPerfScores = parentIds.length ? await db.collection('athlete_metrics').find({ user_id: { $in: parentIds }, sport_id }).toArray() : [];
+
+      // 6. Fetch all leadership metrics for all athletes
+      const allLeadership = athleteIds.length ? await db.collection('leadership_metrics').find({ user_id: { $in: athleteIds }, sport_id }).toArray() : [];
+
+      // 7. Compute combined scores for each subject
+      const rows = filteredSubjects.map(s => {
+        // Performance average — match by user_id=parent_id, and child_profile_id if applicable
+        const perfRecords = allPerfScores.filter(p => {
+          if (p.user_id !== s.parent_id) return false;
+          // For child subjects, match child_profile_id; for user subjects, match null/missing
+          if (s.athlete_id !== s.parent_id) {
+            return p.child_profile_id === s.athlete_id;
+          } else {
+            return !p.child_profile_id;
+          }
+        });
+        let perfAvg = 0;
+        if (perfRecords.length > 0) {
+          // Merge all score docs (take latest value per key by iterating all docs)
+          const latestByKey = {};
+          perfRecords.forEach(p => {
+            if (p.scores) Object.entries(p.scores).forEach(([k, v]) => { if (v > 0) latestByKey[k] = v; });
+          });
+          const vals = Object.values(latestByKey).filter(v => v > 0);
+          if (vals.length > 0) perfAvg = vals.reduce((a, b) => a + b, 0) / vals.length;
+        }
+
+        // Leadership average
+        const leadRecords = allLeadership.filter(l => l.user_id === s.athlete_id);
+        let leadAvg = 0;
+        if (leadRecords.length > 0) {
+          const grouped = {};
+          leadRecords.forEach(l => {
+            if (!grouped[l.metric_id]) grouped[l.metric_id] = [];
+            grouped[l.metric_id].push(l.score);
+          });
+          const metricAvgs = Object.values(grouped).map(scores => scores.reduce((a, b) => a + b, 0) / scores.length);
+          if (metricAvgs.length > 0) leadAvg = metricAvgs.reduce((a, b) => a + b, 0) / metricAvgs.length;
+        }
+
+        const combined = perfAvg > 0 && leadAvg > 0
+          ? (perfAvg + leadAvg) / 2
+          : perfAvg > 0 ? perfAvg
+          : leadAvg > 0 ? leadAvg
+          : 0;
+
+        return {
+          athlete_id: s.athlete_id,
+          parent_id: s.parent_id,
+          name: s.name,
+          parent_name: s.parent_name,
+          performance: Math.round(perfAvg * 10) / 10,
+          leadership: Math.round(leadAvg * 10) / 10,
+          combined: Math.round(combined * 10) / 10,
+          has_performance: perfAvg > 0,
+          has_leadership: leadAvg > 0,
+        };
+      });
+
+      // 8. Sort by combined score desc, filter out zeros, apply skip+limit
+      const leaderboard = rows
+        .filter(r => r.combined > 0)
+        .sort((a, b) => b.combined - a.combined)
+        .slice(skip, skip + limit);
+
+      return j({ leaderboard, sport_id, tag, total: leaderboard.length, skip, limit });
     }
 
     return err(`Route ${route} not found`, 404);

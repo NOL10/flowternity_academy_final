@@ -1772,8 +1772,20 @@ function AttendanceSection() {
   const [selectedClass, setSelectedClass] = useState('');
   const [roster, setRoster] = useState([]);
   const [dirty, setDirty] = useState({});
+  const [stats, setStats] = useState(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [showStats, setShowStats] = useState(false);
 
-  useEffect(() => { fetch('/api/admin/classes', { credentials: 'include' }).then(r => r.json()).then(d => setClasses(d.classes || [])); }, []);
+  useEffect(() => {
+    fetch('/api/admin/classes', { credentials: 'include' }).then(r => r.json()).then(d => setClasses(d.classes || []));
+    // Load stats
+    setStatsLoading(true);
+    fetch('/api/admin/attendance/stats', { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => setStats(d))
+      .catch(() => setStats(null))
+      .finally(() => setStatsLoading(false));
+  }, []);
 
   useEffect(() => {
     if (!selectedClass) return;
@@ -1792,53 +1804,190 @@ function AttendanceSection() {
 
   return (
     <>
-      <SectionHeader title="Attendance" description="Mark attendance for a scheduled class." />
-      <div className="max-w-md mb-6">
-        <Label className="text-slate-300 text-xs uppercase tracking-widest mb-1 block">Select class</Label>
-        <Select value={selectedClass} onValueChange={setSelectedClass}>
-          <SelectTrigger className="h-11"><SelectValue placeholder="Pick a class to mark attendance" /></SelectTrigger>
-          <SelectContent>
-            {classes.map(c => {
-              const sport = SPORTS.find(s => s.id === c.sport_id);
-              return <SelectItem key={c.id} value={c.id}>{sport?.name} · {c.date} · {c.start_time}–{c.end_time}</SelectItem>;
-            })}
-          </SelectContent>
-        </Select>
-      </div>
+      <SectionHeader title="Attendance" description="Mark attendance and view insights." />
+      
+      {/* Stats Toggle Button */}
+      <Button 
+        onClick={() => setShowStats(!showStats)} 
+        className="mb-6 bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700"
+        variant="outline"
+      >
+        <BarChart2 className="w-4 h-4 mr-2" />
+        {showStats ? 'Hide Statistics' : 'View Statistics'}
+      </Button>
 
-      {selectedClass && (
+      {/* Stats Dashboard - Collapsible */}
+      {showStats && !statsLoading && stats && (
         <>
-          <div className="flex flex-wrap gap-2 mb-4 items-center">
-            <Button size="sm" variant="outline" onClick={() => markAll(true)} className="border-slate-700 bg-transparent hover:bg-slate-800 text-slate-100"><CheckCircle2 className="w-4 h-4 mr-1 text-lime-400" /> All present</Button>
-            <Button size="sm" variant="outline" onClick={() => markAll(false)} className="border-slate-700 bg-transparent hover:bg-slate-800 text-slate-100"><XCircle className="w-4 h-4 mr-1" /> All absent</Button>
-            <div className="flex-1" />
-            <Button onClick={save} disabled={Object.keys(dirty).length === 0} className="bg-lime-400 text-slate-900 hover:bg-lime-300 font-semibold disabled:opacity-40"><Save className="w-4 h-4 mr-1.5" />Save attendance</Button>
+          {/* Overall Stats */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <StatCard icon={CheckCircle2} label="Overall Rate" value={`${stats.overall.rate}%`} tone="accent" />
+            <StatCard icon={Users} label="Total Marked" value={stats.overall.total} />
+            <StatCard icon={CheckCircle2} label="Present" value={stats.overall.present} />
+            <StatCard icon={XCircle} label="Absent" value={stats.overall.absent} />
           </div>
 
-          {roster.length === 0 ? (
-            <EmptyState icon={ClipboardList} title="No bookings for this class" />
-          ) : (
-            <Card className="rounded-lg bg-slate-900 border-slate-800 overflow-hidden">
-              {roster.map(r => {
-                const cur = dirty[r.booking_id] !== undefined ? dirty[r.booking_id] : r.present;
-                return (
-                  <div key={r.booking_id} className="flex items-center gap-3 px-4 py-3 border-b border-slate-800 last:border-0">
-                    <div className="w-9 h-9 rounded-full bg-slate-800 flex items-center justify-center font-bold text-sm">{r.name[0]?.toUpperCase()}</div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium text-slate-100 truncate">{r.name}</div>
-                      <div className="text-xs text-slate-500 truncate">{r.subtitle}</div>
+          {/* By Sport */}
+          {stats.bySport && stats.bySport.length > 0 && (
+            <Card className="p-6 rounded-lg bg-slate-900 border-slate-800 mb-8">
+              <h3 className="font-display font-bold text-lg mb-4">Attendance by Sport</h3>
+              <div className="grid lg:grid-cols-2 gap-6">
+                <div>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={stats.bySport}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                      <XAxis dataKey="sport" stroke="#9CA3AF" style={{ fontSize: '11px' }} angle={-45} textAnchor="end" height={80} />
+                      <YAxis stroke="#9CA3AF" style={{ fontSize: '12px' }} domain={[0, 100]} />
+                      <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #4B5563' }} />
+                      <Bar dataKey="rate" fill="#60A5FA" radius={[8, 8, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="space-y-2">
+                  {stats.bySport.map((s, i) => (
+                    <div key={i} className="p-4 rounded-lg bg-slate-800/50 border border-slate-700">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="font-medium text-slate-100">{s.sport}</div>
+                        <div className="font-bold text-2xl text-slate-100">{s.rate}%</div>
+                      </div>
+                      <div className="w-full bg-slate-700 rounded-full h-2">
+                        <div className="bg-blue-500 h-2 rounded-full" style={{ width: `${s.rate}%` }} />
+                      </div>
+                      <div className="text-xs text-slate-500 mt-2">{s.present} present, {s.absent} absent</div>
                     </div>
-                    <div className="flex gap-1">
-                      <Button size="sm" onClick={() => toggle(r.booking_id, true)} className={cur === true ? 'bg-lime-400 text-slate-900 hover:bg-lime-300' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}><CheckCircle2 className="w-4 h-4 mr-1" /> Present</Button>
-                      <Button size="sm" onClick={() => toggle(r.booking_id, false)} className={cur === false ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}><XCircle className="w-4 h-4 mr-1" /> Absent</Button>
-                    </div>
-                  </div>
-                );
-              })}
+                  ))}
+                </div>
+              </div>
             </Card>
           )}
+
+          {/* Trends Chart */}
+          {stats.trends && stats.trends.length > 0 && (
+            <Card className="p-6 rounded-lg bg-slate-900 border-slate-800 mb-8">
+              <h3 className="font-display font-bold text-lg mb-4">Attendance Trend (Last 30 Days)</h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={stats.trends}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" />
+                  <XAxis dataKey="week" stroke="#9CA3AF" style={{ fontSize: '12px' }} />
+                  <YAxis stroke="#9CA3AF" style={{ fontSize: '12px' }} domain={[0, 100]} />
+                  <Tooltip contentStyle={{ backgroundColor: '#1F2937', border: '1px solid #4B5563' }} />
+                  <Line type="monotone" dataKey="rate" stroke="#60A5FA" strokeWidth={2} dot={{ fill: '#60A5FA', r: 4 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            </Card>
+          )}
+
+          {/* Top Performers */}
+          {stats.topPerformers && stats.topPerformers.length > 0 && (
+            <Card className="p-6 rounded-lg bg-slate-900 border-slate-800 mb-8">
+              <h3 className="font-display font-bold text-lg mb-4">🔥 Perfect Attendance (Last 30 Days)</h3>
+              <div className="space-y-2">
+                {stats.topPerformers.map((s, i) => (
+                  <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50 border border-lime-500/30">
+                    <div className="flex-1">
+                      <div className="font-medium text-slate-100">{s.name}</div>
+                      <div className="text-xs text-slate-500">{s.total} classes attended</div>
+                    </div>
+                    <Badge className="bg-lime-500/20 text-lime-400 border-lime-500/50">100%</Badge>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {/* At-Risk Students */}
+          {stats.atRisk && stats.atRisk.length > 0 && (
+            <Card className="p-6 rounded-lg bg-slate-900 border-slate-800 mb-8">
+              <h3 className="font-display font-bold text-lg mb-4">⚠️ At-Risk (Under 50% Attendance)</h3>
+              <div className="space-y-2">
+                {stats.atRisk.map((s, i) => (
+                  <div key={i} className="flex items-center justify-between p-3 rounded-lg bg-slate-800/50 border border-red-500/30">
+                    <div className="flex-1">
+                      <div className="font-medium text-slate-100">{s.name}</div>
+                      <div className="text-xs text-slate-500">{s.total} classes attended</div>
+                    </div>
+                    <Badge className="bg-red-500/20 text-red-400 border-red-500/50">{s.rate}%</Badge>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          {/* Class-wise Stats */}
+          {stats.classWiseStats && stats.classWiseStats.length > 0 && (
+            <Card className="p-6 rounded-lg bg-slate-900 border-slate-800 mb-8">
+              <h3 className="font-display font-bold text-lg mb-4">Last 10 Classes</h3>
+              <div className="space-y-1">
+                {stats.classWiseStats.map((c, i) => (
+                  <div key={i} className="flex items-center justify-between p-3 hover:bg-slate-800/40 rounded">
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-slate-100">{c.sport}</div>
+                      <div className="text-xs text-slate-500">{c.date} at {c.time}</div>
+                    </div>
+                    <div className="text-right ml-4">
+                      <div className="font-semibold text-slate-100">{c.rate}%</div>
+                      <div className="text-xs text-slate-500">{c.present}/{c.total}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          <div className="border-t border-slate-800 pt-8 mt-8" />
         </>
       )}
+
+      {/* Mark Attendance Section */}
+      <div>
+        <h3 className="font-display font-bold text-lg mb-4">Mark Attendance</h3>
+        <div className="max-w-md mb-6">
+          <Label className="text-slate-300 text-xs uppercase tracking-widest mb-1 block">Select class</Label>
+          <Select value={selectedClass} onValueChange={setSelectedClass}>
+            <SelectTrigger className="h-11"><SelectValue placeholder="Pick a class to mark attendance" /></SelectTrigger>
+            <SelectContent>
+              {classes.map(c => {
+                const sport = SPORTS.find(s => s.id === c.sport_id);
+                return <SelectItem key={c.id} value={c.id}>{sport?.name} · {c.date} · {c.start_time}–{c.end_time}</SelectItem>;
+              })}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {selectedClass && (
+          <>
+            <div className="flex flex-wrap gap-2 mb-4 items-center">
+              <Button size="sm" variant="outline" onClick={() => markAll(true)} className="border-slate-700 bg-transparent hover:bg-slate-800 text-slate-100"><CheckCircle2 className="w-4 h-4 mr-1 text-lime-400" /> All present</Button>
+              <Button size="sm" variant="outline" onClick={() => markAll(false)} className="border-slate-700 bg-transparent hover:bg-slate-800 text-slate-100"><XCircle className="w-4 h-4 mr-1" /> All absent</Button>
+              <div className="flex-1" />
+              <Button onClick={save} disabled={Object.keys(dirty).length === 0} className="bg-lime-400 text-slate-900 hover:bg-lime-300 font-semibold disabled:opacity-40"><Save className="w-4 h-4 mr-1.5" />Save attendance</Button>
+            </div>
+
+            {roster.length === 0 ? (
+              <EmptyState icon={ClipboardList} title="No bookings for this class" />
+            ) : (
+              <Card className="rounded-lg bg-slate-900 border-slate-800 overflow-hidden">
+                {roster.map(r => {
+                  const cur = dirty[r.booking_id] !== undefined ? dirty[r.booking_id] : r.present;
+                  return (
+                    <div key={r.booking_id} className="flex items-center gap-3 px-4 py-3 border-b border-slate-800 last:border-0">
+                      <div className="w-9 h-9 rounded-full bg-slate-800 flex items-center justify-center font-bold text-sm">{r.name[0]?.toUpperCase()}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-slate-100 truncate">{r.name}</div>
+                        <div className="text-xs text-slate-500 truncate">{r.subtitle}</div>
+                      </div>
+                      <div className="flex gap-1">
+                        <Button size="sm" onClick={() => toggle(r.booking_id, true)} className={cur === true ? 'bg-lime-400 text-slate-900 hover:bg-lime-300' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}><CheckCircle2 className="w-4 h-4 mr-1" /> Present</Button>
+                        <Button size="sm" onClick={() => toggle(r.booking_id, false)} className={cur === false ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}><XCircle className="w-4 h-4 mr-1" /> Absent</Button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </Card>
+            )}
+          </>
+        )}
+      </div>
     </>
   );
 }
@@ -1850,9 +1999,16 @@ function PaymentsSection() {
   const [totalCount, setTotalCount] = useState(0);
   const [totalSuccessAmount, setTotalSuccessAmount] = useState(0);
   const [limit] = useState(50);
+  const [dateFrom, setDateFrom] = useState(''); // YYYY-MM-DD
+  const [dateTo, setDateTo] = useState(''); // YYYY-MM-DD
 
   const load = (p = 1) => {
-    fetch(`/api/admin/payments?page=${p}&limit=${limit}`, { credentials: 'include' })
+    const params = new URLSearchParams();
+    params.set('page', p);
+    params.set('limit', limit);
+    if (dateFrom) params.set('from', dateFrom);
+    if (dateTo) params.set('to', dateTo);
+    fetch(`/api/admin/payments?${params.toString()}`, { credentials: 'include' })
       .then(r => r.json())
       .then(d => {
         setPayments(d.payments || []);
@@ -1861,7 +2017,7 @@ function PaymentsSection() {
         setPage(p);
       });
   };
-  useEffect(() => { load(1); }, []);
+  useEffect(() => { load(1); }, [dateFrom, dateTo]);
 
   // Calculate payment stats (from current page only for refunded)
   const refunded = payments.filter(p => p.status === 'refunded').reduce((s, p) => s + p.amount, 0);
@@ -1882,6 +2038,37 @@ function PaymentsSection() {
   return (
     <>
       <SectionHeader title="Payments" description="All transactions and invoices." />
+      
+      {/* Date range filter */}
+      <div className="mb-6 flex flex-col sm:flex-row gap-3 items-start sm:items-end">
+        <div>
+          <label className="text-xs uppercase tracking-widest text-slate-500 font-semibold block mb-2">From</label>
+          <input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-100 text-sm focus:border-lime-400 focus:outline-none"
+          />
+        </div>
+        <div>
+          <label className="text-xs uppercase tracking-widest text-slate-500 font-semibold block mb-2">To</label>
+          <input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-slate-100 text-sm focus:border-lime-400 focus:outline-none"
+          />
+        </div>
+        {(dateFrom || dateTo) && (
+          <button
+            onClick={() => { setDateFrom(''); setDateTo(''); }}
+            className="px-3 py-2 text-xs text-slate-500 hover:text-slate-300 transition"
+          >
+            Clear dates
+          </button>
+        )}
+      </div>
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <StatCard icon={CreditCard} label="Total Collected (Successful)" value={`₹${totalSuccessAmount.toLocaleString('en-IN')}`} tone="accent" />
         <StatCard icon={Activity} label="Transactions" value={payments.length} />
@@ -2366,21 +2553,33 @@ function PerformanceSection() {
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [subjects, setSubjects] = useState([]); // list of {id, label, type, sports:[]}
-  const [selected, setSelected] = useState(null); // {id, label, type}
-  const [selectedMemberId, setSelectedMemberId] = useState(null); // Parent member ID for leadership metrics
-  const [data, setData] = useState(null); // {subject, sports:[], levels_catalog:[]}
+  const [subjects, setSubjects] = useState([]);
+  const [selected, setSelected] = useState(null);
+  const [selectedMemberId, setSelectedMemberId] = useState(null);
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [activeSport, setActiveSport] = useState(null);
-  const [dirty, setDirty] = useState({}); // { [metric_key]: number }
+  const [dirty, setDirty] = useState({});
   const [saving, setSaving] = useState(false);
-  const [metricsTab, setMetricsTab] = useState('performance'); // 'performance' or 'leadership'
+  const [metricsTab, setMetricsTab] = useState('performance');
   const [leadershipScores, setLeadershipScores] = useState({});
   const [leadershipNotes, setLeadershipNotes] = useState('');
   const [recentLeadership, setRecentLeadership] = useState([]);
-  const [sortOrder, setSortOrder] = useState(null); // null, 'high-to-low', 'low-to-high'
-  const [memberScores, setMemberScores] = useState({}); // { member_id: { performance: avg, leadership: avg, combined: avg } }
-
+  const [sortOrder, setSortOrder] = useState(null); // null | 'high-to-low' | 'low-to-high'
+  const [memberScores, setMemberScores] = useState({});
+  const [sortLoading, setSortLoading] = useState(false);
+  const [athleteTag, setAthleteTag] = useState(null); // null | 'sub_junior' | 'junior' | 'senior'
+  const [savingTag, setSavingTag] = useState(false);
+  // Leadership dashboard
+  const [showDashboard, setShowDashboard] = useState(false);
+  const [dashboardData, setDashboardData] = useState([]);
+  const [dashboardLoading, setDashboardLoading] = useState(false);
+  const [dashboardLoadingMore, setDashboardLoadingMore] = useState(false);
+  const [dashboardSport, setDashboardSport] = useState('basketball');
+  const [dashboardPage, setDashboardPage] = useState(1);
+  const [dashboardHasMore, setDashboardHasMore] = useState(false);
+  const DASHBOARD_LIMIT = 100;
+  const [dashboardTagFilter, setDashboardTagFilter] = useState(null); // null | 'sub_junior' | 'junior' | 'senior'
   // Search members
   useEffect(() => {
     const t = setTimeout(async () => {
@@ -2390,18 +2589,19 @@ function PerformanceSection() {
       const membersList = d.members || [];
       setMembers(membersList);
       setHasMore((d.members?.length || 0) >= 20);
-      
-      // Pre-calculate scores if sort is active
-      if (sortOrder) {
-        membersList.forEach(m => {
-          if (!memberScores[m.id]) {
-            calculateCombinedScore(m.id);
-          }
-        });
-      }
     }, 250);
     return () => clearTimeout(t);
-  }, [q, sortOrder]);
+  }, [q]);
+
+  // When sort is activated, calculate scores for all visible members
+  const activateSort = async (order) => {
+    if (sortOrder === order) { setSortOrder(null); return; }
+    setSortOrder(order);
+    setSortLoading(true);
+    // Fire off score calculations for all members not yet scored
+    await Promise.all(members.map(m => memberScores[m.id] ? Promise.resolve() : calculateCombinedScore(m.id)));
+    setSortLoading(false);
+  };
 
   // Load more members
   const loadMoreMembers = async () => {
@@ -2413,16 +2613,56 @@ function PerformanceSection() {
     setMembers(prev => [...prev, ...newMembers]);
     setPage(nextPage);
     setHasMore(newMembers.length >= 20);
-    
-    // Pre-calculate scores for new members if sort is active
+    // Calculate scores for new members if sort is active
     if (sortOrder) {
-      newMembers.forEach(m => {
-        if (!memberScores[m.id]) {
-          calculateCombinedScore(m.id);
-        }
-      });
+      await Promise.all(newMembers.map(m => memberScores[m.id] ? Promise.resolve() : calculateCombinedScore(m.id)));
     }
     setLoadingMore(false);
+  };
+
+  // Load the leadership dashboard
+  const loadDashboard = async (sport, tag) => {
+    setDashboardLoading(true);
+    const s = sport || dashboardSport;
+    const t = tag !== undefined ? tag : dashboardTagFilter;
+    setDashboardPage(1);
+    const url = new URL('/api/admin/leaderboard', window.location.origin);
+    url.searchParams.set('sport_id', s);
+    url.searchParams.set('limit', DASHBOARD_LIMIT);
+    url.searchParams.set('skip', 0);
+    if (t) url.searchParams.set('tag', t);
+    const r = await fetch(url.toString(), { credentials: 'include' });
+    const d = await r.json();
+    const rows = d.leaderboard || [];
+    setDashboardData(rows);
+    setDashboardHasMore(rows.length === DASHBOARD_LIMIT);
+    setDashboardLoading(false);
+  };
+
+  const loadMoreDashboard = async () => {
+    setDashboardLoadingMore(true);
+    const nextPage = dashboardPage + 1;
+    const skip = (nextPage - 1) * DASHBOARD_LIMIT;
+    const url = new URL('/api/admin/leaderboard', window.location.origin);
+    url.searchParams.set('sport_id', dashboardSport);
+    url.searchParams.set('limit', DASHBOARD_LIMIT);
+    url.searchParams.set('skip', skip);
+    if (dashboardTagFilter) url.searchParams.set('tag', dashboardTagFilter);
+    const r = await fetch(url.toString(), { credentials: 'include' });
+    const d = await r.json();
+    const rows = d.leaderboard || [];
+    setDashboardData(prev => [...prev, ...rows]);
+    setDashboardPage(nextPage);
+    setDashboardHasMore(rows.length === DASHBOARD_LIMIT);
+    setDashboardLoadingMore(false);
+  };
+
+  const switchDashboardTag = (newTag) => {
+    const tag = dashboardTagFilter === newTag ? null : newTag; // toggle off if already selected
+    setDashboardTagFilter(tag);
+    setDashboardPage(1);
+    // Reload with new tag (will reset page to 1)
+    loadDashboard(undefined, tag);
   };
 
   // Build subject list (user + their child_profiles)
@@ -2454,6 +2694,7 @@ function PerformanceSection() {
     const r = await fetch(`/api/admin/athletes/${s.id}/performance`, { credentials: 'include' });
     const d = await r.json();
     setData(d);
+    setAthleteTag(d.subject?.athlete_tag || null);
     const sport = d.sports?.[0]?.sport_id || null;
     setActiveSport(sport);
     if (sport) loadRecentLeadership(s.id, sport);
@@ -2532,6 +2773,29 @@ function PerformanceSection() {
     setSaving(false);
   };
 
+  const ATHLETE_TAGS = [
+    { id: 'sub_junior', label: 'Sub Junior', color: 'bg-blue-500/20 text-blue-300 border-blue-500/40 hover:bg-blue-500/30' },
+    { id: 'junior',     label: 'Junior',     color: 'bg-purple-500/20 text-purple-300 border-purple-500/40 hover:bg-purple-500/30' },
+    { id: 'senior',     label: 'Senior',     color: 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30' },
+  ];
+
+  const saveAthleteTag = async (newTag) => {
+    if (!selected) return;
+    setSavingTag(true);
+    const tag = athleteTag === newTag ? null : newTag; // toggle off if already selected
+    const r = await fetch(`/api/admin/athletes/${selected.id}/tag`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+      body: JSON.stringify({ tag }),
+    });
+    if (r.ok) {
+      setAthleteTag(tag);
+      toast.success(tag ? `Tagged as ${ATHLETE_TAGS.find(t => t.id === tag)?.label}` : 'Tag removed');
+    } else {
+      toast.error('Failed to save tag');
+    }
+    setSavingTag(false);
+  };
+
   // Calculate combined score (performance + leadership average) for a member
   const calculateCombinedScore = async (memberId) => {
     try {
@@ -2575,27 +2839,6 @@ function PerformanceSection() {
     }
   };
 
-  // Sort members by combined score
-  const getSortedMembers = async () => {
-    if (!sortOrder) return members;
-    
-    const membersWithScores = await Promise.all(
-      members.map(async (m) => {
-        let score = memberScores[m.id]?.combined;
-        if (score === undefined) {
-          score = await calculateCombinedScore(m.id);
-        }
-        return { ...m, combinedScore: score };
-      })
-    );
-
-    const sorted = [...membersWithScores].sort((a, b) =>
-      sortOrder === 'high-to-low' ? b.combinedScore - a.combinedScore : a.combinedScore - b.combinedScore
-    );
-    
-    return sorted;
-  };
-
   return (
     <>
       <SectionHeader
@@ -2603,53 +2846,147 @@ function PerformanceSection() {
         description="Score athletes on performance metrics or record leadership dimensions."
       />
 
+      {/* Leadership Dashboard - collapsible */}
+      <div className="mb-6">
+        <Button
+          onClick={() => { setShowDashboard(v => { const next = !v; if (next && dashboardData.length === 0) loadDashboard(); return next; }); }}
+          variant="outline"
+          className="border-slate-700 bg-transparent hover:bg-slate-800 text-slate-100 gap-2"
+        >
+          <TrendingUp className="w-4 h-4 text-lime-400" />
+          {showDashboard ? 'Hide' : 'View'} Leaderboard Dashboard
+        </Button>
+
+        {showDashboard && (
+          <Card className="mt-4 rounded-xl bg-slate-900 border-slate-800 overflow-hidden">
+            {/* Dashboard header */}
+            <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-slate-800">
+              <div>
+                <p className="font-display font-bold text-lg text-slate-100">Combined Leaderboard</p>
+                <p className="text-xs text-slate-500 mt-0.5">Ranked by Performance + Leadership average score</p>
+              </div>
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  {SPORTS.filter(s => s.status === 'active').map(s => (
+                    <button
+                      key={s.id}
+                      onClick={() => { setDashboardSport(s.id); loadDashboard(s.id); }}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${dashboardSport === s.id ? 'bg-lime-400 text-slate-900 border-lime-400' : 'border-slate-700 text-slate-400 hover:text-slate-100'}`}
+                    >{s.name}</button>
+                  ))}
+                  <button onClick={() => loadDashboard()} className="text-xs text-slate-500 hover:text-lime-400 transition ml-1">↻ Refresh</button>
+                </div>
+                {/* Tag filter buttons */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs uppercase tracking-widest text-slate-500 font-semibold">Filter:</span>
+                  {ATHLETE_TAGS.map(t => (
+                    <button
+                      key={t.id}
+                      onClick={() => switchDashboardTag(t.id)}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${dashboardTagFilter === t.id ? t.color + ' scale-105 shadow-md' : 'bg-slate-800/60 text-slate-500 border-slate-700 hover:border-slate-500 hover:text-slate-300'}`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                  {dashboardTagFilter && (
+                    <button
+                      onClick={() => switchDashboardTag(null)}
+                      className="text-xs text-slate-500 hover:text-slate-300 transition ml-1"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Table */}
+            {dashboardLoading ? (
+              <div className="px-5 py-10 text-center text-slate-500 text-sm">Loading leaderboard…</div>
+            ) : dashboardData.length === 0 ? (
+              <div className="px-5 py-10 text-center text-slate-500 text-sm">No scored athletes yet for this sport.</div>
+            ) : (
+              <>
+                {/* Column headers */}
+                <div className="grid grid-cols-12 gap-2 px-5 py-2.5 text-[10px] uppercase tracking-widest text-slate-500 border-b border-slate-800">
+                  <div className="col-span-1">#</div>
+                  <div className="col-span-4">Athlete</div>
+                  <div className="col-span-2 text-center">Performance</div>
+                  <div className="col-span-2 text-center">Leadership</div>
+                  <div className="col-span-3 text-center">Combined</div>
+                </div>
+                {dashboardData.map((row, i) => {
+                  const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
+                  const combinedColor = row.combined >= 7 ? 'text-lime-400' : row.combined >= 4 ? 'text-yellow-400' : 'text-red-400';
+                  return (
+                    <div key={row.athlete_id} className={`grid grid-cols-12 gap-2 px-5 py-3 border-b border-slate-800/60 last:border-0 items-center hover:bg-slate-800/30 transition ${i < 3 ? 'bg-slate-800/20' : ''}`}>
+                      <div className="col-span-1 text-sm font-bold text-slate-400">{medal || `${i + 1}`}</div>
+                      <div className="col-span-4 min-w-0">
+                        <p className="font-semibold text-slate-100 truncate text-sm">{row.name}</p>
+                        {row.parent_name !== row.name && <p className="text-[10px] text-slate-500 truncate">{row.parent_name}</p>}
+                      </div>
+                      <div className="col-span-2 text-center">
+                        {row.has_performance ? (
+                          <span className={`font-bold text-sm ${row.performance >= 7 ? 'text-lime-400' : row.performance >= 4 ? 'text-yellow-400' : 'text-red-400'}`}>{row.performance.toFixed(1)}</span>
+                        ) : <span className="text-slate-600 text-xs">—</span>}
+                      </div>
+                      <div className="col-span-2 text-center">
+                        {row.has_leadership ? (
+                          <span className={`font-bold text-sm ${row.leadership >= 7 ? 'text-lime-400' : row.leadership >= 4 ? 'text-yellow-400' : 'text-red-400'}`}>{row.leadership.toFixed(1)}</span>
+                        ) : <span className="text-slate-600 text-xs">—</span>}
+                      </div>
+                      <div className="col-span-3 flex items-center justify-center gap-2">
+                        <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden max-w-[80px]">
+                          <div className={`h-full rounded-full ${row.combined >= 7 ? 'bg-lime-400' : row.combined >= 4 ? 'bg-yellow-400' : 'bg-red-400'}`} style={{ width: `${(row.combined / 10) * 100}%` }} />
+                        </div>
+                        <span className={`font-black text-base ${combinedColor}`}>{row.combined.toFixed(1)}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+                {/* Load More */}
+                {dashboardHasMore && (
+                  <div className="px-5 py-4 border-t border-slate-800">
+                    <button
+                      onClick={loadMoreDashboard}
+                      disabled={dashboardLoadingMore}
+                      className="w-full py-2.5 rounded-lg text-sm font-semibold bg-slate-800 hover:bg-slate-700 text-slate-300 transition disabled:opacity-50"
+                    >
+                      {dashboardLoadingMore ? 'Loading…' : `Load More (showing ${dashboardData.length})`}
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </Card>
+        )}
+      </div>
+
       {/* Metrics tab selector + Sort buttons */}
       <div className="flex flex-col md:flex-row gap-3 mb-6">
         <div className="flex gap-2">
           <button
             onClick={() => setMetricsTab('performance')}
-            className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all ${
-              metricsTab === 'performance'
-                ? 'bg-lime-400/10 text-lime-400 border border-lime-400/20'
-                : 'border border-slate-700 text-slate-400 hover:text-slate-100 hover:border-slate-600'
-            }`}
-          >
-            📊 Performance
-          </button>
+            className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all ${metricsTab === 'performance' ? 'bg-lime-400/10 text-lime-400 border border-lime-400/20' : 'border border-slate-700 text-slate-400 hover:text-slate-100 hover:border-slate-600'}`}
+          >📊 Performance</button>
           <button
             onClick={() => setMetricsTab('leadership')}
-            className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all ${
-              metricsTab === 'leadership'
-                ? 'bg-lime-400/10 text-lime-400 border border-lime-400/20'
-                : 'border border-slate-700 text-slate-400 hover:text-slate-100 hover:border-slate-600'
-            }`}
-          >
-            👑 Leadership
-          </button>
+            className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all ${metricsTab === 'leadership' ? 'bg-lime-400/10 text-lime-400 border border-lime-400/20' : 'border border-slate-700 text-slate-400 hover:text-slate-100 hover:border-slate-600'}`}
+          >👑 Leadership</button>
         </div>
-        
+
         {/* Sort buttons */}
-        <div className="flex gap-2 ml-auto">
+        <div className="flex gap-2 ml-auto items-center">
+          {sortLoading && <span className="text-xs text-slate-500 animate-pulse">Calculating scores…</span>}
           <button
-            onClick={() => setSortOrder(sortOrder === 'high-to-low' ? null : 'high-to-low')}
-            className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all flex items-center gap-2 ${
-              sortOrder === 'high-to-low'
-                ? 'bg-blue-400/10 text-blue-400 border border-blue-400/20'
-                : 'border border-slate-700 text-slate-400 hover:text-slate-100 hover:border-slate-600'
-            }`}
-          >
-            ↓ Highest → Lowest
-          </button>
+            onClick={() => activateSort('high-to-low')}
+            className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all flex items-center gap-2 ${sortOrder === 'high-to-low' ? 'bg-lime-400/10 text-lime-400 border border-lime-400/20' : 'border border-slate-700 text-slate-400 hover:text-slate-100 hover:border-slate-600'}`}
+          >↓ High → Low</button>
           <button
-            onClick={() => setSortOrder(sortOrder === 'low-to-high' ? null : 'low-to-high')}
-            className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all flex items-center gap-2 ${
-              sortOrder === 'low-to-high'
-                ? 'bg-blue-400/10 text-blue-400 border border-blue-400/20'
-                : 'border border-slate-700 text-slate-400 hover:text-slate-100 hover:border-slate-600'
-            }`}
-          >
-            ↑ Lowest → Highest
-          </button>
+            onClick={() => activateSort('low-to-high')}
+            className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all flex items-center gap-2 ${sortOrder === 'low-to-high' ? 'bg-lime-400/10 text-lime-400 border border-lime-400/20' : 'border border-slate-700 text-slate-400 hover:text-slate-100 hover:border-slate-600'}`}
+          >↑ Low → High</button>
+          {sortOrder && <button onClick={() => setSortOrder(null)} className="text-xs text-slate-500 hover:text-slate-300 transition">✕ Clear</button>}
         </div>
       </div>
 
@@ -2666,32 +3003,38 @@ function PerformanceSection() {
             ) : (
               <>
                 {sortOrder && (
-                  <div className="sticky top-0 bg-slate-900 px-3 py-2 border-b border-slate-800 mb-1 z-10">
-                    <p className="text-[11px] text-slate-500 font-semibold">Sorted by combined score (Performance + Leadership)</p>
+                  <div className="sticky top-0 bg-slate-900 px-3 py-2 border-b border-slate-800 mb-1 z-10 flex items-center justify-between">
+                    <p className="text-[11px] text-slate-500 font-semibold">Combined score (P+L)</p>
+                    {sortLoading && <span className="text-[10px] text-lime-400 animate-pulse">loading…</span>}
                   </div>
                 )}
                 {members
-                  .map(m => ({ ...m, combinedScore: memberScores[m.id]?.combined || 0 }))
+                  .map(m => ({ ...m, scores: memberScores[m.id] || null, combinedScore: memberScores[m.id]?.combined || 0 }))
                   .sort((a, b) => {
                     if (!sortOrder) return 0;
                     return sortOrder === 'high-to-low' ? b.combinedScore - a.combinedScore : a.combinedScore - b.combinedScore;
                   })
-                  .map(m => (
-                    <button key={m.id} onClick={() => openMember(m)} className={`w-full text-left px-3 py-2.5 rounded-md text-sm transition ${selected?.type !== 'user' && subjects.some(s => s.id === m.id || subjects[0]?.id === m.id) ? 'bg-lime-400/10 text-lime-300' : 'hover:bg-slate-800 text-slate-300'}`}>
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium truncate">{m.full_name}</div>
-                          <div className="text-[11px] text-slate-500 truncate">{m.email} · {m.role}</div>
-                        </div>
-                        {sortOrder && m.combinedScore > 0 && (
-                          <div className="text-right flex-shrink-0">
-                            <p className="text-xs font-bold text-lime-400">{m.combinedScore.toFixed(1)}</p>
-                            <p className="text-[10px] text-slate-600">/10</p>
+                  .map(m => {
+                    const isSelected = subjects.some(s => s.id === m.id) || subjects[0]?.id === m.id;
+                    return (
+                      <button key={m.id} onClick={() => openMember(m)} className={`w-full text-left px-3 py-2.5 rounded-md text-sm transition ${isSelected ? 'bg-lime-400/10 text-lime-300' : 'hover:bg-slate-800 text-slate-300'}`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium truncate">{m.full_name}</div>
+                            <div className="text-[11px] text-slate-500 truncate">{m.email} · {m.role}</div>
                           </div>
-                        )}
-                      </div>
-                    </button>
-                  ))}
+                          {m.scores && m.combinedScore > 0 ? (
+                            <div className="text-right flex-shrink-0">
+                              <p className={`text-xs font-black ${m.combinedScore >= 7 ? 'text-lime-400' : m.combinedScore >= 4 ? 'text-yellow-400' : 'text-red-400'}`}>{m.combinedScore.toFixed(1)}</p>
+                              <p className="text-[9px] text-slate-600">P:{m.scores.performance.toFixed(1)} L:{m.scores.leadership.toFixed(1)}</p>
+                            </div>
+                          ) : sortOrder ? (
+                            <span className="text-[10px] text-slate-600 animate-pulse flex-shrink-0">…</span>
+                          ) : null}
+                        </div>
+                      </button>
+                    );
+                  })}
                 {hasMore && (
                   <div className="px-3 py-3 border-t border-slate-800 mt-2">
                     <button
@@ -2719,7 +3062,7 @@ function PerformanceSection() {
               {/* Member/Athlete highlight banner */}
               <div className="rounded-2xl bg-gradient-to-r from-lime-400/20 via-lime-400/10 to-transparent border border-lime-400/40 p-4 md:p-6">
                 <p className="text-xs uppercase tracking-widest text-lime-400 font-semibold mb-1">Currently editing</p>
-                <div className="flex flex-col md:flex-row md:items-center gap-3">
+                <div className="flex flex-col md:flex-row md:items-center gap-3 flex-wrap">
                   <div className="flex-1">
                     {currentParent && (
                       <>
@@ -2738,6 +3081,22 @@ function PerformanceSection() {
                       <p className="font-display font-black text-2xl text-slate-100">{data.sports.find(s => s.sport_id === activeSport)?.sport_name}</p>
                     </div>
                   )}
+                  {/* Athlete Tag selector */}
+                  <div className="flex-shrink-0">
+                    <p className="text-sm text-slate-400 mb-1.5">Category</p>
+                    <div className="flex gap-1.5">
+                      {ATHLETE_TAGS.map(t => (
+                        <button
+                          key={t.id}
+                          onClick={() => saveAthleteTag(t.id)}
+                          disabled={savingTag}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${athleteTag === t.id ? t.color + ' scale-105 shadow-md' : 'bg-slate-800/60 text-slate-500 border-slate-700 hover:border-slate-500 hover:text-slate-300'}`}
+                        >
+                          {t.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 </div>
               </div>
 

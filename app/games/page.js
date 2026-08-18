@@ -256,15 +256,15 @@ export default function GamesPage() {
       {/* Hero */}
       <section className="bg-primary text-primary-foreground py-16 md:py-24">
         <div className="container">
-          <Badge className="bg-accent text-black hover:bg-accent mb-6"><Flame className="w-3 h-3 mr-1" /> Community Games</Badge>
-          <h1 className="font-display font-black text-5xl md:text-7xl tracking-tight leading-[0.95]">Join a Game.<br /><span className="text-accent">Meet the crew.</span></h1>
-          <p className="text-white/70 text-lg mt-6 max-w-2xl">Show up. Play. Leave with new friends. We handle the equipment, the players, and the court. You just bring the energy.</p>
+          <Badge className="bg-accent text-black hover:bg-accent mb-6"><Flame className="w-3 h-3 mr-1" /> Tournaments & Pickup Games</Badge>
+          <h1 className="font-display font-black text-5xl md:text-7xl tracking-tight leading-[0.95]">Connect. Compete.<br /><span className="text-accent">Elevate your game.</span></h1>
+          <p className="text-white/70 text-lg mt-6 max-w-2xl">Join  tournaments to test yourself against the best, or jump into pickup games to connect with your community. We handle the rest  you bring the heart.</p>
 
           <div className="grid sm:grid-cols-3 gap-4 mt-10 max-w-3xl">
             {[
-              { n: '1', t: 'Pick a slot', d: 'Choose a game that fits your schedule' },
-              { n: '2', t: 'We handle setup', d: 'Equipment, players, court — done' },
-              { n: '3', t: 'Show up & play', d: 'Meet new players. Have fun.' },
+              { n: '1', t: 'Pick your path', d: 'Tournament competition or casual pickup your choice' },
+              { n: '2', t: 'We handle it', d: 'Court, equipment, players, scoring  all set' },
+              { n: '3', t: 'Play & connect', d: 'Compete hard. Build your network.' },
             ].map((s, i) => (
               <div key={i} className="flex gap-3">
                 <div className="w-10 h-10 rounded-lg bg-accent flex items-center justify-center flex-shrink-0"><span className="text-black font-black">{s.n}</span></div>
