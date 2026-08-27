@@ -2366,8 +2366,8 @@ function JerseysSection() {
       ) : (
         <Card className="rounded-lg bg-slate-900 border-slate-800 overflow-hidden">
           <div className="hidden md:grid grid-cols-12 gap-3 px-4 py-2.5 text-[10px] uppercase tracking-widest text-slate-500 border-b border-slate-800">
-            <div className="col-span-2">Name</div>
-            <div className="col-span-2">Email</div>
+            <div className="col-span-2">Member</div>
+            <div className="col-span-2">Name on Jersey</div>
             <div className="col-span-1">Number</div>
             <div className="col-span-1">Size</div>
             <div className="col-span-1">Height</div>
@@ -2379,9 +2379,10 @@ function JerseysSection() {
             <div key={j.id} className="grid grid-cols-12 gap-3 px-4 py-3 items-center border-b border-slate-800 last:border-0 hover:bg-slate-800/40">
               <div className="col-span-12 md:col-span-2 min-w-0">
                 <div className="font-medium text-slate-100 truncate">{j.user_name}</div>
+                <div className="text-xs text-slate-500 truncate">{j.user_email}</div>
               </div>
-              <div className="col-span-12 md:col-span-2 min-w-0 text-xs text-slate-400 truncate">
-                {j.user_email}
+              <div className="col-span-12 md:col-span-2 min-w-0">
+                <div className="font-semibold text-slate-100 truncate">{j.name || '—'}</div>
               </div>
               <div className="col-span-6 md:col-span-1 text-sm text-slate-100">#{j.number}</div>
               <div className="col-span-6 md:col-span-1">
@@ -2780,6 +2781,18 @@ function PerformanceSection() {
     if (!r.ok) { toast.error(d.error || 'Save failed'); return; }
     toast.success('Scores saved');
     setDirty({});
+    await pickSubject(selected);
+  };
+
+  const setLevel = async (level) => {
+    if (!selected || !activeSport) return;
+    const r = await fetch(`/api/admin/athletes/${selected.id}/level`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+      body: JSON.stringify({ sport_id: activeSport, level }),
+    });
+    const d = await r.json();
+    if (!r.ok) { toast.error(d.error || 'Failed to update level'); return; }
+    toast.success(`Level set to L${level}`);
     await pickSubject(selected);
   };
 

@@ -24,6 +24,8 @@ export default function DashboardPage() {
   const [pauseTarget, setPauseTarget] = useState(null); // which membership to pause
   const [pauseDays, setPauseDays] = useState(30);
   const [loadingData, setLoadingData] = useState(true);
+  const [children, setChildren] = useState([]);
+  const [activeChild, setActiveChild] = useState(null);
 
   const load = async () => {
     setLoadingData(true);
@@ -34,7 +36,16 @@ export default function DashboardPage() {
 
   useEffect(() => {
     if (!loading && !user) router.push('/auth?mode=login&next=/dashboard');
-    if (user) load();
+    if (user) {
+      load();
+      fetch('/api/children', { credentials: 'include' })
+        .then(r => r.json())
+        .then(d => {
+          const kids = d.children || [];
+          setChildren(kids);
+          if (kids.length > 0) setActiveChild(prev => prev || kids[0]);
+        });
+    }
   }, [user, loading, router]);
 
   const cancelBooking = async (id) => {
@@ -64,8 +75,9 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-background"><SiteNav /><div className="container py-20"><div className="animate-pulse space-y-4"><div className="h-8 bg-secondary w-1/3 rounded" /><div className="h-40 bg-secondary rounded-2xl" /></div></div></div>
   );
 
-  // All active/paused memberships
-  const activeMemberships = (data?.memberships || []).filter(m => m.status === 'active' || m.status === 'paused');
+  const activeMemberships = (data?.memberships || [])
+    .filter(m => m.status === 'active' || m.status === 'paused')
+    .filter(m => !activeChild || !m.child_profile_id || m.child_profile_id === activeChild.id);
 
   return (
     <div className="min-h-screen bg-background pb-20 md:pb-0">
@@ -87,6 +99,26 @@ export default function DashboardPage() {
             </Link>
           </div>
         </div>
+
+        {/* Athlete switcher — shown when parent has multiple athletes */}
+        {children.length > 1 && (
+          <div className="flex flex-wrap gap-2 mb-6">
+            <span className="text-sm text-muted-foreground self-center mr-1">Viewing:</span>
+            {children.map(c => (
+              <button
+                key={c.id}
+                onClick={() => setActiveChild(c)}
+                className={`px-4 py-2 rounded-full text-sm font-semibold border transition ${
+                  activeChild?.id === c.id
+                    ? 'bg-primary text-primary-foreground border-primary'
+                    : 'border-border text-muted-foreground hover:border-primary hover:text-foreground'
+                }`}
+              >
+                {c.athlete_name || c.child_name}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* All active memberships */}
         {activeMemberships.length === 0 ? (
@@ -247,13 +279,13 @@ export default function DashboardPage() {
         </div>
 
         {/* Performance panel */}
-        <PerformancePanel user={user} />
+        <PerformancePanel user={user} activeChild={activeChild} />
 
         {/* Leadership panel */}
-        <LeadershipPanel user={user} />
+        <LeadershipPanel user={user} activeChild={activeChild} />
 
         {/* Attendance panel */}
-        <AttendancePanel />
+        <AttendancePanel activeChild={activeChild} />
       </div>
 
       <Dialog open={pauseOpen} onOpenChange={setPauseOpen}>
@@ -277,8 +309,7 @@ export default function DashboardPage() {
 // ============================
 // Performance panel (view-only)
 // ============================
-function PerformancePanel({ user }) {
-  const [subjects, setSubjects] = useState([]);
+function PerformancePanel({ user, activeChild }) {
   const [selected, setSelected] = useState(null);
   const [data, setData] = useState(null);
   const [monthlyHistory, setMonthlyHistory] = useState(null);
@@ -286,29 +317,14 @@ function PerformancePanel({ user }) {
 
   useEffect(() => {
     if (!user) return;
-    (async () => {
-      const list = [];
-      const r = await fetch('/api/children', { credentials: 'include' });
-      const d = await r.json();
-      const children = d.children || [];
-      if (children.length > 0) {
-        // Always show exactly one entry — pick the profile with the most sports
-        // (or just the first one if equal). Label it with the athlete's actual name.
-        const best = children.reduce((b, c) =>
-          (c.selected_sports?.length || 0) >= (b.selected_sports?.length || 0) ? c : b
-        , children[0]);
-        list.push({
-          id: best.id,
-          label: best.athlete_name || best.child_name || user.full_name,
-          type: 'athlete',
-        });
-      } else {
-        list.push({ id: user.id, label: user.full_name, type: 'user' });
-      }
-      setSubjects(list);
-      if (list[0]) loadPerf(list[0]);
-    })();
-  }, [user]);
+    if (activeChild) {
+      const subject = { id: activeChild.id, label: activeChild.athlete_name || activeChild.child_name || user.full_name, type: 'athlete' };
+      loadPerf(subject);
+    } else {
+      // No child profiles — show user's own data
+      loadPerf({ id: user.id, label: user.full_name, type: 'user' });
+    }
+  }, [user, activeChild]);
 
   const loadPerf = async (s) => {
     setSelected(s);
@@ -323,7 +339,7 @@ function PerformancePanel({ user }) {
     setActiveSport(d.sports?.[0]?.sport_id || null);
   };
 
-  if (!user || !subjects.length) return null;
+  if (!user) return null;
 
   const current = data?.sports?.find(s => s.sport_id === activeSport);
   const currentMonthlyData = monthlyHistory ? monthlyHistory[activeSport] : null;
@@ -605,7 +621,7 @@ function JerseySection({ user }) {
   );
 }
 
-function LeadershipPanel({ user }) {
+function LeadershipPanel({ user, activeChild }) {
   const [metrics, setMetrics] = useState(null);
   const [records, setRecords] = useState([]);
   const [sport, setSport] = useState('basketball');
@@ -613,24 +629,8 @@ function LeadershipPanel({ user }) {
 
   useEffect(() => {
     if (!user) return;
-    // Check if user has child profiles (like PerformancePanel does)
-    (async () => {
-      const r = await fetch('/api/children', { credentials: 'include' });
-      const d = await r.json();
-      const children = d.children || [];
-      
-      if (children.length > 0) {
-        // Use the child profile with most sports (same logic as PerformancePanel)
-        const best = children.reduce((b, c) =>
-          (c.selected_sports?.length || 0) >= (b.selected_sports?.length || 0) ? c : b
-        , children[0]);
-        setAthleteId(best.id);
-      } else {
-        // Fall back to user's own ID
-        setAthleteId(user.id);
-      }
-    })();
-  }, [user]);
+    setAthleteId(activeChild ? activeChild.id : user.id);
+  }, [user, activeChild]);
 
   useEffect(() => {
     if (!athleteId) return;
@@ -715,16 +715,21 @@ function LeadershipPanel({ user }) {
 // ============================
 // Attendance Panel
 // ============================
-function AttendancePanel() {
+function AttendancePanel({ activeChild }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch('/api/dashboard/attendance', { credentials: 'include' })
+    setLoading(true);
+    setData(null);
+    const url = activeChild
+      ? `/api/dashboard/attendance?child_id=${activeChild.id}`
+      : '/api/dashboard/attendance';
+    fetch(url, { credentials: 'include' })
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d) setData(d); })
       .finally(() => setLoading(false));
-  }, []);
+  }, [activeChild]);
 
   if (loading) return null;
   if (!data || data.total === 0) return null;

@@ -20,6 +20,9 @@ export default function ProfilePage() {
   const { user, loading, refresh } = useAuth();
   const [data, setData] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [addAthleteOpen, setAddAthleteOpen] = useState(false);
+  const [addForm, setAddForm] = useState({ name: '', dob: '', gender: '' });
+  const [addingSaving, setAddingSaving] = useState(false);
   const [metrics, setMetrics] = useState(null);
   const [selectedSport, setSelectedSport] = useState('basketball');
 
@@ -83,6 +86,32 @@ export default function ProfilePage() {
     if (res.ok) { toast.success('Profile saved'); refresh(); load(); }
     else toast.error('Failed to save');
     setSaving(false);
+  };
+
+  const addAthlete = async (e) => {
+    e.preventDefault();
+    if (!addForm.name.trim() || !addForm.dob) { toast.error('Name and date of birth are required'); return; }
+    setAddingSaving(true);
+    const res = await fetch('/api/children', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ athlete_name: addForm.name.trim(), dob: addForm.dob, gender: addForm.gender, force_new: true }),
+    });
+    const d = await res.json();
+    setAddingSaving(false);
+    if (!res.ok) { toast.error(d.error || 'Failed to add athlete'); return; }
+    toast.success(`${addForm.name} added!`);
+    setAddForm({ name: '', dob: '', gender: '' });
+    setAddAthleteOpen(false);
+    load();
+  };
+
+  const removeAthlete = async (athleteId, name) => {
+    if (!confirm(`Remove ${name} from your account? This cannot be undone.`)) return;
+    const res = await fetch(`/api/children/${athleteId}`, { method: 'DELETE', credentials: 'include' });
+    if (res.ok) { toast.success('Athlete removed'); load(); }
+    else toast.error('Failed to remove athlete');
   };
 
   if (loading || !data) return (
@@ -158,10 +187,53 @@ export default function ProfilePage() {
 
             {/* Athlete profiles */}
             <Card className="p-6 md:p-8 rounded-2xl">
-              <div className="flex items-center gap-2 mb-4">
-                <Zap className="w-5 h-5" />
-                <h3 className="font-display font-bold text-xl">Athlete Profiles</h3>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <Zap className="w-5 h-5" />
+                  <h3 className="font-display font-bold text-xl">Athlete Profiles</h3>
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => setAddAthleteOpen(v => !v)}
+                  className="bg-accent text-black hover:bg-accent/90 h-8 text-xs font-semibold"
+                >
+                  + Add Athlete
+                </Button>
               </div>
+
+              {/* Add athlete inline form */}
+              {addAthleteOpen && (
+                <form onSubmit={addAthlete} className="mb-4 p-4 rounded-xl border bg-secondary/50 space-y-3">
+                  <p className="text-sm font-semibold">New athlete profile</p>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <div>
+                      <Label className="text-xs">Athlete name *</Label>
+                      <Input required className="h-10 mt-1" placeholder="e.g. Arjun Sharma" value={addForm.name} onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))} />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Date of birth *</Label>
+                      <Input required type="date" className="h-10 mt-1" value={addForm.dob} onChange={e => setAddForm(f => ({ ...f, dob: e.target.value }))} />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Gender <span className="text-muted-foreground">(optional)</span></Label>
+                      <div className="flex gap-2 mt-1">
+                        {['Male', 'Female', 'Other'].map(g => (
+                          <button key={g} type="button" onClick={() => setAddForm(f => ({ ...f, gender: g }))}
+                            className={`px-3 py-1.5 rounded-lg border text-xs transition ${addForm.gender === g ? 'bg-primary text-primary-foreground border-primary' : 'hover:border-primary/50'}`}>
+                            {g}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <Button type="submit" disabled={addingSaving} size="sm" className="bg-primary text-primary-foreground h-9">
+                      {addingSaving ? 'Saving...' : 'Add Athlete'}
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" className="h-9" onClick={() => setAddAthleteOpen(false)}>Cancel</Button>
+                  </div>
+                </form>
+              )}
               {athletes.length === 0 ? (
                 <div className="p-6 rounded-xl border-dashed border text-center text-muted-foreground">
                   No athlete profiles yet. Purchase a membership to add one.
@@ -188,11 +260,22 @@ export default function ProfilePage() {
                             </div>
                           </div>
                         </div>
-                        <div className="flex flex-wrap gap-1 mt-3">
-                          {(athlete.selected_sports || []).map(sid => {
-                            const s = SPORTS.find(x => x.id === sid);
-                            return <Badge key={sid} variant="secondary">{s?.name || sid}</Badge>;
-                          })}
+                        <div className="flex items-center justify-between mt-3">
+                          <div className="flex flex-wrap gap-1">
+                            {(athlete.selected_sports || []).map(sid => {
+                              const s = SPORTS.find(x => x.id === sid);
+                              return <Badge key={sid} variant="secondary">{s?.name || sid}</Badge>;
+                            })}
+                          </div>
+                          {athletes.length > 1 && (
+                            <button
+                              onClick={() => removeAthlete(athlete.id, athlete.athlete_name || athlete.child_name || 'this athlete')}
+                              className="text-xs text-muted-foreground hover:text-destructive transition ml-2 flex-shrink-0"
+                              title="Remove athlete"
+                            >
+                              Remove
+                            </button>
+                          )}
                         </div>
                       </div>
                     );

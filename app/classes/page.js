@@ -22,6 +22,8 @@ export default function ClassesPage() {
   const [loadingList, setLoadingList] = useState(true);
   const [upcomingCount, setUpcomingCount] = useState(0);
   const [maxBookings, setMaxBookings] = useState(3); // fetched from API
+  const [children, setChildren] = useState([]);
+  const [bookingFor, setBookingFor] = useState(null);
 
   useEffect(() => {
     if (!loading && !user) router.push('/auth?mode=login&next=/classes');
@@ -39,10 +41,24 @@ export default function ClassesPage() {
     loadSettings();
   }, []);
 
+  useEffect(() => {
+    if (!user) return;
+    fetch('/api/children', { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => {
+        const kids = d.children || [];
+        setChildren(kids);
+        if (kids.length > 0) setBookingFor(kids[0]);
+      });
+  }, [user]);
+
   const load = async () => {
     if (!user) return;
     setLoadingList(true);
-    const url = sport === 'all' ? '/api/classes' : `/api/classes?sport=${sport}`;
+    const params = new URLSearchParams();
+    if (sport !== 'all') params.set('sport', sport);
+    if (bookingFor?.id) params.set('child_id', bookingFor.id);
+    const url = `/api/classes${params.toString() ? '?' + params.toString() : ''}`;
     const res = await fetch(url, { credentials: 'include' });
     if (res.ok) {
       const d = await res.json();
@@ -60,7 +76,7 @@ export default function ClassesPage() {
   useEffect(() => {
     if (user) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sport, user]);
+  }, [sport, user, bookingFor]);
 
   const book = async (id) => {
     if (!user) { router.push('/auth?mode=login&next=/classes'); return; }
@@ -69,7 +85,7 @@ export default function ClassesPage() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ class_id: id }),
+      body: JSON.stringify({ class_id: id, child_profile_id: bookingFor?.id || null }),
     });
     const d = await res.json();
     if (res.ok) { toast.success('Class booked! See you there.'); load(); }
@@ -106,6 +122,28 @@ export default function ClassesPage() {
             </div>
           )}
         </div>
+
+        {/* Athlete selector — shown when parent has multiple athletes */}
+        {children.length > 1 && (
+          <div className="flex items-center gap-3 mt-6 p-4 rounded-2xl bg-secondary">
+            <span className="text-sm text-muted-foreground font-medium whitespace-nowrap">Booking for:</span>
+            <div className="flex flex-wrap gap-2">
+              {children.map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => setBookingFor(c)}
+                  className={`px-4 py-2 rounded-full text-sm font-semibold border transition ${
+                    bookingFor?.id === c.id
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'border-border text-muted-foreground hover:border-primary hover:text-foreground'
+                  }`}
+                >
+                  {c.athlete_name || c.child_name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Filter chips — only sports user has membership for */}
         {accessibleSports.length > 1 && (

@@ -689,13 +689,41 @@ async function handleRoute(request, { params }) {
     // -------- CHILD PROFILES --------
     if (route === '/children' && method === 'POST') {
       const auth = await requireUser(); if (auth.error) return auth.error;
-      const { athlete_name, child_name, dob, gender, selected_sports } = await request.json();
+      const { athlete_name, child_name, dob, gender, selected_sports, force_new } = await request.json();
       const name = athlete_name || child_name;
       if (!name || !dob) return err('athlete_name & dob required');
-      // Upsert — reuse existing profile if one already exists
       const sport_id = Array.isArray(selected_sports) ? selected_sports[0] : null;
+
+      if (force_new) {
+        // Always create a brand new profile — used when a parent adds a second athlete
+        const profile = {
+          id: uuidv4(),
+          parent_id: auth.user.id,
+          athlete_name: name,
+          child_name: name,
+          dob,
+          gender: gender || '',
+          selected_sports: sport_id ? [sport_id] : [],
+          created_at: new Date(),
+        };
+        await db.collection('child_profiles').insertOne(profile);
+        return j({ child: clean(profile) });
+      }
+
+      // Default: upsert — reuse existing profile (checkout adding a sport to existing athlete)
       const profile = await upsertAthleteProfile(db, { user_id: auth.user.id, athlete_name: name, dob, gender, sport_id });
       return j({ child: clean(profile) });
+    }
+
+    // DELETE /children/:id — parent removes one of their athlete profiles
+    const childDeleteMatch = route.match(/^\/children\/([^/]+)$/);
+    if (childDeleteMatch && method === 'DELETE') {
+      const auth = await requireUser(); if (auth.error) return auth.error;
+      const childId = childDeleteMatch[1];
+      const child = await db.collection('child_profiles').findOne({ id: childId, parent_id: auth.user.id });
+      if (!child) return err('Not found', 404);
+      await db.collection('child_profiles').deleteOne({ id: childId });
+      return j({ ok: true });
     }
 
     if (route === '/children' && method === 'GET') {
@@ -1054,9 +1082,13 @@ async function handleRoute(request, { params }) {
     // -------- DASHBOARD ATTENDANCE --------
     if (route === '/dashboard/attendance' && method === 'GET') {
       const auth = await requireUser(); if (auth.error) return auth.error;
+      const urlAtt = new URL(request.url);
+      const attChildId = urlAtt.searchParams.get('child_id');
 
-      // Fetch all bookings for this user
-      const allBookings = await db.collection('bookings').find({ user_id: auth.user.id, status: 'booked' }).toArray();
+      // Fetch all bookings for this user (filter by child if provided)
+      const bookingQuery = { user_id: auth.user.id, status: 'booked' };
+      if (attChildId) bookingQuery.child_profile_id = attChildId;
+      const allBookings = await db.collection('bookings').find(bookingQuery).toArray();
       const bookingIds = allBookings.map(b => b.id);
       const classIds = [...new Set(allBookings.map(b => b.class_id))];
 
@@ -1180,7 +1212,19 @@ async function handleRoute(request, { params }) {
       const counts = bookings.reduce((acc, b) => (acc[b.class_id] = (acc[b.class_id] || 0) + 1, acc), {});
 
       const session = await getSession();
-      const myBookings = session ? new Set(bookings.filter(b => b.user_id === session.sub).map(b => b.class_id)) : new Set();
+      // is_booked is per-athlete: pass ?child_id= so each athlete's booking state is independent
+      const classesUrl = new URL(request.url);
+      const classesChildId = classesUrl.searchParams.get('child_id');
+      const myBookings = session
+        ? new Set(
+            bookings.filter(b => {
+              if (b.user_id !== session.sub) return false;
+              if (classesChildId) return b.child_profile_id === classesChildId;
+              // No child_id param — fall back to any booking by this user (single-athlete accounts)
+              return true;
+            }).map(b => b.class_id)
+          )
+        : new Set();
 
       const enriched = classes.map(c => ({
         ...clean(c),
@@ -1205,8 +1249,14 @@ async function handleRoute(request, { params }) {
         return err('This class has already started. You can only book classes before they begin.', 409);
       }
 
-      // Get all active memberships for this sport
-      const activeMems = await db.collection('user_memberships').find({
+      // If a child_profile_id is given, validate it belongs to this user
+      if (child_profile_id) {
+        const childProfile = await db.collection('child_profiles').findOne({ id: child_profile_id, parent_id: auth.user.id });
+        if (!childProfile) return err('Athlete profile not found', 404);
+      }
+
+      // Get active memberships for this sport — scoped to the specific athlete when child_profile_id is provided
+      const memQuery = {
         user_id: auth.user.id,
         status: 'active',
         expiry_date: { $gt: new Date() },
@@ -1215,9 +1265,22 @@ async function handleRoute(request, { params }) {
           { 'membership_snapshot.sport_id': cls.sport_id },
           { selected_sports: cls.sport_id },
         ],
-      }).toArray();
-      
+      };
+
+      // When booking for a specific athlete, only their memberships count
+      if (child_profile_id) {
+        memQuery.child_profile_id = child_profile_id;
+      }
+
+      const activeMems = await db.collection('user_memberships').find(memQuery).toArray();
+
       if (activeMems.length === 0) {
+        if (child_profile_id) {
+          // Look up the athlete name for a friendlier error
+          const cp = await db.collection('child_profiles').findOne({ id: child_profile_id });
+          const athleteName = cp?.athlete_name || cp?.child_name || 'This athlete';
+          return err(`${athleteName} does not have an active ${cls.sport_id} membership. Please purchase one first.`, 403);
+        }
         return err(`No active ${cls.sport_id} membership. Please purchase one to book this class.`, 403);
       }
 
@@ -1250,14 +1313,27 @@ async function handleRoute(request, { params }) {
         }
       }
 
-      const already = await db.collection('bookings').findOne({ user_id: auth.user.id, class_id, status: 'booked' });
+      const already = await db.collection('bookings').findOne({
+        user_id: auth.user.id,
+        class_id,
+        status: 'booked',
+        // Per-athlete duplicate check: same athlete can't book the same class twice,
+        // but two different athletes under the same account can both book it
+        ...(child_profile_id ? { child_profile_id } : { $or: [{ child_profile_id: null }, { child_profile_id: { $exists: false } }] }),
+      });
       if (already) return err('Already booked', 409);
 
       // Limit: read max_bookings_per_member from settings (default 3)
+      // Count is per-athlete when child_profile_id is provided
       const settingsDoc = await db.collection('settings').findOne({ key: 'global' });
       const maxBookings = settingsDoc?.max_bookings_per_member ?? 3;
       const today = new Date().toISOString().slice(0, 10);
-      const upcomingClassIds = (await db.collection('bookings').find({ user_id: auth.user.id, status: 'booked' }).toArray()).map(b => b.class_id);
+      const athleteBookingQuery = {
+        user_id: auth.user.id,
+        status: 'booked',
+        ...(child_profile_id ? { child_profile_id } : { $or: [{ child_profile_id: null }, { child_profile_id: { $exists: false } }] }),
+      };
+      const upcomingClassIds = (await db.collection('bookings').find(athleteBookingQuery).toArray()).map(b => b.class_id);
       const upcomingCount = upcomingClassIds.length
         ? await db.collection('classes').countDocuments({ id: { $in: upcomingClassIds }, date: { $gte: today } })
         : 0;

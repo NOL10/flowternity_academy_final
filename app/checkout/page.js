@@ -39,6 +39,9 @@ function CheckoutInner() {
 
   const [processing, setProcessing] = useState(false);
   const [existingProfile, setExistingProfile] = useState(null); // athlete profile already on account
+  const [children, setChildren] = useState([]);
+  const [selectedChildId, setSelectedChildId] = useState(null); // child.id | 'new'
+  const [newAthleteForm, setNewAthleteForm] = useState({ name: '', dob: '', gender: '' });
 
   // Single unified form
   const [form, setForm] = useState({
@@ -59,64 +62,68 @@ function CheckoutInner() {
   const [slotQuantity, setSlotQuantity] = useState(1); // For slot-type plans
   const [enrollmentFee, setEnrollmentFee] = useState(0); // ₹2000 for first-time basketball
 
-  // Pre-fill from logged-in user + fetch existing athlete profile + check enrollment fee eligibility
+  // Pre-fill from logged-in user + fetch all athlete profiles
   useEffect(() => {
     if (user) {
       setForm(f => ({ ...f, full_name: user.full_name || '', email: user.email || '', phone: user.phone || '' }));
-      // Fetch existing athlete profile so we can reuse it
       fetch('/api/children', { credentials: 'include' })
         .then(r => r.json())
         .then(d => {
-          const profile = d.children?.[0];
-          if (profile) {
-            setExistingProfile(profile);
-            setForm(f => ({ ...f, dob: profile.dob || '', gender: profile.gender || '' }));
+          const kids = d.children || [];
+          setChildren(kids);
+          if (kids.length > 0) {
+            setExistingProfile(kids[0]);
+            setSelectedChildId(kids[0].id);
+            setForm(f => ({ ...f, dob: kids[0].dob || '', gender: kids[0].gender || '' }));
+          } else {
+            setSelectedChildId('new');
           }
         });
     }
   }, [user]);
   
-  // Separate effect for calculating enrollment fee
+  // Calculate enrollment fee per-athlete (each athlete pays when joining basketball for the first time)
   useEffect(() => {
     if (!plan) return;
     
     const isBasketball = plan.sport_id === 'basketball';
-    const isMonthlyHalfOrYearly = plan.duration_months === 1 || plan.duration_months === 6 || plan.duration_months === 12;
-    const chargesEnrollmentFee = plan.duration_months === 1 || plan.duration_months === 6; // Only 1m and 6m
+    const chargesEnrollmentFee = plan.duration_months === 1 || plan.duration_months === 6;
     const notSlotPlan = plan.type !== 'slot';
+    const isMonthlyHalfOrYearly = plan.duration_months === 1 || plan.duration_months === 6 || plan.duration_months === 12;
     
     if (isBasketball && isMonthlyHalfOrYearly && notSlotPlan) {
-      if (user) {
-        // Check if user already has basketball monthly/half-yearly/yearly membership (not slots)
+      if (user && selectedChildId && selectedChildId !== 'new') {
+        // Check if THIS specific athlete already has a basketball monthly membership
         fetch('/api/auth/me', { credentials: 'include' })
           .then(r => r.json())
           .then(d => {
-            const hasBasketballMonthly = d.active_memberships?.some(m => 
-              m.sport_id === 'basketball' && m.membership_snapshot?.type !== 'slot'
+            const hasBasketballForThisAthlete = d.active_memberships?.some(m => 
+              m.sport_id === 'basketball' &&
+              m.membership_snapshot?.type !== 'slot' &&
+              m.child_profile_id === selectedChildId
             );
-            if (!hasBasketballMonthly) {
+            if (!hasBasketballForThisAthlete) {
               setEnrollmentFee(chargesEnrollmentFee ? 2000 : 0);
-              setShowJerseyForm(true);
+              setShowJerseyForm(chargesEnrollmentFee);
             } else {
               setEnrollmentFee(0);
               setShowJerseyForm(false);
             }
           })
           .catch(() => {
-            // If fetch fails, assume first-time (safer)
             setEnrollmentFee(chargesEnrollmentFee ? 2000 : 0);
-            setShowJerseyForm(true);
+            setShowJerseyForm(chargesEnrollmentFee);
           });
       } else {
-        // Guest user — first time, charge enrollment fee only if 1m or 6m
+        // New athlete or guest — always first-time
         setEnrollmentFee(chargesEnrollmentFee ? 2000 : 0);
-        setShowJerseyForm(true);
+        setShowJerseyForm(chargesEnrollmentFee);
       }
     } else {
       setEnrollmentFee(0);
       setShowJerseyForm(false);
     }
-  }, [user, plan]);
+  }, [user, plan, selectedChildId]);
   
   // Update final price when enrollment fee or slot quantity changes
   useEffect(() => {
@@ -187,8 +194,8 @@ function CheckoutInner() {
       if (form.password.length < 6) return 'Password must be at least 6 characters';
       if (form.password !== form.confirm) return 'Passwords do not match';
     }
-    // DOB only required if no existing profile
-    if (!existingProfile && !form.dob) return 'Date of birth is required';
+    // DOB required if creating a new athlete
+    if (selectedChildId === 'new' && !form.dob) return 'Date of birth is required for a new athlete';
     
     // Jersey validation if enrollment fee applies
     if (showJerseyForm) {
@@ -216,21 +223,40 @@ function CheckoutInner() {
       const athleteName = user?.full_name || form.full_name;
 
       if (user) {
-        // Signed-in: create athlete profile first, then order
-        const cres = await fetch('/api/children', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify({
-            athlete_name: athleteName,
-            dob: form.dob,
-            gender: form.gender,
-            selected_sports: [plan.sport_id],
-          }),
-        });
-        const cdata = await cres.json();
-        if (!cres.ok) throw new Error(cdata.error || 'Failed to create athlete profile');
-        child_profile_id = cdata.child.id;
+        if (selectedChildId === 'new') {
+          // Create a brand new athlete profile
+          const newName = newAthleteForm.name.trim() || athleteName;
+          const cres = await fetch('/api/children', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              athlete_name: newName,
+              dob: form.dob,
+              gender: form.gender,
+              selected_sports: [plan.sport_id],
+              force_new: true,
+            }),
+          });
+          const cdata = await cres.json();
+          if (!cres.ok) throw new Error(cdata.error || 'Failed to create athlete profile');
+          child_profile_id = cdata.child.id;
+        } else {
+          // Use existing athlete — update their sports via upsert
+          child_profile_id = selectedChildId;
+          await fetch('/api/children', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              athlete_name: existingProfile?.athlete_name || athleteName,
+              dob: form.dob || existingProfile?.dob || '',
+              gender: form.gender || existingProfile?.gender || '',
+              selected_sports: [plan.sport_id],
+              // no force_new — upsert adds the sport to existing profile
+            }),
+          });
+        }
 
         // If Razorpay script failed to load, use mock payment directly
         if (!rzpAvailable || !window.Razorpay) {
@@ -416,7 +442,9 @@ function CheckoutInner() {
                 </h2>
               </div>
               <p className="text-sm text-muted-foreground mb-6">
-                {user && existingProfile
+                {user && children.length > 1
+                  ? `Select an existing athlete or add a new one for ${sport.name}.`
+                  : user && existingProfile
                   ? `Adding ${sport.name} to your existing athlete profile.`
                   : user
                   ? `Joining ${sport.name}. Fill in the athlete's date of birth and gender.`
@@ -451,22 +479,72 @@ function CheckoutInner() {
                   </>
                 )}
 
-                {/* If existing profile — show summary, no re-entry needed */}
-                {user && existingProfile ? (
-                  <div className="sm:col-span-2 p-4 rounded-xl bg-secondary flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-accent flex items-center justify-center font-black text-black text-xl flex-shrink-0">
-                      {(existingProfile.athlete_name || existingProfile.child_name || user.full_name)?.[0]?.toUpperCase()}
+                {/* Athlete picker for logged-in users with existing profiles */}
+                {user && children.length > 0 ? (
+                  <div className="sm:col-span-2 space-y-3">
+                    <Label>Which athlete is this membership for?</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {children.map(c => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedChildId(c.id);
+                            setExistingProfile(c);
+                            setForm(f => ({ ...f, dob: c.dob || '', gender: c.gender || '' }));
+                          }}
+                          className={`px-4 py-2 rounded-xl border text-sm font-semibold transition ${
+                            selectedChildId === c.id
+                              ? 'bg-primary text-primary-foreground border-primary'
+                              : 'border-border hover:border-primary text-muted-foreground'
+                          }`}
+                        >
+                          {c.athlete_name || c.child_name}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => { setSelectedChildId('new'); setExistingProfile(null); setForm(fv => ({ ...fv, dob: '', gender: '' })); }}
+                        className={`px-4 py-2 rounded-xl border text-sm font-semibold transition ${
+                          selectedChildId === 'new'
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'border-border hover:border-primary text-muted-foreground'
+                        }`}
+                      >
+                        + New Athlete
+                      </button>
                     </div>
-                    <div>
-                      <div className="font-semibold">{existingProfile.athlete_name || existingProfile.child_name || user.full_name}</div>
-                      <div className="text-sm text-muted-foreground">
-                        DOB {existingProfile.dob ? new Date(existingProfile.dob).toLocaleDateString('en-IN') : '—'} · {existingProfile.gender || 'N/A'}
+                    {selectedChildId !== 'new' && existingProfile && (
+                      <div className="p-3 rounded-xl bg-secondary text-sm text-muted-foreground">
+                        DOB {existingProfile.dob ? new Date(existingProfile.dob).toLocaleDateString('en-IN') : '—'} · {existingProfile.gender || 'N/A'} · {sport.name} will be added to this profile
                       </div>
-                      <div className="text-xs text-muted-foreground mt-0.5">{sport.name} will be added to this profile</div>
-                    </div>
+                    )}
+                    {selectedChildId === 'new' && (
+                      <div className="grid sm:grid-cols-2 gap-3 pt-1">
+                        <div className="sm:col-span-2">
+                          <Label>Athlete name *</Label>
+                          <Input required className="h-12 mt-1" placeholder="e.g. Arjun Sharma" value={newAthleteForm.name} onChange={e => setNewAthleteForm(fv => ({ ...fv, name: e.target.value }))} />
+                        </div>
+                        <div>
+                          <Label>Date of birth *</Label>
+                          <Input required type="date" className="h-12 mt-1" value={f.dob} onChange={set('dob')} />
+                        </div>
+                        <div>
+                          <Label>Gender <span className="text-muted-foreground text-xs">(optional)</span></Label>
+                          <div className="flex gap-2 mt-2">
+                            {['Male', 'Female', 'Other'].map(g => (
+                              <button key={g} type="button" onClick={() => setForm(prev => ({ ...prev, gender: g }))}
+                                className={`px-4 py-2 rounded-lg border text-sm transition ${f.gender === g ? 'bg-primary text-primary-foreground border-primary' : 'hover:border-primary/50'}`}>
+                                {g}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ) : (
-                  /* Athlete fields — new profile */
+                  /* Athlete fields — no existing profile or guest */
                   <>
                     <div>
                       <Label>Date of birth</Label>
