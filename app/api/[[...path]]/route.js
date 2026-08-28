@@ -756,11 +756,14 @@ async function handleRoute(request, { params }) {
       const jerseys = await db.collection('jerseys').find({}).toArray();
       const userIds = [...new Set(jerseys.map(j => j.user_id))];
       const users = userIds.length ? await db.collection('users').find({ id: { $in: userIds } }).toArray() : [];
+      const childProfileIds = [...new Set(jerseys.map(j => j.child_profile_id).filter(Boolean))];
+      const childProfiles = childProfileIds.length ? await db.collection('child_profiles').find({ id: { $in: childProfileIds } }).toArray() : [];
       
       return j({
         jerseys: jerseys.map(j => {
           const u = users.find(x => x.id === j.user_id);
-          return { ...clean(j), user_name: u?.full_name || 'Unknown', user_email: u?.email || '' };
+          const cp = childProfiles.find(x => x.id === j.child_profile_id);
+          return { ...clean(j), user_name: u?.full_name || 'Unknown', user_email: u?.email || '', athlete_dob: cp?.dob || u?.dob || null };
         }),
       });
     }

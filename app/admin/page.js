@@ -1823,6 +1823,7 @@ function AttendanceSection() {
   const [selectedClass, setSelectedClass] = useState('');
   const [roster, setRoster] = useState([]);
   const [dirty, setDirty] = useState({});
+  const [rosterSearch, setRosterSearch] = useState('');
   const [stats, setStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [showStats, setShowStats] = useState(false);
@@ -1994,7 +1995,7 @@ function AttendanceSection() {
         <h3 className="font-display font-bold text-lg mb-4">Mark Attendance</h3>
         <div className="max-w-md mb-6">
           <Label className="text-slate-300 text-xs uppercase tracking-widest mb-1 block">Select class</Label>
-          <Select value={selectedClass} onValueChange={setSelectedClass}>
+          <Select value={selectedClass} onValueChange={v => { setSelectedClass(v); setRosterSearch(''); }}>
             <SelectTrigger className="h-11"><SelectValue placeholder="Pick a class to mark attendance" /></SelectTrigger>
             <SelectContent>
               {classes.map(c => {
@@ -2011,6 +2012,14 @@ function AttendanceSection() {
               <Button size="sm" variant="outline" onClick={() => markAll(true)} className="border-slate-700 bg-transparent hover:bg-slate-800 text-slate-100"><CheckCircle2 className="w-4 h-4 mr-1 text-lime-400" /> All present</Button>
               <Button size="sm" variant="outline" onClick={() => markAll(false)} className="border-slate-700 bg-transparent hover:bg-slate-800 text-slate-100"><XCircle className="w-4 h-4 mr-1" /> All absent</Button>
               <div className="flex-1" />
+              {/* Roster search */}
+              <input
+                type="text"
+                value={rosterSearch}
+                onChange={e => setRosterSearch(e.target.value)}
+                placeholder="Search student…"
+                className="h-9 px-3 rounded-lg bg-slate-800 border border-slate-700 text-slate-100 text-sm placeholder:text-slate-500 focus:border-lime-400 focus:outline-none w-44"
+              />
               <Button onClick={save} disabled={Object.keys(dirty).length === 0} className="bg-lime-400 text-slate-900 hover:bg-lime-300 font-semibold disabled:opacity-40"><Save className="w-4 h-4 mr-1.5" />Save attendance</Button>
             </div>
 
@@ -2018,7 +2027,9 @@ function AttendanceSection() {
               <EmptyState icon={ClipboardList} title="No bookings for this class" />
             ) : (
               <Card className="rounded-lg bg-slate-900 border-slate-800 overflow-hidden">
-                {roster.map(r => {
+                {roster
+                  .filter(r => !rosterSearch.trim() || r.name.toLowerCase().includes(rosterSearch.toLowerCase()))
+                  .map(r => {
                   const cur = dirty[r.booking_id] !== undefined ? dirty[r.booking_id] : r.present;
                   return (
                     <div key={r.booking_id} className="flex items-center gap-3 px-4 py-3 border-b border-slate-800 last:border-0">
@@ -2034,6 +2045,9 @@ function AttendanceSection() {
                     </div>
                   );
                 })}
+                {rosterSearch.trim() && roster.filter(r => r.name.toLowerCase().includes(rosterSearch.toLowerCase())).length === 0 && (
+                  <div className="px-4 py-8 text-center text-slate-500 text-sm">No students match &ldquo;{rosterSearch}&rdquo;</div>
+                )}
               </Card>
             )}
           </>
@@ -2368,11 +2382,12 @@ function JerseysSection() {
           <div className="hidden md:grid grid-cols-12 gap-3 px-4 py-2.5 text-[10px] uppercase tracking-widest text-slate-500 border-b border-slate-800">
             <div className="col-span-2">Member</div>
             <div className="col-span-2">Name on Jersey</div>
+            <div className="col-span-1">DOB</div>
             <div className="col-span-1">Number</div>
             <div className="col-span-1">Size</div>
             <div className="col-span-1">Height</div>
             <div className="col-span-1">Weight</div>
-            <div className="col-span-2">Status</div>
+            <div className="col-span-1">Status</div>
             <div className="col-span-2 text-right">Action</div>
           </div>
           {jerseys.map(j => (
@@ -2384,13 +2399,16 @@ function JerseysSection() {
               <div className="col-span-12 md:col-span-2 min-w-0">
                 <div className="font-semibold text-slate-100 truncate">{j.name || '—'}</div>
               </div>
+              <div className="col-span-6 md:col-span-1 text-xs text-slate-400">
+                {j.athlete_dob ? new Date(j.athlete_dob).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+              </div>
               <div className="col-span-6 md:col-span-1 text-sm text-slate-100">#{j.number}</div>
               <div className="col-span-6 md:col-span-1">
                 <Badge variant="outline" className="text-lime-400 border-lime-400/30 text-xs">{j.size}</Badge>
               </div>
               <div className="col-span-6 md:col-span-1 text-sm text-slate-400">{j.height}cm</div>
               <div className="col-span-6 md:col-span-1 text-sm text-slate-400">{j.weight}kg</div>
-              <div className="col-span-6 md:col-span-2">
+              <div className="col-span-6 md:col-span-1">
                 <Badge className={`text-xs ${j.status === 'given' ? 'bg-lime-400/20 text-lime-400' : 'bg-amber-400/20 text-amber-400'}`}>
                   {j.status === 'given' ? '✓ Given' : '○ Not Given'}
                 </Badge>
