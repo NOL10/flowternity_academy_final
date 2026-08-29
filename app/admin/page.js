@@ -2650,6 +2650,8 @@ function PerformanceSection() {
   const [dashboardHasMore, setDashboardHasMore] = useState(false);
   const DASHBOARD_LIMIT = 100;
   const [dashboardTagFilter, setDashboardTagFilter] = useState(null); // null | 'sub_junior' | 'junior' | 'senior'
+  // Mobile sidebar state
+  const [showMemberSearch, setShowMemberSearch] = useState(false);
   // Search members
   useEffect(() => {
     const t = setTimeout(async () => {
@@ -2942,13 +2944,13 @@ function PerformanceSection() {
         {showDashboard && (
           <Card className="mt-4 rounded-xl bg-slate-900 border-slate-800 overflow-hidden">
             {/* Dashboard header */}
-            <div className="flex flex-wrap items-center justify-between gap-3 px-5 py-4 border-b border-slate-800">
+            <div className="flex flex-col gap-3 px-4 sm:px-5 py-4 border-b border-slate-800">
               <div>
                 <p className="font-display font-bold text-lg text-slate-100">Combined Leaderboard</p>
                 <p className="text-xs text-slate-500 mt-0.5">Ranked by Performance + Leadership average score</p>
               </div>
               <div className="flex flex-col gap-3">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {SPORTS.filter(s => s.status === 'active').map(s => (
                     <button
                       key={s.id}
@@ -2956,10 +2958,10 @@ function PerformanceSection() {
                       className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition ${dashboardSport === s.id ? 'bg-lime-400 text-slate-900 border-lime-400' : 'border-slate-700 text-slate-400 hover:text-slate-100'}`}
                     >{s.name}</button>
                   ))}
-                  <button onClick={() => loadDashboard()} className="text-xs text-slate-500 hover:text-lime-400 transition ml-1">↻ Refresh</button>
+                  <button onClick={() => loadDashboard()} className="text-xs text-slate-500 hover:text-lime-400 transition">↻ Refresh</button>
                 </div>
-                {/* Tag filter buttons */}
-                <div className="flex items-center gap-2">
+                {/* Tag filter buttons - wrap on mobile */}
+                <div className="flex flex-wrap items-center gap-2">
                   <span className="text-xs uppercase tracking-widest text-slate-500 font-semibold">Filter:</span>
                   {ATHLETE_TAGS.map(t => (
                     <button
@@ -2973,7 +2975,7 @@ function PerformanceSection() {
                   {dashboardTagFilter && (
                     <button
                       onClick={() => switchDashboardTag(null)}
-                      className="text-xs text-slate-500 hover:text-slate-300 transition ml-1"
+                      className="text-xs text-slate-500 hover:text-slate-300 transition"
                     >
                       Clear
                     </button>
@@ -2989,8 +2991,8 @@ function PerformanceSection() {
               <div className="px-5 py-10 text-center text-slate-500 text-sm">No scored athletes yet for this sport.</div>
             ) : (
               <>
-                {/* Column headers */}
-                <div className="grid grid-cols-12 gap-2 px-5 py-2.5 text-[10px] uppercase tracking-widest text-slate-500 border-b border-slate-800">
+                {/* Column headers - hidden on mobile */}
+                <div className="hidden sm:grid grid-cols-12 gap-2 px-5 py-2.5 text-[10px] uppercase tracking-widest text-slate-500 border-b border-slate-800">
                   <div className="col-span-1">#</div>
                   <div className="col-span-4">Athlete</div>
                   <div className="col-span-2 text-center">Performance</div>
@@ -3001,27 +3003,59 @@ function PerformanceSection() {
                   const medal = i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : null;
                   const combinedColor = row.combined >= 7 ? 'text-lime-400' : row.combined >= 4 ? 'text-yellow-400' : 'text-red-400';
                   return (
-                    <div key={row.athlete_id} className={`grid grid-cols-12 gap-2 px-5 py-3 border-b border-slate-800/60 last:border-0 items-center hover:bg-slate-800/30 transition ${i < 3 ? 'bg-slate-800/20' : ''}`}>
-                      <div className="col-span-1 text-sm font-bold text-slate-400">{medal || `${i + 1}`}</div>
-                      <div className="col-span-4 min-w-0">
-                        <p className="font-semibold text-slate-100 truncate text-sm">{row.name}</p>
-                        {row.parent_name !== row.name && <p className="text-[10px] text-slate-500 truncate">{row.parent_name}</p>}
-                      </div>
-                      <div className="col-span-2 text-center">
-                        {row.has_performance ? (
-                          <span className={`font-bold text-sm ${row.performance >= 7 ? 'text-lime-400' : row.performance >= 4 ? 'text-yellow-400' : 'text-red-400'}`}>{row.performance.toFixed(1)}</span>
-                        ) : <span className="text-slate-600 text-xs">—</span>}
-                      </div>
-                      <div className="col-span-2 text-center">
-                        {row.has_leadership ? (
-                          <span className={`font-bold text-sm ${row.leadership >= 7 ? 'text-lime-400' : row.leadership >= 4 ? 'text-yellow-400' : 'text-red-400'}`}>{row.leadership.toFixed(1)}</span>
-                        ) : <span className="text-slate-600 text-xs">—</span>}
-                      </div>
-                      <div className="col-span-3 flex items-center justify-center gap-2">
-                        <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden max-w-[80px]">
-                          <div className={`h-full rounded-full ${row.combined >= 7 ? 'bg-lime-400' : row.combined >= 4 ? 'bg-yellow-400' : 'bg-red-400'}`} style={{ width: `${(row.combined / 10) * 100}%` }} />
+                    <div key={row.athlete_id} className={`grid sm:grid-cols-12 grid-cols-1 gap-2 px-4 sm:px-5 py-3 sm:py-3 border-b border-slate-800/60 last:border-0 items-start sm:items-center hover:bg-slate-800/30 transition ${i < 3 ? 'bg-slate-800/20' : ''}`}>
+                      {/* Mobile layout: card-like */}
+                      <div className="sm:hidden w-full space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-slate-100 truncate text-sm">{row.name}</p>
+                            {row.parent_name !== row.name && <p className="text-[10px] text-slate-500 truncate">{row.parent_name}</p>}
+                          </div>
+                          <span className="font-bold text-sm text-slate-400 ml-2">{medal || `${i + 1}`}</span>
                         </div>
-                        <span className={`font-black text-base ${combinedColor}`}>{row.combined.toFixed(1)}</span>
+                        <div className="grid grid-cols-3 gap-2 text-xs">
+                          <div className="bg-slate-800/40 p-2 rounded text-center">
+                            <p className="text-[10px] text-slate-500 mb-0.5">Perf</p>
+                            <p className={`font-bold ${row.has_performance ? (row.performance >= 7 ? 'text-lime-400' : row.performance >= 4 ? 'text-yellow-400' : 'text-red-400') : 'text-slate-600'}`}>
+                              {row.has_performance ? row.performance.toFixed(1) : '—'}
+                            </p>
+                          </div>
+                          <div className="bg-slate-800/40 p-2 rounded text-center">
+                            <p className="text-[10px] text-slate-500 mb-0.5">Lead</p>
+                            <p className={`font-bold ${row.has_leadership ? (row.leadership >= 7 ? 'text-lime-400' : row.leadership >= 4 ? 'text-yellow-400' : 'text-red-400') : 'text-slate-600'}`}>
+                              {row.has_leadership ? row.leadership.toFixed(1) : '—'}
+                            </p>
+                          </div>
+                          <div className="bg-slate-800/40 p-2 rounded text-center">
+                            <p className="text-[10px] text-slate-500 mb-0.5">Score</p>
+                            <p className={`font-bold text-lg ${combinedColor}`}>{row.combined.toFixed(1)}</p>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Desktop layout */}
+                      <div className="hidden sm:contents">
+                        <div className="col-span-1 text-sm font-bold text-slate-400">{medal || `${i + 1}`}</div>
+                        <div className="col-span-4 min-w-0">
+                          <p className="font-semibold text-slate-100 truncate text-sm">{row.name}</p>
+                          {row.parent_name !== row.name && <p className="text-[10px] text-slate-500 truncate">{row.parent_name}</p>}
+                        </div>
+                        <div className="col-span-2 text-center">
+                          {row.has_performance ? (
+                            <span className={`font-bold text-sm ${row.performance >= 7 ? 'text-lime-400' : row.performance >= 4 ? 'text-yellow-400' : 'text-red-400'}`}>{row.performance.toFixed(1)}</span>
+                          ) : <span className="text-slate-600 text-xs">—</span>}
+                        </div>
+                        <div className="col-span-2 text-center">
+                          {row.has_leadership ? (
+                            <span className={`font-bold text-sm ${row.leadership >= 7 ? 'text-lime-400' : row.leadership >= 4 ? 'text-yellow-400' : 'text-red-400'}`}>{row.leadership.toFixed(1)}</span>
+                          ) : <span className="text-slate-600 text-xs">—</span>}
+                        </div>
+                        <div className="col-span-3 flex items-center justify-center gap-2">
+                          <div className="flex-1 h-1.5 bg-slate-800 rounded-full overflow-hidden max-w-[80px]">
+                            <div className={`h-full rounded-full ${row.combined >= 7 ? 'bg-lime-400' : row.combined >= 4 ? 'bg-yellow-400' : 'bg-red-400'}`} style={{ width: `${(row.combined / 10) * 100}%` }} />
+                          </div>
+                          <span className={`font-black text-base ${combinedColor}`}>{row.combined.toFixed(1)}</span>
+                        </div>
                       </div>
                     </div>
                   );
@@ -3045,8 +3079,8 @@ function PerformanceSection() {
       </div>
 
       {/* Metrics tab selector + Sort buttons */}
-      <div className="flex flex-col md:flex-row gap-3 mb-6">
-        <div className="flex gap-2">
+      <div className="flex flex-col gap-3 mb-6">
+        <div className="flex flex-wrap gap-2 items-center">
           <button
             onClick={() => setMetricsTab('performance')}
             className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all ${metricsTab === 'performance' ? 'bg-lime-400/10 text-lime-400 border border-lime-400/20' : 'border border-slate-700 text-slate-400 hover:text-slate-100 hover:border-slate-600'}`}
@@ -3057,82 +3091,151 @@ function PerformanceSection() {
           >👑 Leadership</button>
         </div>
 
-        {/* Sort buttons */}
-        <div className="flex gap-2 ml-auto items-center">
+        {/* Sort buttons - stack on mobile */}
+        <div className="flex flex-col sm:flex-row gap-2 sm:items-center">
           {sortLoading && <span className="text-xs text-slate-500 animate-pulse">Calculating scores…</span>}
           <button
             onClick={() => activateSort('high-to-low')}
-            className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all flex items-center gap-2 ${sortOrder === 'high-to-low' ? 'bg-lime-400/10 text-lime-400 border border-lime-400/20' : 'border border-slate-700 text-slate-400 hover:text-slate-100 hover:border-slate-600'}`}
+            className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all flex items-center justify-center gap-2 ${sortOrder === 'high-to-low' ? 'bg-lime-400/10 text-lime-400 border border-lime-400/20' : 'border border-slate-700 text-slate-400 hover:text-slate-100 hover:border-slate-600'}`}
           >↓ High → Low</button>
           <button
             onClick={() => activateSort('low-to-high')}
-            className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all flex items-center gap-2 ${sortOrder === 'low-to-high' ? 'bg-lime-400/10 text-lime-400 border border-lime-400/20' : 'border border-slate-700 text-slate-400 hover:text-slate-100 hover:border-slate-600'}`}
+            className={`px-4 py-2.5 rounded-lg font-medium text-sm transition-all flex items-center justify-center gap-2 ${sortOrder === 'low-to-high' ? 'bg-lime-400/10 text-lime-400 border border-lime-400/20' : 'border border-slate-700 text-slate-400 hover:text-slate-100 hover:border-slate-600'}`}
           >↑ Low → High</button>
-          {sortOrder && <button onClick={() => setSortOrder(null)} className="text-xs text-slate-500 hover:text-slate-300 transition">✕ Clear</button>}
+          {sortOrder && <button onClick={() => setSortOrder(null)} className="text-xs text-slate-500 hover:text-slate-300 transition py-2.5">✕ Clear</button>}
         </div>
       </div>
 
-      <div className="grid md:grid-cols-[320px_1fr] gap-6">
-        {/* Left: member search */}
-        <Card className="rounded-lg bg-slate-900 border-slate-800 p-3 h-fit sticky top-16">
-          <div className="relative mb-3">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-            <Input value={q} onChange={e => setQ(e.target.value)} className="h-10 pl-9 bg-slate-950 border-slate-800" placeholder="Search by name / email / phone" />
-          </div>
-          <div className="space-y-1 max-h-[500px] overflow-y-auto">
-            {members.length === 0 ? (
-              <p className="text-xs text-slate-500 px-3 py-4">No members found</p>
-            ) : (
-              <>
-                {sortOrder && (
-                  <div className="sticky top-0 bg-slate-900 px-3 py-2 border-b border-slate-800 mb-1 z-10 flex items-center justify-between">
-                    <p className="text-[11px] text-slate-500 font-semibold">Combined score (P+L)</p>
-                    {sortLoading && <span className="text-[10px] text-lime-400 animate-pulse">loading…</span>}
-                  </div>
-                )}
-                {members
-                  .map(m => ({ ...m, scores: memberScores[m.id] || null, combinedScore: memberScores[m.id]?.combined || 0 }))
-                  .sort((a, b) => {
-                    if (!sortOrder) return 0;
-                    return sortOrder === 'high-to-low' ? b.combinedScore - a.combinedScore : a.combinedScore - b.combinedScore;
-                  })
-                  .map(m => {
-                    const isSelected = subjects.some(s => s.id === m.id) || subjects[0]?.id === m.id;
-                    return (
-                      <button key={m.id} onClick={() => openMember(m)} className={`w-full text-left px-3 py-2.5 rounded-md text-sm transition ${isSelected ? 'bg-lime-400/10 text-lime-300' : 'hover:bg-slate-800 text-slate-300'}`}>
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex-1 min-w-0">
-                            <div className="font-medium truncate">{m.full_name}</div>
-                            <div className="text-[11px] text-slate-500 truncate">{m.email} · {m.role}</div>
-                          </div>
-                          {m.scores && m.combinedScore > 0 ? (
-                            <div className="text-right flex-shrink-0">
-                              <p className={`text-xs font-black ${m.combinedScore >= 7 ? 'text-lime-400' : m.combinedScore >= 4 ? 'text-yellow-400' : 'text-red-400'}`}>{m.combinedScore.toFixed(1)}</p>
-                              <p className="text-[9px] text-slate-600">P:{m.scores.performance.toFixed(1)} L:{m.scores.leadership.toFixed(1)}</p>
+      <div className="grid lg:grid-cols-[320px_1fr] gap-6">
+        {/* Left: member search - hidden on mobile, shown in modal */}
+        <div className="hidden lg:flex lg:flex-col">
+          <Card className="rounded-lg bg-slate-900 border-slate-800 p-3 h-fit sticky top-16">
+            <div className="relative mb-3">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+              <Input value={q} onChange={e => setQ(e.target.value)} className="h-10 pl-9 bg-slate-950 border-slate-800" placeholder="Search by name / email / phone" />
+            </div>
+            <div className="space-y-1 max-h-[500px] overflow-y-auto">
+              {members.length === 0 ? (
+                <p className="text-xs text-slate-500 px-3 py-4">No members found</p>
+              ) : (
+                <>
+                  {sortOrder && (
+                    <div className="sticky top-0 bg-slate-900 px-3 py-2 border-b border-slate-800 mb-1 z-10 flex items-center justify-between">
+                      <p className="text-[11px] text-slate-500 font-semibold">Combined score (P+L)</p>
+                      {sortLoading && <span className="text-[10px] text-lime-400 animate-pulse">loading…</span>}
+                    </div>
+                  )}
+                  {members
+                    .map(m => ({ ...m, scores: memberScores[m.id] || null, combinedScore: memberScores[m.id]?.combined || 0 }))
+                    .sort((a, b) => {
+                      if (!sortOrder) return 0;
+                      return sortOrder === 'high-to-low' ? b.combinedScore - a.combinedScore : a.combinedScore - b.combinedScore;
+                    })
+                    .map(m => {
+                      const isSelected = subjects.some(s => s.id === m.id) || subjects[0]?.id === m.id;
+                      return (
+                        <button key={m.id} onClick={() => openMember(m)} className={`w-full text-left px-3 py-2.5 rounded-md text-sm transition ${isSelected ? 'bg-lime-400/10 text-lime-300' : 'hover:bg-slate-800 text-slate-300'}`}>
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="font-medium truncate">{m.full_name}</div>
+                              <div className="text-[11px] text-slate-500 truncate">{m.email} · {m.role}</div>
                             </div>
-                          ) : sortOrder ? (
-                            <span className="text-[10px] text-slate-600 animate-pulse flex-shrink-0">…</span>
-                          ) : null}
-                        </div>
+                            {m.scores && m.combinedScore > 0 ? (
+                              <div className="text-right flex-shrink-0">
+                                <p className={`text-xs font-black ${m.combinedScore >= 7 ? 'text-lime-400' : m.combinedScore >= 4 ? 'text-yellow-400' : 'text-red-400'}`}>{m.combinedScore.toFixed(1)}</p>
+                                <p className="text-[9px] text-slate-600">P:{m.scores.performance.toFixed(1)} L:{m.scores.leadership.toFixed(1)}</p>
+                              </div>
+                            ) : sortOrder ? (
+                              <span className="text-[10px] text-slate-600 animate-pulse flex-shrink-0">…</span>
+                            ) : null}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  {hasMore && (
+                    <div className="px-3 py-3 border-t border-slate-800 mt-2">
+                      <button
+                        onClick={loadMoreMembers}
+                        disabled={loadingMore}
+                        className="w-full px-3 py-2 text-xs font-semibold rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition disabled:opacity-50"
+                      >
+                        {loadingMore ? 'Loading...' : `Load More (showing ${members.length})`}
                       </button>
-                    );
-                  })}
-                {hasMore && (
-                  <div className="px-3 py-3 border-t border-slate-800 mt-2">
-                    <button
-                      onClick={loadMoreMembers}
-                      disabled={loadingMore}
-                      className="w-full px-3 py-2 text-xs font-semibold rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition disabled:opacity-50"
-                    >
-                      {loadingMore ? 'Loading...' : `Load More (showing ${members.length})`}
-                    </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </Card>
+        </div>
+
+        {/* Mobile member search button + modal */}
+        <div className="lg:hidden mb-4">
+          <Button
+            onClick={() => setShowMemberSearch(true)}
+            variant="outline"
+            className="w-full border-slate-700 bg-slate-800 hover:bg-slate-700 text-slate-100 justify-center"
+          >
+            <Search className="w-4 h-4 mr-2" /> {selected ? 'Change Member' : 'Search & Pick Member'}
+          </Button>
+            {showMemberSearch && (
+              <div className="fixed inset-0 bg-black/60 z-50 flex items-end">
+                <Card className="w-full max-h-[80vh] rounded-t-2xl bg-slate-900 border-slate-800 border-b-0 overflow-hidden flex flex-col">
+                  <div className="sticky top-0 bg-slate-900 px-4 py-3 border-b border-slate-800 flex items-center justify-between">
+                    <h3 className="font-semibold text-slate-100">Select Member</h3>
+                    <button onClick={() => setShowMemberSearch(false)} className="text-slate-400 hover:text-slate-100">✕</button>
                   </div>
-                )}
-              </>
+                  <div className="px-4 py-3">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                      <Input value={q} onChange={e => setQ(e.target.value)} className="h-10 pl-9 bg-slate-950 border-slate-800" placeholder="Search by name / email / phone" />
+                    </div>
+                  </div>
+                  <div className="flex-1 overflow-y-auto space-y-1 px-4 pb-4">
+                    {members.length === 0 ? (
+                      <p className="text-xs text-slate-500 py-4">No members found</p>
+                    ) : (
+                      <>
+                        {members
+                          .map(m => ({ ...m, scores: memberScores[m.id] || null, combinedScore: memberScores[m.id]?.combined || 0 }))
+                          .sort((a, b) => {
+                            if (!sortOrder) return 0;
+                            return sortOrder === 'high-to-low' ? b.combinedScore - a.combinedScore : a.combinedScore - b.combinedScore;
+                          })
+                          .map(m => (
+                            <button key={m.id} onClick={() => { openMember(m); setShowMemberSearch(false); }} className="w-full text-left px-3 py-2.5 rounded-md text-sm hover:bg-slate-800 text-slate-300 transition">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="font-medium truncate">{m.full_name}</div>
+                                  <div className="text-[11px] text-slate-500 truncate">{m.email} · {m.role}</div>
+                                </div>
+                                {m.scores && m.combinedScore > 0 ? (
+                                  <div className="text-right flex-shrink-0">
+                                    <p className={`text-xs font-black ${m.combinedScore >= 7 ? 'text-lime-400' : m.combinedScore >= 4 ? 'text-yellow-400' : 'text-red-400'}`}>{m.combinedScore.toFixed(1)}</p>
+                                  </div>
+                                ) : null}
+                              </div>
+                            </button>
+                          ))}
+                        {hasMore && (
+                          <div className="px-3 py-3 border-t border-slate-800 mt-2">
+                            <button
+                              onClick={loadMoreMembers}
+                              disabled={loadingMore}
+                              className="w-full px-3 py-2 text-xs font-semibold rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 transition disabled:opacity-50"
+                            >
+                              {loadingMore ? 'Loading...' : `Load More (showing ${members.length})`}
+                            </button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </Card>
+              </div>
             )}
           </div>
-        </Card>
-
+        
         {/* Right: metrics editor */}
         <div>
           {loading && <p className="text-slate-500">Loading…</p>}
@@ -3142,31 +3245,29 @@ function PerformanceSection() {
           {!loading && selected && data && (
             <div className="space-y-4">
               {/* Member/Athlete highlight banner */}
-              <div className="rounded-2xl bg-gradient-to-r from-lime-400/20 via-lime-400/10 to-transparent border border-lime-400/40 p-4 md:p-6">
-                <p className="text-xs uppercase tracking-widest text-lime-400 font-semibold mb-1">Currently editing</p>
-                <div className="flex flex-col md:flex-row md:items-center gap-3 flex-wrap">
-                  <div className="flex-1">
-                    {currentParent && (
-                      <>
-                        <p className="text-sm text-slate-400">Parent / Member</p>
-                        <p className="font-display font-black text-2xl text-slate-100">{currentParent.full_name}</p>
-                      </>
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <p className="text-sm text-slate-400">Athlete Profile</p>
-                    <p className="font-display font-black text-2xl text-lime-300">{selected.label}</p>
+              <div className="rounded-2xl bg-gradient-to-r from-lime-400/20 via-lime-400/10 to-transparent border border-lime-400/40 p-4">
+                <p className="text-xs uppercase tracking-widest text-lime-400 font-semibold mb-2">Currently editing</p>
+                <div className="flex flex-col gap-3">
+                  {currentParent && (
+                    <div>
+                      <p className="text-xs text-slate-400">Parent / Member</p>
+                      <p className="font-display font-black text-xl sm:text-2xl text-slate-100 break-words">{currentParent.full_name}</p>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-xs text-slate-400">Athlete Profile</p>
+                    <p className="font-display font-black text-xl sm:text-2xl text-lime-300 break-words">{selected.label}</p>
                   </div>
                   {activeSport && (
-                    <div className="flex-1">
-                      <p className="text-sm text-slate-400">Sport</p>
-                      <p className="font-display font-black text-2xl text-slate-100">{data.sports.find(s => s.sport_id === activeSport)?.sport_name}</p>
+                    <div>
+                      <p className="text-xs text-slate-400">Sport</p>
+                      <p className="font-display font-black text-xl sm:text-2xl text-slate-100">{data.sports.find(s => s.sport_id === activeSport)?.sport_name}</p>
                     </div>
                   )}
                   {/* Athlete Tag selector */}
-                  <div className="flex-shrink-0">
-                    <p className="text-sm text-slate-400 mb-1.5">Category</p>
-                    <div className="flex gap-1.5">
+                  <div>
+                    <p className="text-xs text-slate-400 mb-1.5">Category</p>
+                    <div className="flex flex-wrap gap-1.5">
                       {ATHLETE_TAGS.map(t => (
                         <button
                           key={t.id}
@@ -3202,9 +3303,9 @@ function PerformanceSection() {
                 </Card>
               ) : (
                 <>
-                  <div className="flex items-center gap-2 border-b border-slate-800">
+                  <div className="flex items-center gap-2 border-b border-slate-800 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
                     {data.sports.map(sp => (
-                      <button key={sp.sport_id} onClick={() => { setActiveSport(sp.sport_id); setDirty({}); loadRecentLeadership(selected.id, sp.sport_id); }} className={`px-4 py-2.5 text-sm font-medium border-b-2 transition ${activeSport === sp.sport_id ? 'border-lime-400 text-lime-400' : 'border-transparent text-slate-400 hover:text-slate-100'}`}>
+                      <button key={sp.sport_id} onClick={() => { setActiveSport(sp.sport_id); setDirty({}); loadRecentLeadership(selected.id, sp.sport_id); }} className={`px-4 py-2.5 text-sm font-medium border-b-2 transition whitespace-nowrap flex-shrink-0 ${activeSport === sp.sport_id ? 'border-lime-400 text-lime-400' : 'border-transparent text-slate-400 hover:text-slate-100'}`}>
                         {sp.sport_name}
                       </button>
                     ))}
@@ -3214,8 +3315,8 @@ function PerformanceSection() {
                     <>
                       {/* Kids level card - only for performance tab */}
                       {metricsTab === 'performance' && selected.type === 'child' && (
-                        <Card className="rounded-lg bg-gradient-to-br from-lime-400/10 to-transparent border-lime-400/20 p-5">
-                          <div className="flex flex-col md:flex-row md:items-center gap-4 justify-between">
+                        <Card className="rounded-lg bg-gradient-to-br from-lime-400/10 to-transparent border-lime-400/20 p-4">
+                          <div className="flex flex-col gap-4">
                             <div>
                               <p className="text-xs uppercase tracking-widest text-lime-400 mb-1">Progression level</p>
                               <div className="flex items-baseline gap-3">
@@ -3240,17 +3341,17 @@ function PerformanceSection() {
 
                       {/* PERFORMANCE METRICS TAB */}
                       {metricsTab === 'performance' && (
-                        <Card className="rounded-lg bg-slate-900 border-slate-800 p-5">
-                          <div className="flex items-center justify-between mb-4">
+                        <Card className="rounded-lg bg-slate-900 border-slate-800 p-4">
+                          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
                             <div>
                               <h3 className="font-semibold text-slate-100">{currentSportData.sport_name} metrics</h3>
                               <p className="text-xs text-slate-500">Score each metric 0–10 (decimals allowed).</p>
                             </div>
-                            <Button onClick={saveScores} disabled={saving || Object.keys(dirty).length === 0} className="bg-lime-400 text-slate-900 hover:bg-lime-300 font-semibold">
+                            <Button onClick={saveScores} disabled={saving || Object.keys(dirty).length === 0} className="bg-lime-400 text-slate-900 hover:bg-lime-300 font-semibold whitespace-nowrap flex-shrink-0">
                               <Save className="w-4 h-4 mr-1.5" /> {saving ? 'Saving…' : `Save${Object.keys(dirty).length ? ` (${Object.keys(dirty).length})` : ''}`}
                             </Button>
                           </div>
-                          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
                             {(currentSportData.metrics_catalog || []).map(m => {
                               const v = scoreValue(m.key);
                               const isDirty = dirty[m.key] !== undefined;
