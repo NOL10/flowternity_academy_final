@@ -2096,13 +2096,13 @@ async function handleRoute(request, { params }) {
         return j({ ok: true, sport_id, level: lvl, level_info: levelInfo(lvl) });
       }
 
-      // PATCH /admin/athletes/:target_id/tag — set Junior / Sub Junior / Senior tag
+      // PATCH /admin/athletes/:target_id/tag — set Juniors / Intermediates / Seniors tag
       const tagMatch = route.match(/^\/admin\/athletes\/([^/]+)\/tag$/);
       if (tagMatch && method === 'PATCH') {
         const targetId = tagMatch[1];
         const { tag } = await request.json();
-        const VALID_TAGS = ['sub_junior', 'junior', 'senior'];
-        if (tag !== null && !VALID_TAGS.includes(tag)) return err('Invalid tag. Must be sub_junior, junior, or senior (or null to clear)', 400);
+        const VALID_TAGS = ['juniors', 'intermediates', 'seniors'];
+        if (tag !== null && !VALID_TAGS.includes(tag)) return err('Invalid tag. Must be juniors, intermediates, or seniors (or null to clear)', 400);
         // Try child profile first, then user
         const child = await db.collection('child_profiles').findOne({ id: targetId });
         if (child) {
@@ -3344,7 +3344,7 @@ async function handleRoute(request, { params }) {
     if (route === '/admin/leaderboard' && method === 'GET') {
       const url = new URL(request.url);
       const sport_id = url.searchParams.get('sport_id') || 'basketball';
-      const tag = url.searchParams.get('tag') || null; // 'sub_junior', 'junior', 'senior', or null
+      const tag = url.searchParams.get('tag') || null; // 'juniors', 'intermediates', 'seniors', or null
       const limit = Math.min(200, parseInt(url.searchParams.get('limit') || '100'));
       const skip = Math.max(0, parseInt(url.searchParams.get('skip') || '0'));
 

@@ -1642,7 +1642,7 @@ function MembersSection() {
                               k.athlete_tag === 'junior' ? 'bg-purple-500/20 text-purple-300' :
                               'bg-amber-500/20 text-amber-300'
                             }`}>
-                              {k.athlete_tag === 'sub_junior' ? 'Sub Junior' : k.athlete_tag === 'junior' ? 'Junior' : 'Senior'}
+                              {k.athlete_tag === 'juniors' ? 'Juniors' : k.athlete_tag === 'intermediates' ? 'Intermediates' : 'Seniors'}
                             </span>
                           )}
                         </div>
@@ -2638,7 +2638,7 @@ function PerformanceSection() {
   const [sortOrder, setSortOrder] = useState(null); // null | 'high-to-low' | 'low-to-high'
   const [memberScores, setMemberScores] = useState({});
   const [sortLoading, setSortLoading] = useState(false);
-  const [athleteTag, setAthleteTag] = useState(null); // null | 'sub_junior' | 'junior' | 'senior'
+  const [athleteTag, setAthleteTag] = useState(null); // null | 'juniors' | 'intermediates' | 'seniors'
   const [savingTag, setSavingTag] = useState(false);
   // Leadership dashboard
   const [showDashboard, setShowDashboard] = useState(false);
@@ -2649,7 +2649,7 @@ function PerformanceSection() {
   const [dashboardPage, setDashboardPage] = useState(1);
   const [dashboardHasMore, setDashboardHasMore] = useState(false);
   const DASHBOARD_LIMIT = 100;
-  const [dashboardTagFilter, setDashboardTagFilter] = useState(null); // null | 'sub_junior' | 'junior' | 'senior'
+  const [dashboardTagFilter, setDashboardTagFilter] = useState(null); // null | 'juniors' | 'intermediates' | 'seniors'
   // Mobile sidebar state
   const [showMemberSearch, setShowMemberSearch] = useState(false);
   // Search members
@@ -2774,8 +2774,8 @@ function PerformanceSection() {
 
   const currentSportData = data?.sports?.find(s => s.sport_id === activeSport);
 
-  // Get the parent member name from the search (if available)
-  const currentParent = members.find(m => subjects.some(s => s.id === m.id || (selected?.type === 'child' && subjects.some(subj => subj.id === selected.id))));
+  // Get the parent member name — use selectedMemberId which is set when openMember() is called
+  const currentParent = selectedMemberId ? members.find(m => m.id === selectedMemberId) : null;
 
   const scoreValue = (mkey) => {
     if (dirty[mkey] !== undefined) return dirty[mkey];
@@ -2858,9 +2858,9 @@ function PerformanceSection() {
   };
 
   const ATHLETE_TAGS = [
-    { id: 'sub_junior', label: 'Sub Junior', color: 'bg-blue-500/20 text-blue-300 border-blue-500/40 hover:bg-blue-500/30' },
-    { id: 'junior',     label: 'Junior',     color: 'bg-purple-500/20 text-purple-300 border-purple-500/40 hover:bg-purple-500/30' },
-    { id: 'senior',     label: 'Senior',     color: 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30' },
+    { id: 'juniors',       label: 'Juniors',       color: 'bg-blue-500/20 text-blue-300 border-blue-500/40 hover:bg-blue-500/30' },
+    { id: 'intermediates', label: 'Intermediates', color: 'bg-purple-500/20 text-purple-300 border-purple-500/40 hover:bg-purple-500/30' },
+    { id: 'seniors',       label: 'Seniors',       color: 'bg-amber-500/20 text-amber-300 border-amber-500/40 hover:bg-amber-500/30' },
   ];
 
   const saveAthleteTag = async (newTag) => {
