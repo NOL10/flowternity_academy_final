@@ -125,12 +125,12 @@ function MembershipsInner() {
                       <div className="font-display font-black text-2xl md:text-3xl">Basketball Single Classes</div>
                     </div>
 
-                    <div className="text-sm text-muted-foreground mb-4">30-day validity per slot</div>
+                    <div className="text-sm text-muted-foreground mb-4">15-day validity per slot</div>
 
                     <ul className="mt-4 space-y-2 text-sm mb-6">
                       <li className="flex items-start gap-2"><span className="text-accent">●</span> Pay per class</li>
                       <li className="flex items-start gap-2"><span className="text-accent">●</span> Buy 1 or more slots</li>
-                      <li className="flex items-start gap-2"><span className="text-accent">●</span> 30 days to use</li>
+                      <li className="flex items-start gap-2"><span className="text-accent">●</span> 15 days to use</li>
                     </ul>
 
                     <div className="space-y-1">

@@ -132,6 +132,10 @@ function CheckoutInner() {
       const qty = isSlotPlan ? slotQuantity : 1;
       const basePrice = plan.price * qty;
       setFinalPrice(basePrice + enrollmentFee);
+      // Hide jersey form if enrollment fee is now 0 (coupon applied)
+      if (enrollmentFee === 0) {
+        setShowJerseyForm(false);
+      }
     }
   }, [plan, slotQuantity, enrollmentFee]);
 
@@ -166,8 +170,9 @@ function CheckoutInner() {
         return;
       }
       setAppliedEnrollmentCoupon(coupon);
-      setEnrollmentFee(0); // This will trigger the useEffect to recalculate finalPrice
-      toast.success(`Coupon applied! ₹${coupon.discount_amount.toLocaleString('en-IN')} enrollment fee waived`);
+      setEnrollmentFee(0); // This will trigger the useEffect to recalculate finalPrice and hide jersey form
+      setJerseyForm({ height: '', weight: '', name: '', number: '', size: '' }); // Clear jersey form
+      toast.success(`Coupon applied! ₹${coupon.discount_amount.toLocaleString('en-IN')} enrollment fee waived. No uniform required.`);
     } else {
       // Regular membership coupon
       if (!coupon.applicable_plans.includes(plan.id)) { 
@@ -184,6 +189,24 @@ function CheckoutInner() {
       toast.success(`Coupon applied! ₹${coupon.discount_amount.toLocaleString('en-IN')} off`);
     }
     setCouponCode('');
+  };
+
+  const removeCoupon = (isEnrollmentCoupon) => {
+    if (isEnrollmentCoupon) {
+      setAppliedEnrollmentCoupon(null);
+      // Restore enrollment fee to ₹2000
+      setEnrollmentFee(2000);
+      setShowJerseyForm(true);
+      toast.success('Coupon removed. Enrollment fee restored.');
+    } else {
+      setAppliedCoupon(null);
+      // Recalculate final price without discount
+      const isSlotPlan = plan.type === 'slot';
+      const qty = isSlotPlan ? slotQuantity : 1;
+      const basePrice = plan.price * qty;
+      setFinalPrice(basePrice + enrollmentFee);
+      toast.success('Coupon removed.');
+    }
   };
 
   const validate = () => {
@@ -570,7 +593,7 @@ function CheckoutInner() {
               {plan.type === 'slot' && (
                 <div className="mt-6 pt-6 border-t border-border">
                   <Label className="text-base font-semibold mb-3 block">How many slots do you want?</Label>
-                  <p className="text-sm text-muted-foreground mb-4">Each slot = 1 class booking. Use all slots within 30 days.</p>
+                  <p className="text-sm text-muted-foreground mb-4">Each slot = 1 class booking. Use all slots within 15 days.</p>
                   <div className="flex items-center gap-4">
                     <div className="flex items-center border border-input rounded-lg overflow-hidden">
                       <button
@@ -792,13 +815,13 @@ function CheckoutInner() {
                 {appliedCoupon && (
                   <div className="mt-2 text-xs text-green-600 flex items-center justify-between">
                     <span>✓ {appliedCoupon.code}: {appliedCoupon.description}</span>
-                    <button onClick={() => { setAppliedCoupon(null); }} className="text-xs hover:underline">Remove</button>
+                    <button onClick={() => removeCoupon(false)} className="text-xs hover:underline">Remove</button>
                   </div>
                 )}
                 {appliedEnrollmentCoupon && (
                   <div className="mt-2 text-xs text-green-600 flex items-center justify-between">
                     <span>✓ {appliedEnrollmentCoupon.code}: {appliedEnrollmentCoupon.description}</span>
-                    <button onClick={() => { setAppliedEnrollmentCoupon(null); setEnrollmentFee(2000); }} className="text-xs hover:underline">Remove</button>
+                    <button onClick={() => removeCoupon(true)} className="text-xs hover:underline">Remove</button>
                   </div>
                 )}
               </div>

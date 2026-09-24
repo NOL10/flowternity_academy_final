@@ -105,11 +105,16 @@ async function activateOrderMembership(db, { razorpay_order_id, razorpay_payment
   if (!user) return { error: 'User not found', status: 404 };
   const meta = paymentRec.pending_meta || {};
   const now = new Date();
-  const expiry = new Date(now); expiry.setMonth(expiry.getMonth() + mem.duration_months);
-  
-  // For slot-based memberships, add slots_remaining field
   const isSlotPlan = mem.type === 'slot';
   const slotQty = isSlotPlan ? (meta.slot_quantity || 1) : null;
+  
+  // Slot-based memberships expire in 15 days, regular memberships use duration_months
+  const expiry = new Date(now);
+  if (isSlotPlan) {
+    expiry.setDate(expiry.getDate() + 15);
+  } else {
+    expiry.setMonth(expiry.getMonth() + mem.duration_months);
+  }
   
   const um = {
     id: uuidv4(),
@@ -166,7 +171,7 @@ async function activateOrderMembership(db, { razorpay_order_id, razorpay_payment
   }
   try {
     const emailMsg = isSlotPlan 
-      ? `You purchased ${slotQty} Basketball slot(s). Valid for 30 days.`
+      ? `You purchased ${slotQty} Basketball slot(s). Valid for 15 days.`
       : `Membership: ${mem.name} for ${mem.duration_months} month(s).`;
     await sendMembershipPurchaseEmail({
       to: user.email, name: user.full_name,
@@ -664,11 +669,19 @@ async function handleRoute(request, { params }) {
       const u = await db.collection('users').findOne({ id: session.sub });
       if (!u) return err('User not found', 404);
       
+      const now = new Date();
+      
+      // Auto-expire any active memberships that have passed their expiry date
+      await db.collection('user_memberships').updateMany(
+        { user_id: u.id, status: 'active', expiry_date: { $lt: now } },
+        { $set: { status: 'expired' } }
+      );
+      
       // Get all active memberships (users can hold multiple sport memberships)
       const activeMemberships = await db.collection('user_memberships').find({
         user_id: u.id,
         status: 'active',
-        expiry_date: { $gt: new Date() }
+        expiry_date: { $gt: now }
       }).toArray();
       
       return j({ user: publicUser(u), active_memberships: activeMemberships.map(clean) });
@@ -805,6 +818,58 @@ async function handleRoute(request, { params }) {
       });
     }
 
+    // POST /trial/order — create Razorpay order for paid skateboarding trials
+    if (route === '/trial/order' && method === 'POST') {
+      const body = await request.json();
+      const { full_name, email, phone, sport_id, class_id, message, amount } = body || {};
+      if (!full_name || !email || !phone || !sport_id || !amount) return err('Missing required fields');
+      if (!getRazorpay()) return err('Payments not configured', 500);
+      
+      // Verify it's a paid trial (currently only skateboarding is paid at ₹500)
+      if (sport_id !== 'skateboarding' || amount !== 500) {
+        return err('Invalid trial configuration', 400);
+      }
+      
+      try {
+        const order = await createOrder({
+          amountRupees: amount,
+          receipt: `trial_${sport_id.slice(0, 4)}_${Date.now()}`,
+          notes: { 
+            flow: 'trial_paid',
+            sport_id,
+            full_name,
+            email,
+            phone,
+            class_id: class_id || null,
+          },
+        });
+        
+        // Save pending trial payment
+        await db.collection('trial_payments').insertOne({
+          id: uuidv4(),
+          razorpay_order_id: order.id,
+          amount,
+          currency: 'INR',
+          full_name,
+          email: email.toLowerCase(),
+          phone,
+          sport_id,
+          class_id: class_id || null,
+          message: message || '',
+          status: 'created',
+          created_at: new Date(),
+        });
+        
+        return j({ 
+          order_id: order.id, 
+          order: { id: order.id, amount: order.amount, currency: order.currency },
+          key_id: publicKeyId(),
+        });
+      } catch (e) {
+        return err('Order creation failed: ' + e.message, 500);
+      }
+    }
+
     if (route === '/trial/book' && method === 'POST') {
       const session = getSession();
       
@@ -872,6 +937,78 @@ async function handleRoute(request, { params }) {
       return j({ lead: clean(lead), email_sent, class: classInfo ? clean(classInfo) : null });
     }
 
+    // POST /trial/verify — verify Razorpay signature and create trial lead
+    if (route === '/trial/verify' && method === 'POST') {
+      const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = await request.json();
+      if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+        return err('Missing payment fields', 400);
+      }
+      
+      if (!verifySignature({ order_id: razorpay_order_id, payment_id: razorpay_payment_id, signature: razorpay_signature })) {
+        await db.collection('trial_payments').updateOne(
+          { razorpay_order_id },
+          { $set: { status: 'failed', failure_reason: 'invalid_signature', updated_at: new Date() } }
+        );
+        return err('Invalid signature', 400);
+      }
+      
+      // Find the pending trial payment
+      const trialPayment = await db.collection('trial_payments').findOne({ razorpay_order_id });
+      if (!trialPayment) return err('Trial payment not found', 404);
+      if (trialPayment.status === 'success') return err('Payment already processed', 409);
+      
+      // Check if lead already exists (prevent duplicates)
+      const existingLead = await db.collection('trial_leads').findOne({
+        email: trialPayment.email,
+        created_at: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+      });
+      if (existingLead) return err('You have already booked a trial recently. Check your email or contact us.', 409);
+      
+      // Create trial lead
+      let classInfo = null;
+      if (trialPayment.class_id) {
+        const cls = await db.collection('classes').findOne({ id: trialPayment.class_id });
+        if (cls) {
+          const now = new Date();
+          const classDateTime = new Date(`${cls.date}T${cls.start_time}`);
+          if (now < classDateTime) {
+            const activeCount = await db.collection('bookings').countDocuments({ class_id: trialPayment.class_id, status: 'booked' });
+            if (activeCount < cls.capacity) classInfo = cls;
+          }
+        }
+      }
+      
+      const lead = {
+        id: uuidv4(),
+        full_name: trialPayment.full_name,
+        email: trialPayment.email,
+        phone: trialPayment.phone,
+        sport_id: trialPayment.sport_id,
+        class_id: classInfo?.id || null,
+        message: trialPayment.message || '',
+        status: classInfo ? 'scheduled' : 'pending',
+        payment_id: razorpay_payment_id,
+        trial_payment_id: trialPayment.id,
+        is_paid: true,
+        created_at: new Date(),
+      };
+      await db.collection('trial_leads').insertOne(lead);
+      
+      // Mark payment as success
+      await db.collection('trial_payments').updateOne(
+        { razorpay_order_id },
+        { $set: { 
+          status: 'success',
+          razorpay_payment_id,
+          razorpay_signature,
+          verified_at: new Date(),
+          trial_lead_id: lead.id,
+        } }
+      );
+      
+      return j({ lead: clean(lead), class: classInfo ? clean(classInfo) : null, email_sent: true });
+    }
+
     // -------- REGISTER + PAY (combined signup) --------
     if (route === '/checkout/register-and-pay' && method === 'POST') {
       const body = await request.json();
@@ -916,7 +1053,13 @@ async function handleRoute(request, { params }) {
       await db.collection('child_profiles').insertOne(childProfile);
 
       const now = new Date();
-      const expiry = new Date(now); expiry.setMonth(expiry.getMonth() + mem.duration_months);
+      const isSlotPlan = mem.type === 'slot';
+      const expiry = new Date(now);
+      if (isSlotPlan) {
+        expiry.setDate(expiry.getDate() + 15);
+      } else {
+        expiry.setMonth(expiry.getMonth() + mem.duration_months);
+      }
       const um = {
         id: uuidv4(),
         user_id: newUser.id,
@@ -927,6 +1070,7 @@ async function handleRoute(request, { params }) {
         selected_sports: [mem.sport_id],
         start_date: now, expiry_date: expiry,
         status: 'active', pause_days: 0, paused_at: null,
+        ...(isSlotPlan && { slots_remaining: 1, slots_total: 1 }),
         created_at: now,
       };
       await db.collection('user_memberships').insertOne(um);
@@ -993,7 +1137,13 @@ async function handleRoute(request, { params }) {
       if (!child_profile_id) return err('Child profile required');
 
       const now = new Date();
-      const expiry = new Date(now); expiry.setMonth(expiry.getMonth() + mem.duration_months);
+      const isSlotPlan = mem.type === 'slot';
+      const expiry = new Date(now);
+      if (isSlotPlan) {
+        expiry.setDate(expiry.getDate() + 15);
+      } else {
+        expiry.setMonth(expiry.getMonth() + mem.duration_months);
+      }
 
       const um = {
         id: uuidv4(),
@@ -1069,7 +1219,12 @@ async function handleRoute(request, { params }) {
         .sort((a, b) => new Date(a.class.date + 'T' + a.class.start_time) - new Date(b.class.date + 'T' + b.class.start_time));
 
       const payments = await db.collection('payments').find({ user_id: auth.user.id }).sort({ created_at: -1 }).limit(5).toArray();
-      const announcements = await db.collection('announcements').find({}).sort({ created_at: -1 }).limit(3).toArray();
+      
+      // Only show announcements if user has an active membership
+      let announcements = [];
+      if (activeMembership) {
+        announcements = await db.collection('announcements').find({}).sort({ created_at: -1 }).limit(3).toArray();
+      }
 
       return j({
         user: publicUser(auth.user),
@@ -1470,6 +1625,14 @@ async function handleRoute(request, { params }) {
     if (route === '/profile/full' && method === 'GET') {
       const auth = await requireUser(); if (auth.error) return auth.error;
       const children = await db.collection('child_profiles').find({ parent_id: auth.user.id }).toArray();
+      
+      const now = new Date();
+      // Auto-expire any active memberships that have passed their expiry date
+      await db.collection('user_memberships').updateMany(
+        { user_id: auth.user.id, status: 'active', expiry_date: { $lt: now } },
+        { $set: { status: 'expired' } }
+      );
+      
       const memberships = await db.collection('user_memberships').find({ user_id: auth.user.id }).sort({ created_at: -1 }).toArray();
       const payments = await db.collection('payments').find({ user_id: auth.user.id }).sort({ created_at: -1 }).limit(20).toArray();
       return j({ user: publicUser(auth.user), children: children.map(clean), memberships: memberships.map(clean), payments: payments.map(clean) });
@@ -2517,7 +2680,13 @@ async function handleRoute(request, { params }) {
             }
 
             const now = new Date();
-            const expiry = new Date(now); expiry.setMonth(expiry.getMonth() + mem.duration_months);
+            const isSlotPlan = mem.type === 'slot';
+            const expiry = new Date(now);
+            if (isSlotPlan) {
+              expiry.setDate(expiry.getDate() + 15);
+            } else {
+              expiry.setMonth(expiry.getMonth() + mem.duration_months);
+            }
             const um = {
               id: uuidv4(),
               user_id: newUser.id,
@@ -2651,6 +2820,14 @@ async function handleRoute(request, { params }) {
         const u = await db.collection('users').findOne({ id });
         if (!u) return err('Not found', 404);
         const children = await db.collection('child_profiles').find({ parent_id: id }).toArray();
+        
+        const now = new Date();
+        // Auto-expire any active memberships that have passed their expiry date
+        await db.collection('user_memberships').updateMany(
+          { user_id: id, status: 'active', expiry_date: { $lt: now } },
+          { $set: { status: 'expired' } }
+        );
+        
         const memberships = await db.collection('user_memberships').find({ user_id: id }).sort({ created_at: -1 }).toArray();
         const payments = await db.collection('payments').find({ user_id: id }).sort({ created_at: -1 }).toArray();
         const bookings = await db.collection('bookings').find({ user_id: id }).sort({ created_at: -1 }).limit(20).toArray();
@@ -3113,10 +3290,15 @@ async function handleRoute(request, { params }) {
         if (!child_profile_id) return err('Athlete profile required');
 
         const now = new Date();
-        const expiry = new Date(now); expiry.setMonth(expiry.getMonth() + mem.duration_months);
+        const isSlotPlan = mem.type === 'slot';
+        const expiry = new Date(now);
+        if (isSlotPlan) {
+          expiry.setDate(expiry.getDate() + 15);
+        } else {
+          expiry.setMonth(expiry.getMonth() + mem.duration_months);
+        }
         
         // For slot-based memberships, use the provided quantity
-        const isSlotPlan = mem.type === 'slot';
         const slotQty = isSlotPlan ? Math.max(1, parseInt(slot_quantity) || 1) : null;
         
         const um = {

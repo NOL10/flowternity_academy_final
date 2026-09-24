@@ -31,6 +31,10 @@ function TrialInner() {
   const [loadingClasses, setLoadingClasses] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(null);
+  
+  // Skateboarding trial is paid (₹500), others are free
+  const isSkateboardingTrial = form.sport_id === 'skateboarding';
+  const trialPrice = isSkateboardingTrial ? 500 : 0;
 
   useEffect(() => {
     if (!form.sport_id) { setClasses([]); return; }
@@ -50,14 +54,79 @@ function TrialInner() {
     }
     setSubmitting(true);
     try {
-      const res = await fetch('/api/trial/book', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
-      setSuccess(data);
-      toast.success('Your free class is booked!');
+      // For skateboarding, create a Razorpay order first
+      if (isSkateboardingTrial) {
+        const orderRes = await fetch('/api/trial/order', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            full_name: form.full_name,
+            email: form.email,
+            phone: form.phone,
+            sport_id: form.sport_id,
+            class_id: form.class_id,
+            message: form.message,
+            amount: trialPrice,
+          }),
+        });
+        const orderData = await orderRes.json();
+        if (!orderRes.ok) throw new Error(orderData.error);
+        
+        // Load Razorpay and open checkout
+        const script = document.createElement('script');
+        script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+        script.onload = () => {
+          const options = {
+            key: orderData.key_id,
+            amount: orderData.order.amount,
+            currency: orderData.order.currency,
+            order_id: orderData.order.id,
+            name: 'Flowternity',
+            description: `Skateboarding Trial Class - ₹${trialPrice}`,
+            handler: async (response) => {
+              try {
+                const verifyRes = await fetch('/api/trial/verify', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    razorpay_order_id: response.razorpay_order_id,
+                    razorpay_payment_id: response.razorpay_payment_id,
+                    razorpay_signature: response.razorpay_signature,
+                  }),
+                });
+                const verifyData = await verifyRes.json();
+                if (!verifyRes.ok) throw new Error(verifyData.error);
+                
+                setSuccess({ ...verifyData.lead, class: verifyData.class, email_sent: true });
+                toast.success('Payment successful! Your trial is booked.');
+              } catch (err) {
+                toast.error(err.message || 'Payment verification failed');
+                setSubmitting(false);
+              }
+            },
+            prefill: {
+              name: form.full_name,
+              email: form.email,
+              contact: form.phone,
+            },
+            theme: { color: '#22c55e' },
+          };
+          const rzp = new window.Razorpay(options);
+          rzp.open();
+        };
+        document.head.appendChild(script);
+      } else {
+        // Free trial for other sports
+        const res = await fetch('/api/trial/book', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(form),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        setSuccess(data);
+        toast.success('Your free class is booked!');
+      }
     } catch (e) {
       toast.error(e.message || 'Failed to book. Try again.');
     } finally {
@@ -110,10 +179,15 @@ function TrialInner() {
       <SiteNav />
       <div className="container py-12 md:py-20">
         <div className="max-w-3xl mx-auto text-center mb-10">
-          <Badge className="bg-accent text-black hover:bg-accent mb-4"><Sparkles className="w-3 h-3 mr-1" /> One free class · No card needed</Badge>
+          <Badge className={`${isSkateboardingTrial ? 'bg-amber-500 text-white' : 'bg-accent text-black'} hover:${isSkateboardingTrial ? 'bg-amber-500' : 'bg-accent'} mb-4`}>
+            <Sparkles className="w-3 h-3 mr-1" /> 
+            {isSkateboardingTrial ? 'Skateboarding Trial - ₹500' : 'One free class · No card needed'}
+          </Badge>
           <h1 className="font-display font-black text-5xl md:text-6xl tracking-tight text-balance">Try before you commit.</h1>
           <p className="text-muted-foreground text-lg mt-4 max-w-xl mx-auto">
-            Come in for a free trial class in the sport of your choice. No account, no payment — just show up and play.
+            {isSkateboardingTrial 
+              ? 'Experience an exciting skateboarding session with our expert coaches. Pay just ₹500 to reserve your spot.'
+              : 'Come in for a free trial class in the sport of your choice. No account, no payment — just show up and play.'}
           </p>
         </div>
 
@@ -192,10 +266,23 @@ function TrialInner() {
                   <Textarea className="mt-1" rows={2} value={form.message} onChange={e => setForm({ ...form, message: e.target.value })} placeholder="I'm a total beginner, I have a knee injury, etc." />
                 </div>
 
-                <Button type="submit" disabled={submitting} className="w-full h-14 bg-accent text-black hover:bg-accent/90 text-base font-semibold">
-                  {submitting ? (<><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Booking your slot…</>) : (<>Book my free class <ArrowRight className="w-5 h-5 ml-2" /></>)}
+                <Button type="submit" disabled={submitting} className={`w-full h-14 ${isSkateboardingTrial ? 'bg-amber-500 hover:bg-amber-600 text-white' : 'bg-accent text-black hover:bg-accent/90'} text-base font-semibold`}>
+                  {submitting ? (
+                    <>
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" /> 
+                      {isSkateboardingTrial ? 'Processing payment...' : 'Booking your slot…'}
+                    </>
+                  ) : (
+                    <>
+                      {isSkateboardingTrial ? `Pay ₹500 & Book` : 'Book my free class'} <ArrowRight className="w-5 h-5 ml-2" />
+                    </>
+                  )}
                 </Button>
-                <p className="text-xs text-muted-foreground text-center">No card required. One free class per person per month.</p>
+                <p className="text-xs text-muted-foreground text-center">
+                  {isSkateboardingTrial 
+                    ? 'Secure payment via Razorpay. One paid trial per person per month.'
+                    : 'No card required. One free class per person per month.'}
+                </p>
               </form>
             </Card>
           </div>
