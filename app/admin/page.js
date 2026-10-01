@@ -396,7 +396,7 @@ function OverviewSection({ stats }) {
 function ClassesSection() {
   const [classes, setClasses] = useState([]);
   const [open, setOpen] = useState(false);
-  const emptyForm = { sport_id: 'basketball', coach_name: '', date: '', start_time: '', end_time: '', capacity: 12 };
+  const emptyForm = { sport_id: 'basketball', title: '', coach_name: '', date: '', start_time: '', end_time: '', capacity: 12 };
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
   const [filter, setFilter] = useState('all');
@@ -406,6 +406,7 @@ function ClassesSection() {
   const [mode, setMode] = useState('single'); // 'single' | 'recurring'
   const emptyBulk = {
     sport_id: 'basketball',
+    title: '',
     coach_name: '',
     capacity: 12,
     start_date: '',
@@ -546,7 +547,7 @@ function ClassesSection() {
           <div className="hidden md:grid grid-cols-12 gap-3 px-4 py-2.5 text-[10px] uppercase tracking-widest text-slate-500 border-b border-slate-800">
             <div className="col-span-1"><Checkbox checked={filtered.length > 0 && selectedIds.length === filtered.length} onCheckedChange={(v) => setSelectedIds(v ? filtered.map(c => c.id) : [])} /></div>
             <div className="col-span-1">Date</div>
-            <div className="col-span-3">Sport</div>
+            <div className="col-span-3">Class / Sport</div>
             <div className="col-span-2">Coach</div>
             <div className="col-span-2">Time</div>
             <div className="col-span-2">Capacity</div>
@@ -564,7 +565,10 @@ function ClassesSection() {
                     <span className="text-sm font-bold text-slate-100">{new Date(c.date).getDate()}</span>
                   </div>
                 </div>
-                <div className="col-span-7 md:col-span-3 font-medium text-slate-100">{sport?.name}{c.batch_tag && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-lime-400/10 text-lime-400 uppercase tracking-widest">bulk</span>}</div>
+                <div className="col-span-7 md:col-span-3">
+                  <div className="font-medium text-slate-100">{c.title || sport?.name}</div>
+                  <div className="text-xs text-slate-500">{sport?.name}{c.batch_tag && <span className="ml-2 px-1.5 py-0.5 rounded bg-lime-400/10 text-lime-400 uppercase tracking-widest">bulk</span>}</div>
+                </div>
                 <div className="col-span-6 md:col-span-2 text-sm text-slate-300">{c.coach_name}</div>
                 <div className="col-span-6 md:col-span-2 font-mono text-sm text-slate-300">{c.start_time}–{c.end_time}</div>
                 <div className="col-span-6 md:col-span-2 text-sm text-slate-300">{c.capacity} slots</div>
@@ -605,6 +609,10 @@ function ClassesSection() {
                   <SelectTrigger className="h-11 mt-1"><SelectValue /></SelectTrigger>
                   <SelectContent>{SPORTS.filter(s => s.status === 'active').map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
                 </Select>
+              </div>
+              <div>
+                <Label className="text-slate-300 text-xs uppercase tracking-widest">Class name (optional)</Label>
+                <Input className="h-11 mt-1" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="e.g., Beginner Session, Advanced Training" />
               </div>
               <div>
                 <Label className="text-slate-300 text-xs uppercase tracking-widest">Coach name</Label>
@@ -652,6 +660,10 @@ function ClassesSection() {
                 <div>
                   <Label className="text-slate-300 text-xs uppercase tracking-widest">Capacity</Label>
                   <Input type="number" min="1" required className="h-11 mt-1" value={bulk.capacity} onChange={e => setBulk({ ...bulk, capacity: e.target.value })} />
+                </div>
+                <div className="col-span-2">
+                  <Label className="text-slate-300 text-xs uppercase tracking-widest">Class name (optional)</Label>
+                  <Input className="h-11 mt-1" value={bulk.title} onChange={e => setBulk({ ...bulk, title: e.target.value })} placeholder="e.g., Beginner Session, Advanced Training" />
                 </div>
                 <div className="col-span-2">
                   <Label className="text-slate-300 text-xs uppercase tracking-widest">Coach name</Label>
@@ -1172,6 +1184,7 @@ function MembersSection() {
   const [filterMembership, setFilterMembership] = useState('');
   const [filterCoupon, setFilterCoupon] = useState('');
   const [filterExpiring, setFilterExpiring] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all'); // 'all', 'active', 'inactive'
   const [selected, setSelected] = useState(null);
   const [detail, setDetail] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
@@ -1197,6 +1210,7 @@ function MembersSection() {
     if (filterMembership) params.append('membership_id', filterMembership);
     if (filterCoupon) params.append('coupon_code', filterCoupon);
     if (filterExpiring === 'expiring') params.append('expiring', 'true');
+    if (filterStatus !== 'all') params.append('status', filterStatus);
     params.append('page', p.toString());
     params.append('limit', limit.toString());
     const url = `/api/admin/members?${params.toString()}`;
@@ -1206,12 +1220,20 @@ function MembersSection() {
     setPage(p);
   };
 
-  useEffect(() => { setPage(1); }, [q, filterMembership, filterCoupon, filterExpiring]);
-  useEffect(() => { load(page); }, [page, q, filterMembership, filterCoupon, filterExpiring]);
+  useEffect(() => { setPage(1); }, [q, filterMembership, filterCoupon, filterExpiring, filterStatus]);
+  useEffect(() => { load(page); }, [page, q, filterMembership, filterCoupon, filterExpiring, filterStatus]);
 
   const openDetail = async (m) => {
     setSelected(m);
+    setDetail(null); // Clear previous detail while loading
     const d = await fetch(`/api/admin/members/${m.id}/detail`, { credentials: 'include' }).then(r => r.json());
+    
+    // Ensure detail has the expected structure
+    if (!d || !d.user) {
+      setDetail({ user: { full_name: m.full_name, phone: '', address: '', emergency_contact: '' }, memberships: [], children: [] });
+      return;
+    }
+    
     setDetail(d);
     
     // Fetch member metrics (score, rank, attendance) for all children
@@ -1375,6 +1397,16 @@ function MembersSection() {
           <SelectContent>
             <SelectItem value="all">All members</SelectItem>
             <SelectItem value="expiring">Expiring soon (≤7 days)</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={filterStatus} onValueChange={setFilterStatus}>
+          <SelectTrigger className="h-10 w-full md:w-48">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All members</SelectItem>
+            <SelectItem value="active">Active members</SelectItem>
+            <SelectItem value="inactive">Inactive members</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -1587,8 +1619,8 @@ function MembersSection() {
       {/* Detail dialog */}
       <Dialog open={!!selected} onOpenChange={o => { if (!o) { setSelected(null); setDetail(null); } }}>
         <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto bg-slate-900 border-slate-800 text-slate-100">
-          <DialogHeader><DialogTitle className="text-slate-50">{selected?.full_name}</DialogTitle></DialogHeader>
-          {detail && (
+          <DialogHeader><DialogTitle className="text-slate-50">{selected?.full_name || 'Member Details'}</DialogTitle></DialogHeader>
+          {detail && detail.user ? (
             <div className="space-y-6">
               <div className="grid grid-cols-2 gap-3">
                 <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Full name</Label><Input className="h-11 mt-1" value={detail.user.full_name || ''} onChange={e => setDetail({ ...detail, user: { ...detail.user, full_name: e.target.value } })} /></div>
@@ -1673,6 +1705,8 @@ function MembersSection() {
                 </div>
               )}
             </div>
+          ) : (
+            <p className="text-sm text-slate-500 text-center py-4">Loading member details...</p>
           )}
           <DialogFooter className="flex-col sm:flex-row gap-2">
             <Button variant="destructive" onClick={deactivate}>Deactivate</Button>
@@ -1687,7 +1721,7 @@ function MembersSection() {
           <DialogHeader>
             <DialogTitle className="text-slate-50">Grant a membership</DialogTitle>
             <DialogDescription className="text-slate-400">
-              Attach a membership manually for {detail?.user?.full_name}. This creates a zero-amount payment record marked as admin-granted.
+              Attach a membership manually for {detail?.user?.full_name || selected?.full_name || 'member'}. This creates a zero-amount payment record marked as admin-granted.
             </DialogDescription>
           </DialogHeader>
           {detail && (
@@ -3010,6 +3044,11 @@ function PerformanceSection() {
                           <div className="flex-1 min-w-0">
                             <p className="font-semibold text-slate-100 truncate text-sm">{row.name}</p>
                             {row.parent_name !== row.name && <p className="text-[10px] text-slate-500 truncate">{row.parent_name}</p>}
+                            {row.is_active_member ? (
+                              <div className="text-[9px] mt-0.5 inline-block px-1.5 py-0.5 rounded bg-lime-400/20 text-lime-400 font-semibold">Active</div>
+                            ) : (
+                              <div className="text-[9px] mt-0.5 inline-block px-1.5 py-0.5 rounded bg-slate-700/60 text-slate-400 font-semibold">Inactive</div>
+                            )}
                           </div>
                           <span className="font-bold text-sm text-slate-400 ml-2">{medal || `${i + 1}`}</span>
                         </div>
@@ -3039,6 +3078,11 @@ function PerformanceSection() {
                         <div className="col-span-4 min-w-0">
                           <p className="font-semibold text-slate-100 truncate text-sm">{row.name}</p>
                           {row.parent_name !== row.name && <p className="text-[10px] text-slate-500 truncate">{row.parent_name}</p>}
+                          {row.is_active_member ? (
+                            <div className="text-[9px] mt-0.5 inline-block px-1.5 py-0.5 rounded bg-lime-400/20 text-lime-400 font-semibold">Active</div>
+                          ) : (
+                            <div className="text-[9px] mt-0.5 inline-block px-1.5 py-0.5 rounded bg-slate-700/60 text-slate-400 font-semibold">Inactive</div>
+                          )}
                         </div>
                         <div className="col-span-2 text-center">
                           {row.has_performance ? (
@@ -3139,6 +3183,11 @@ function PerformanceSection() {
                             <div className="flex-1 min-w-0">
                               <div className="font-medium truncate">{m.full_name}</div>
                               <div className="text-[11px] text-slate-500 truncate">{m.email} · {m.role}</div>
+                              {m.active_memberships && m.active_memberships.length > 0 ? (
+                                <div className="text-[10px] mt-0.5 inline-block px-2 py-0.5 rounded bg-lime-400/20 text-lime-400 font-semibold">Active</div>
+                              ) : (
+                                <div className="text-[10px] mt-0.5 inline-block px-2 py-0.5 rounded bg-slate-700 text-slate-400 font-semibold">Inactive</div>
+                              )}
                             </div>
                             {m.scores && m.combinedScore > 0 ? (
                               <div className="text-right flex-shrink-0">
@@ -3208,6 +3257,11 @@ function PerformanceSection() {
                                 <div className="flex-1 min-w-0">
                                   <div className="font-medium truncate">{m.full_name}</div>
                                   <div className="text-[11px] text-slate-500 truncate">{m.email} · {m.role}</div>
+                                  {m.active_memberships && m.active_memberships.length > 0 ? (
+                                    <div className="text-[10px] mt-0.5 inline-block px-2 py-0.5 rounded bg-lime-400/20 text-lime-400 font-semibold">Active</div>
+                                  ) : (
+                                    <div className="text-[10px] mt-0.5 inline-block px-2 py-0.5 rounded bg-slate-700 text-slate-400 font-semibold">Inactive</div>
+                                  )}
                                 </div>
                                 {m.scores && m.combinedScore > 0 ? (
                                   <div className="text-right flex-shrink-0">
@@ -3251,7 +3305,7 @@ function PerformanceSection() {
                   {currentParent && (
                     <div>
                       <p className="text-xs text-slate-400">Parent / Member</p>
-                      <p className="font-display font-black text-xl sm:text-2xl text-slate-100 break-words">{currentParent.full_name}</p>
+                      <p className="font-display font-black text-xl sm:text-2xl text-slate-100 break-words">{currentParent?.full_name}</p>
                     </div>
                   )}
                   <div>

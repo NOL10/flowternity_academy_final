@@ -1528,7 +1528,14 @@ async function handleRoute(request, { params }) {
     if (bookingCancelMatch && method === 'POST') {
       const auth = await requireUser(); if (auth.error) return auth.error;
       const bid = bookingCancelMatch[1];
-      const b = await db.collection('bookings').findOne({ id: bid, user_id: auth.user.id });
+      // Allow cancel if user owns the booking OR if the booking is for their child
+      const b = await db.collection('bookings').findOne({
+        id: bid,
+        $or: [
+          { user_id: auth.user.id },
+          { child_profile_id: auth.user.id } // Allow child to cancel their own booking
+        ]
+      });
       if (!b) return err('Booking not found', 404);
       
       await db.collection('bookings').updateOne({ id: bid }, { $set: { status: 'cancelled', cancelled_at: new Date() } });
@@ -2005,11 +2012,11 @@ async function handleRoute(request, { params }) {
       }
 
       if (route === '/admin/classes' && method === 'POST') {
-        const { sport_id, coach_name, date, start_time, end_time, capacity } = await request.json();
+        const { sport_id, title, coach_name, date, start_time, end_time, capacity } = await request.json();
         if (!sport_id || !date || !start_time || !end_time || !capacity) return err('Missing fields');
         const cls = {
           id: uuidv4(),
-          sport_id, coach_name: coach_name || 'Head Coach',
+          sport_id, title: title || null, coach_name: coach_name || 'Head Coach',
           date, start_time, end_time, capacity: parseInt(capacity),
           created_at: new Date(),
           created_by: auth.user.id,
@@ -2031,10 +2038,10 @@ async function handleRoute(request, { params }) {
       }
 
       // -------- Bulk class scheduling (recurring) --------
-      // POST /admin/classes/bulk { sport_id, coach_name, capacity, start_date, end_date, weekdays: [0..6], slots: [{start_time, end_time}] }
+      // POST /admin/classes/bulk { sport_id, title, coach_name, capacity, start_date, end_date, weekdays: [0..6], slots: [{start_time, end_time}] }
       if (route === '/admin/classes/bulk' && method === 'POST') {
         const body = await request.json();
-        const { sport_id, coach_name, capacity, start_date, end_date, weekdays, slots } = body || {};
+        const { sport_id, title, coach_name, capacity, start_date, end_date, weekdays, slots } = body || {};
         if (!sport_id || !start_date || !end_date || !capacity) return err('sport_id, start_date, end_date, capacity required');
         if (!Array.isArray(weekdays) || weekdays.length === 0) return err('weekdays (array of 0-6) required');
         if (!Array.isArray(slots) || slots.length === 0) return err('slots required');
@@ -2053,6 +2060,7 @@ async function handleRoute(request, { params }) {
             const cls = {
               id: uuidv4(),
               sport_id,
+              title: title || null,
               coach_name: coach_name || 'Head Coach',
               date: dateStr,
               start_time: slot.start_time,
@@ -2330,7 +2338,11 @@ async function handleRoute(request, { params }) {
 
       if (route === '/admin/stats' && method === 'GET') {
         const total = await db.collection('users').countDocuments({});
-        const active = await db.collection('user_memberships').countDocuments({ status: 'active' });
+        const now = new Date();
+        const active = await db.collection('user_memberships').countDocuments({ 
+          status: 'active',
+          expiry_date: { $gt: now }
+        });
         const today = new Date().toISOString().slice(0, 10);
         const todayClasses = await db.collection('classes').countDocuments({ date: today });
         const totalBookings = await db.collection('bookings').countDocuments({ status: 'booked' });
@@ -2736,6 +2748,7 @@ async function handleRoute(request, { params }) {
         const membership_id = url.searchParams.get('membership_id') || '';
         const coupon_code = url.searchParams.get('coupon_code') || '';
         const expiring = url.searchParams.get('expiring') === 'true';
+        const status = url.searchParams.get('status') || 'all'; // 'all', 'active', 'inactive' (based on membership status)
         const page = Math.max(1, parseInt(url.searchParams.get('page') || '1'));
         const limit = Math.min(200, Math.max(1, parseInt(url.searchParams.get('limit') || '50')));
         const skip = (page - 1) * limit;
@@ -2748,11 +2761,13 @@ async function handleRoute(request, { params }) {
           ]
         } : {};
 
-        const total = await db.collection('users').countDocuments(query);
-        let users = await db.collection('users').find(query).sort({ created_at: -1 }).skip(skip).limit(limit).toArray();
+        // Get all users matching search query
+        let users = await db.collection('users').find(query).sort({ created_at: -1 }).toArray();
 
         const uids = users.map(u => u.id);
         let ums = uids.length ? await db.collection('user_memberships').find({ user_id: { $in: uids } }).toArray() : [];
+        
+        const now = new Date();
         
         // Filter by membership_id
         if (membership_id) {
@@ -2773,12 +2788,13 @@ async function handleRoute(request, { params }) {
           const sevenDaysFromNow = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
           const expiringUids = new Set(
             ums
-              .filter(m => m.status === 'active' && new Date(m.expiry_date) <= sevenDaysFromNow && new Date(m.expiry_date) > new Date())
+              .filter(m => m.status === 'active' && new Date(m.expiry_date) <= sevenDaysFromNow && new Date(m.expiry_date) > now)
               .map(m => m.user_id)
           );
           users = users.filter(u => expiringUids.has(u.id));
         }
-
+        
+        // Build membership maps
         const latestByUser = {};
         const allByUser = {};
         for (const m of ums) {
@@ -2786,11 +2802,26 @@ async function handleRoute(request, { params }) {
           allByUser[m.user_id].push(m);
           if (!latestByUser[m.user_id] || new Date(m.created_at) > new Date(latestByUser[m.user_id].created_at)) latestByUser[m.user_id] = m;
         }
+        
+        // Filter by status (based on membership status)
+        // Active = has at least one non-expired membership
+        // Inactive = no active memberships (expired or none)
+        if (status === 'active' || status === 'inactive') {
+          users = users.filter(u => {
+            const userMemberships = allByUser[u.id] || [];
+            const hasActiveMembership = userMemberships.some(m => (m.status === 'active' || m.status === 'paused') && new Date(m.expiry_date) > now);
+            return status === 'active' ? hasActiveMembership : !hasActiveMembership;
+          });
+        }
+
+        const total = users.length;
+        const paginatedUsers = users.slice(skip, skip + limit);
+
         return j({
-          members: users.map(u => ({
+          members: paginatedUsers.map(u => ({
             ...publicUser(u),
             latest_membership: latestByUser[u.id] ? clean(latestByUser[u.id]) : null,
-            active_memberships: (allByUser[u.id] || []).filter(m => m.status === 'active' || m.status === 'paused').map(clean),
+            active_memberships: (allByUser[u.id] || []).filter(m => (m.status === 'active' || m.status === 'paused') && new Date(m.expiry_date) > now).map(clean),
           })),
           total, page, limit,
         });
@@ -3565,7 +3596,18 @@ async function handleRoute(request, { params }) {
       // 6. Fetch all leadership metrics for all athletes
       const allLeadership = athleteIds.length ? await db.collection('leadership_metrics').find({ user_id: { $in: athleteIds }, sport_id }).toArray() : [];
 
-      // 7. Compute combined scores for each subject
+      // 7. Fetch memberships to check if parents have active memberships
+      const allMemberships = parentIds.length ? await db.collection('user_memberships').find({ user_id: { $in: parentIds } }).toArray() : [];
+      const now = new Date();
+      const activeMembersByUserId = {};
+      for (const m of allMemberships) {
+        if (!activeMembersByUserId[m.user_id]) activeMembersByUserId[m.user_id] = false;
+        if ((m.status === 'active' || m.status === 'paused') && new Date(m.expiry_date) > now) {
+          activeMembersByUserId[m.user_id] = true;
+        }
+      }
+
+      // 8. Compute combined scores for each subject
       const rows = filteredSubjects.map(s => {
         // Performance average — match by user_id=parent_id, and child_profile_id if applicable
         const perfRecords = allPerfScores.filter(p => {
@@ -3617,6 +3659,7 @@ async function handleRoute(request, { params }) {
           combined: Math.round(combined * 10) / 10,
           has_performance: perfAvg > 0,
           has_leadership: leadAvg > 0,
+          is_active_member: activeMembersByUserId[s.parent_id] || false,
         };
       });
 
