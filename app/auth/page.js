@@ -35,9 +35,19 @@ function AuthInner() {
       const data = await res.json();
       if (!res.ok) { toast.error(data.error || 'Failed'); setLoading(false); return; }
       toast.success(tab === 'login' ? 'Welcome back!' : 'Account created!');
+      
+      // Refresh auth state and wait for it to complete
       await refresh();
+      
+      // Small delay to ensure cookies are set before redirect
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       router.push(next);
-    } catch { toast.error('Network error'); setLoading(false); }
+    } catch (e) { 
+      console.error('Auth error:', e);
+      toast.error('Network error'); 
+      setLoading(false); 
+    }
   };
 
   return (
