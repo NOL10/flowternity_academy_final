@@ -1,0 +1,35 @@
+{
+  "id": "FEAT-007",
+  "type": "feat",
+  "description": "Build FilterBar component with multi-select filters: sport, skill level, game type, fee range, player count. Save/load preferences from localStorage.",
+  "status": "pending",
+  "steps": [
+    "Create components/games-hub/filter-bar.js: React component with local state for filters object",
+    "Render filter inputs: SportFilter (chips from SPORTS config), SkillLevelFilter (chips: all/beginner/intermediate/advanced/pro), GameTypeToggle (Free/Paid/Tournament), FeeRangeFilter (slider min-max), PlayerCountFilter (slider min-max)",
+    "Show active filter count indicator (badge: 'X active filters')",
+    "Implement 'Clear Filters' button to reset all",
+    "Debounce filter changes: 300ms before calling parent onFilterChange callback",
+    "localStorage: save filters to 'gamesHubFilters' on change, load on mount",
+    "Validate saved filters on load: check sport exists in SPORTS, skill level valid, show warning toast if removed filters",
+    "Responsive: horizontal chip scroll on mobile, grid layout on desktop"
+  ],
+  "acceptance_criteria": [
+    "FilterBar renders all filter types (sport, skill, type, fee, count)",
+    "Active filter count displayed correctly",
+    "Clear Filters button resets all to defaults",
+    "Filter change debounced (300ms)",
+    "Saved filters persist across page reloads (localStorage)",
+    "Invalid saved filter removed with warning toast",
+    "Responsive layout verified on mobile and desktop"
+  ],
+  "verification": [
+    "Render FilterBar component in /games page",
+    "Change sport filter to 'basketball', verify onFilterChange called after 300ms",
+    "Apply filters, reload page, verify filters persist",
+    "Check localStorage: localStorage.getItem('gamesHubFilters') returns JSON",
+    "Remove basketball from SPORTS config, reload page, verify warning toast for removed sport",
+    "Resize to mobile, verify chip scroll layout"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

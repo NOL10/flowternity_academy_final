@@ -198,6 +198,39 @@ async function handleRoute(request, { params }) {
       return j({ sports: SPORTS, memberships: MEMBERSHIPS });
     }
 
+    // -------- FILE UPLOAD --------
+    if (route === '/upload' && method === 'POST') {
+      const auth = await requireUser(); if (auth.error) return auth.error;
+      
+      const formData = await request.formData();
+      const file = formData.get('file');
+      
+      if (!file || !(file instanceof File)) {
+        return err('No file provided', 400);
+      }
+      
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        return err('Only image files allowed', 400);
+      }
+      
+      // Validate file size (max 5MB)
+      if (file.size > 5 * 1024 * 1024) {
+        return err('File too large (max 5MB)', 400);
+      }
+      
+      try {
+        // Convert file to base64
+        const buffer = await file.arrayBuffer();
+        const base64 = Buffer.from(buffer).toString('base64');
+        const dataUrl = `data:${file.type};base64,${base64}`;
+        
+        return j({ url: dataUrl });
+      } catch (e) {
+        return err('Upload failed', 500);
+      }
+    }
+
     // -------- METRICS CATALOG --------
     if (route === '/metrics/catalog' && method === 'GET') {
       const { searchParams } = new URL(request.url);
@@ -238,25 +271,16 @@ async function handleRoute(request, { params }) {
       }).toArray();
 
       // Also include metrics/levels from ALL profiles belonging to this user
-      // so that duplicate profiles from before the upsert fix don't hide data
-      const allProfiles = await db.collection('child_profiles').find({ parent_id: user_id_for_metrics }).toArray();
-      const allProfileIds = allProfiles.map(p => p.id);
-      const allMetricsDocs = allProfileIds.length ? await db.collection('athlete_metrics').find({
-        user_id: user_id_for_metrics,
-        child_profile_id: { $in: allProfileIds },
-      }).toArray() : [];
-      const allLevelDocs = allProfileIds.length ? await db.collection('athlete_levels').find({
-        user_id: user_id_for_metrics,
-        child_profile_id: { $in: allProfileIds },
-      }).toArray() : [];
-
-      // Merge: primary profile docs take precedence, then fall back to any profile's data
-      const mergedMetrics = [...allMetricsDocs, ...metricsDocs];
-      const mergedLevels = [...allLevelDocs, ...levelDocs];
-
-      // Collect all enrolled sports from all profiles + active memberships
+      // Only use metrics/levels from the specific child requested, not all siblings
+      const mergedMetrics = metricsDocs;
+      const mergedLevels = levelDocs;
+      // Collect enrolled sports from the target child only
+      const targetProfile = child_profile_id_for_metrics 
+        ? await db.collection('child_profiles').findOne({ id: child_profile_id_for_metrics })
+        : null;
+      
       const enrolledSportIds = new Set([
-        ...allProfiles.flatMap(p => p.selected_sports || []),
+        ...(targetProfile?.selected_sports || []),
         ...mergedMetrics.map(d => d.sport_id),
         ...mergedLevels.map(d => d.sport_id),
       ]);
@@ -743,6 +767,115 @@ async function handleRoute(request, { params }) {
       const auth = await requireUser(); if (auth.error) return auth.error;
       const kids = await db.collection('child_profiles').find({ parent_id: auth.user.id }).toArray();
       return j({ children: kids.map(clean) });
+    }
+
+    // GET /children/:id/membership-history — check if athlete has ever had a basketball membership
+    const childHistoryMatch = route.match(/^\/children\/([^/]+)\/membership-history$/);
+    if (childHistoryMatch && method === 'GET') {
+      const auth = await requireUser(); if (auth.error) return auth.error;
+      const childId = childHistoryMatch[1];
+      
+      // Verify this is the user's child
+      const child = await db.collection('child_profiles').findOne({ id: childId, parent_id: auth.user.id });
+      if (!child) return err('Not found', 404);
+      
+      // Check if this child has ever had a basketball membership (active or expired)
+      const basketballMembership = await db.collection('user_memberships').findOne({
+        child_profile_id: childId,
+        sport_id: 'basketball'
+      });
+      
+      return j({ has_ever_had_basketball: !!basketballMembership });
+    }
+
+    // GET /children/:id/attendance — Get attendance stats for a child
+    const childAttendanceMatch = route.match(/^\/children\/([^/]+)\/attendance$/);
+    if (childAttendanceMatch && method === 'GET') {
+      const childId = childAttendanceMatch[1];
+      
+      try {
+        const child = await db.collection('child_profiles').findOne({ id: childId });
+        if (!child) return err('Child not found', 404);
+
+        const parent_id = child.parent_id;
+        const selected_sports = child.selected_sports || [];
+        
+        // Get all bookings for this child
+        const bookings = await db.collection('bookings').find({ 
+          user_id: parent_id, 
+          child_profile_id: childId 
+        }).toArray();
+
+        if (bookings.length === 0) {
+          return j({ 
+            attendance: {
+              total_classes: 0,
+              attended_classes: 0,
+              attendance_rate: 0,
+              by_sport: {}
+            }
+          });
+        }
+
+        // Get attendance records for these bookings
+        const bookingIds = bookings.map(b => b.id);
+        const attendanceRecords = bookingIds.length 
+          ? await db.collection('attendance').find({ booking_id: { $in: bookingIds } }).toArray()
+          : [];
+
+        // Get class info for sports
+        const classIds = bookings.map(b => b.class_id);
+        const classes = classIds.length
+          ? await db.collection('classes').find({ id: { $in: classIds } }).toArray()
+          : [];
+
+        const classMap = Object.fromEntries(classes.map(c => [c.id, c]));
+
+        // Calculate stats
+        let totalAttended = 0;
+        let totalClasses = bookings.length;
+        const bySport = {};
+
+        for (const booking of bookings) {
+          const cls = classMap[booking.class_id];
+          if (!cls) continue;
+
+          const sport = cls.sport_id || 'unknown';
+          if (!bySport[sport]) {
+            bySport[sport] = { sport_id: sport, total: 0, attended: 0, rate: 0 };
+          }
+          bySport[sport].total++;
+
+          const attended = attendanceRecords.find(a => a.booking_id === booking.id && a.present);
+          if (attended) {
+            bySport[sport].attended++;
+            totalAttended++;
+          }
+        }
+
+        // Calculate rates
+        for (const sport in bySport) {
+          bySport[sport].rate = bySport[sport].total > 0 
+            ? Math.round((bySport[sport].attended / bySport[sport].total) * 100)
+            : 0;
+        }
+
+        const attendanceRate = totalClasses > 0 
+          ? Math.round((totalAttended / totalClasses) * 100)
+          : 0;
+
+        return j({ 
+          attendance: {
+            total_classes: totalClasses,
+            attended_classes: totalAttended,
+            attendance_rate: attendanceRate,
+            by_sport: bySport
+          }
+        });
+      } catch (e) {
+        console.error('Error getting attendance:', e);
+        return err('Failed to get attendance', 500);
+      }
     }
 
     // -------- JERSEY INFO --------
@@ -1689,6 +1822,8 @@ async function handleRoute(request, { params }) {
           participants_count: counts[g.id] || 0,
           sport: SPORTS.find(s => s.id === g.sport_id) || null,
           i_joined: myJoined.has(g.id),
+          is_tournament: g.is_tournament || false,
+          prize_pool: g.prize_pool || 0,
         }))
       });
     }
@@ -1704,7 +1839,13 @@ async function handleRoute(request, { params }) {
       const users = uids.length ? await db.collection('users').find({ id: { $in: uids } }).toArray() : [];
       
       return j({
-        game: { ...clean(game), sport: SPORTS.find(s => s.id === game.sport_id) || null },
+        game: { 
+          ...clean(game), 
+          sport: SPORTS.find(s => s.id === game.sport_id) || null,
+          is_tournament: game.is_tournament || false,
+          prize_pool: game.prize_pool || 0,
+          participants_count: bookings.length,
+        },
         participants: bookings.map(b => {
           const u = users.find(x => x.id === b.user_id);
           return { user_id: b.user_id, name: u?.full_name || 'Player', joined_at: b.booked_at };
@@ -1983,6 +2124,273 @@ async function handleRoute(request, { params }) {
       } catch (e) {
         console.error('Guest payment verification failed:', e);
         return err('Guest payment verification failed: ' + e.message, 500);
+      }
+    }
+
+    // -------- COMMUNITY HUB: Stats, Leaderboards, Social --------
+
+    // GET /api/community/stats — Community statistics for hero section
+    if (route === '/community/stats' && method === 'GET') {
+      try {
+        const period = new URL(request.url).searchParams.get('period') || 'week';
+        const now = new Date();
+        const startDate = period === 'month' ? new Date(now.getFullYear(), now.getMonth(), 1) : 
+                         period === 'week' ? new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) :
+                         new Date(0);
+
+        const completedGames = await db.collection('games').countDocuments({ 
+          date: { $gte: startDate.toISOString().split('T')[0] },
+          status: 'completed'
+        });
+
+        const participants = await db.collection('game_bookings').aggregate([
+          { $match: { created_at: { $gte: startDate } } },
+          { $group: { _id: '$user_id' } },
+          { $count: 'total' }
+        ]).toArray();
+
+        const tournaments = await db.collection('tournaments').countDocuments({ 
+          start_date: { $gte: startDate }
+        });
+
+        const sports = await db.collection('games').aggregate([
+          { $match: { date: { $gte: startDate.toISOString().split('T')[0] } } },
+          { $group: { _id: '$sport_id', count: { $sum: 1 } } },
+          { $sort: { count: -1 } },
+          { $limit: 1 }
+        ]).toArray();
+
+        const trendingSport = sports.length > 0 ? SPORTS.find(s => s.id === sports[0]._id)?.name || 'Unknown' : 'Basketball';
+
+        return j({
+          total_games: completedGames,
+          total_players: participants[0]?.total || 0,
+          total_tournaments: tournaments,
+          trending_sport: trendingSport,
+          period
+        });
+      } catch (e) {
+        console.error('Community stats error:', e);
+        return j({ total_games: 0, total_players: 0, total_tournaments: 0, trending_sport: 'N/A', period: 'week' });
+      }
+    }
+
+    // GET /api/leaderboards/:sport_id — Sport-specific leaderboard
+    if (route.match(/^\/leaderboards\/([^/]+)$/) && method === 'GET') {
+      try {
+        const sportId = route.split('/')[2];
+        const period = new URL(request.url).searchParams.get('period') || 'week';
+        const limit = Number(new URL(request.url).searchParams.get('limit')) || 10;
+
+        const now = new Date();
+        const startDate = period === 'month' ? new Date(now.getFullYear(), now.getMonth(), 1) : 
+                         period === 'week' ? new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) :
+                         new Date(0);
+
+        const leaderboard = await db.collection('games').aggregate([
+          { $match: { 
+              sport_id: sportId, 
+              date: { $gte: startDate.toISOString().split('T')[0] },
+              status: 'completed'
+            } 
+          },
+          { $unwind: '$participants' },
+          { $group: {
+              _id: '$participants',
+              games: { $sum: 1 },
+              wins: { $sum: { $cond: [{ $eq: ['$winner', '$participants'] }, 1, 0] } }
+            } 
+          },
+          { $project: {
+              user_id: '$_id',
+              games: 1,
+              wins: 1,
+              win_rate: { $cond: [{ $eq: ['$games', 0] }, 0, { $divide: ['$wins', '$games'] }] },
+              points: { $add: [{ $multiply: ['$wins', 10] }, { $multiply: ['$games', 1] }] }
+            }
+          },
+          { $sort: { points: -1 } },
+          { $limit: limit }
+        ]).toArray();
+
+        // Enrich with user details
+        const enriched = await Promise.all(leaderboard.map(async (entry, idx) => {
+          const user = await db.collection('users').findOne({ id: entry.user_id });
+          return {
+            rank: idx + 1,
+            user_id: entry.user_id,
+            name: user?.full_name || 'Unknown',
+            games: entry.games,
+            wins: entry.wins,
+            win_rate: Number((entry.win_rate * 100).toFixed(1)),
+            points: entry.points
+          };
+        }));
+
+        return j({ leaderboard: enriched, sport_id: sportId, period });
+      } catch (e) {
+        console.error('Leaderboard error:', e);
+        return err('Failed to fetch leaderboard', 500);
+      }
+    }
+
+    // GET /api/players/:user_id/stats — Player performance stats
+    if (route.match(/^\/players\/([^/]+)\/stats$/) && method === 'GET') {
+      try {
+        const userId = route.match(/^\/players\/([^/]+)\/stats$/)[1];
+        const user = await db.collection('users').findOne({ id: userId });
+        
+        if (!user) return err('Player not found', 404);
+
+        const now = new Date();
+        const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+        const games = await db.collection('games').find({
+          participants: userId,
+          date: { $gte: thirtyDaysAgo.toISOString().split('T')[0] }
+        }).toArray();
+
+        const totalGames = games.length;
+        const wins = games.filter(g => g.winner === userId).length;
+        const losses = totalGames - wins;
+        const winRate = totalGames > 0 ? (wins / totalGames) : 0;
+
+        return j({
+          user_id: userId,
+          name: user.full_name,
+          total_games: totalGames,
+          wins,
+          losses,
+          win_rate: Number((winRate * 100).toFixed(1)),
+          points: wins * 10 + totalGames,
+          games_this_month: totalGames,
+          last_game: games.length > 0 ? games[games.length - 1].date : null
+        });
+      } catch (e) {
+        console.error('Player stats error:', e);
+        return err('Failed to fetch player stats', 500);
+      }
+    }
+
+    // GET /api/community/recent-results — Recent completed games
+    if (route === '/community/recent-results' && method === 'GET') {
+      try {
+        const limit = Number(new URL(request.url).searchParams.get('limit')) || 20;
+        
+        const recent = await db.collection('games').find({
+          status: 'completed'
+        }).sort({ date: -1 }).limit(limit).toArray();
+
+        const enriched = recent.map(g => ({
+          id: g.id,
+          title: g.title,
+          sport: SPORTS.find(s => s.id === g.sport_id)?.name || 'Unknown',
+          date: g.date,
+          time: g.start_time,
+          participants_count: g.participants?.length || 0,
+          winner_count: g.participants?.filter(p => g.winner === p).length || 0
+        }));
+
+        return j({ results: enriched });
+      } catch (e) {
+        console.error('Recent results error:', e);
+        return j({ results: [] });
+      }
+    }
+
+    // GET /api/recommendations/games — Recommended games based on user profile
+    if (route === '/recommendations/games' && method === 'GET') {
+      try {
+        const auth = await requireUser(); if (auth.error) return auth.error;
+        const userId = auth.user.id;
+        const limit = Number(new URL(request.url).searchParams.get('limit')) || 10;
+
+        // Get user's game history to infer preferences
+        const userGames = await db.collection('games').find({
+          participants: userId
+        }).sort({ date: -1 }).limit(10).toArray();
+
+        const preferredSports = userGames.length > 0 
+          ? [...new Set(userGames.map(g => g.sport_id))]
+          : SPORTS.filter(s => s.status === 'active').map(s => s.id);
+
+        // Get upcoming games matching preferences
+        const now = new Date();
+        const recommendations = await db.collection('games').find({
+          date: { $gte: now.toISOString().split('T')[0] },
+          sport_id: { $in: preferredSports },
+          participants: { $ne: userId }
+        }).sort({ date: 1 }).limit(limit).toArray();
+
+        return j({ recommendations });
+      } catch (e) {
+        console.error('Recommendations error:', e);
+        return j({ recommendations: [] });
+      }
+    }
+
+    // GET /api/tournaments — List tournaments
+    if (route === '/tournaments' && method === 'GET') {
+      try {
+        const status = new URL(request.url).searchParams.get('status');
+        const sportId = new URL(request.url).searchParams.get('sport_id');
+        
+        let query = {};
+        if (status) query.status = status;
+        if (sportId) query.sport_id = sportId;
+
+        const tournaments = await db.collection('tournaments').find(query).sort({ start_date: -1 }).toArray();
+        
+        return j({ tournaments });
+      } catch (e) {
+        console.error('Tournaments error:', e);
+        return j({ tournaments: [] });
+      }
+    }
+
+    // GET /api/tournaments/:id — Tournament details with bracket
+    if (route.match(/^\/tournaments\/([^/]+)$/) && method === 'GET') {
+      try {
+        const tournamentId = route.split('/')[2];
+        const tournament = await db.collection('tournaments').findOne({ id: tournamentId });
+        
+        if (!tournament) return err('Tournament not found', 404);
+
+        const matches = await db.collection('tournament_matches').find({
+          tournament_id: tournamentId
+        }).sort({ round: 1, match_number: 1 }).toArray();
+
+        return j({ 
+          tournament, 
+          matches,
+          participant_count: tournament.participants?.length || 0 
+        });
+      } catch (e) {
+        console.error('Tournament details error:', e);
+        return err('Failed to fetch tournament', 500);
+      }
+    }
+
+    // POST /api/tournaments/:id/join — Join a tournament
+    if (route.match(/^\/tournaments\/([^/]+)\/join$/) && method === 'POST') {
+      try {
+        const auth = await requireUser(); if (auth.error) return auth.error;
+        const tournamentId = route.match(/^\/tournaments\/([^/]+)\/join$/)[1];
+        
+        const tournament = await db.collection('tournaments').findOne({ id: tournamentId });
+        if (!tournament) return err('Tournament not found', 404);
+        if (tournament.status !== 'signups_open') return err('Signups closed', 400);
+        if (tournament.participants?.length >= tournament.max_participants) return err('Tournament full', 400);
+
+        await db.collection('tournaments').updateOne(
+          { id: tournamentId },
+          { $addToSet: { participants: auth.user.id } }
+        );
+
+        return j({ ok: true, message: 'Joined tournament' });
+      } catch (e) {
+        console.error('Tournament join error:', e);
+        return err('Failed to join tournament', 500);
       }
     }
 
@@ -2546,7 +2954,7 @@ async function handleRoute(request, { params }) {
 
       // -------- Games (admin CRUD) --------
       if (route === '/admin/games' && method === 'POST') {
-        const { sport_id, title, description, date, start_time, end_time, max_players, host_name, skill_level, is_paid, fee } = await request.json();
+        const { sport_id, title, description, date, start_time, end_time, max_players, host_name, skill_level, is_paid, fee, is_tournament, prize_pool } = await request.json();
         if (!sport_id || !date || !start_time || !end_time) return err('sport_id, date, start_time, end_time are required');
         if (!max_players || max_players < 2) return err('max_players must be at least 2');
         
@@ -2561,6 +2969,8 @@ async function handleRoute(request, { params }) {
           skill_level: skill_level || 'all_levels',
           is_paid: Boolean(is_paid),
           fee: Boolean(is_paid) ? parseFloat(fee) || 0 : 0,
+          is_tournament: Boolean(is_tournament),
+          prize_pool: is_tournament ? parseFloat(prize_pool) || 0 : 0,
           created_at: new Date(),
           created_by: auth.user.id,
         };
@@ -2573,7 +2983,12 @@ async function handleRoute(request, { params }) {
         const gameIds = list.map(g => g.id);
         const parts = gameIds.length ? await db.collection('game_participants').find({ game_id: { $in: gameIds } }).toArray() : [];
         const counts = parts.reduce((a, p) => (a[p.game_id] = (a[p.game_id] || 0) + 1, a), {});
-        return j({ games: list.map(g => ({ ...clean(g), participants_count: counts[g.id] || 0 })) });
+        return j({ games: list.map(g => ({ 
+          ...clean(g), 
+          participants_count: counts[g.id] || 0,
+          is_tournament: g.is_tournament || false,
+          prize_pool: g.prize_pool || 0,
+        })) });
       }
 
       const gameDel = route.match(/^\/admin\/games\/([^/]+)$/);
@@ -2752,6 +3167,7 @@ async function handleRoute(request, { params }) {
         const page = Math.max(1, parseInt(url.searchParams.get('page') || '1'));
         const limit = Math.min(200, Math.max(1, parseInt(url.searchParams.get('limit') || '50')));
         const skip = (page - 1) * limit;
+        const includeChildren = url.searchParams.get('include_children') === 'true';
 
         const query = q ? {
           $or: [
@@ -2817,12 +3233,23 @@ async function handleRoute(request, { params }) {
         const total = users.length;
         const paginatedUsers = users.slice(skip, skip + limit);
 
+        // Build response
+        let members = paginatedUsers.map(u => ({
+          ...publicUser(u),
+          latest_membership: latestByUser[u.id] ? clean(latestByUser[u.id]) : null,
+          active_memberships: (allByUser[u.id] || []).filter(m => (m.status === 'active' || m.status === 'paused') && new Date(m.expiry_date) > now).map(clean),
+        }));
+
+        // Fetch children if requested
+        if (includeChildren) {
+          for (let member of members) {
+            const childProfiles = await db.collection('child_profiles').find({ parent_id: member.id }).toArray();
+            member.children = childProfiles.map(clean);
+          }
+        }
+
         return j({
-          members: paginatedUsers.map(u => ({
-            ...publicUser(u),
-            latest_membership: latestByUser[u.id] ? clean(latestByUser[u.id]) : null,
-            active_memberships: (allByUser[u.id] || []).filter(m => (m.status === 'active' || m.status === 'paused') && new Date(m.expiry_date) > now).map(clean),
-          })),
+          members: members,
           total, page, limit,
         });
       }
@@ -3193,6 +3620,89 @@ async function handleRoute(request, { params }) {
         });
       }
 
+      // -------- Attendance Export (CSV) --------
+      if (route === '/admin/attendance/export' && method === 'GET') {
+        try {
+          const url = new URL(request.url);
+          const classId = url.searchParams.get('class_id');
+
+          // Build query filter
+          let query = {};
+          if (classId) {
+            // Get attendance for specific class
+            const bookings = await db.collection('bookings').find({ class_id: classId }).toArray();
+            const bookingIds = bookings.map(b => b.id);
+            if (bookingIds.length === 0) {
+              return new NextResponse('', {
+                status: 200,
+                headers: {
+                  'Content-Type': 'text/csv;charset=utf-8',
+                  'Content-Disposition': `attachment; filename="attendance-${classId}.csv"`,
+                },
+              });
+            }
+            query = { booking_id: { $in: bookingIds } };
+          }
+
+          // Fetch all attendance records
+          const attendanceRecords = await db.collection('attendance').find(query).toArray();
+          const bookingIds = [...new Set(attendanceRecords.map(a => a.booking_id))];
+          const bookings = bookingIds.length ? await db.collection('bookings').find({ id: { $in: bookingIds } }).toArray() : [];
+          const classIds = [...new Set(bookings.map(b => b.class_id))];
+          const classes = classIds.length ? await db.collection('classes').find({ id: { $in: classIds } }).toArray() : [];
+          const userIds = [...new Set(bookings.map(b => b.user_id))];
+          const users = userIds.length ? await db.collection('users').find({ id: { $in: userIds } }).toArray() : [];
+          const childIds = [...new Set(bookings.map(b => b.child_profile_id).filter(Boolean))];
+          const children = childIds.length ? await db.collection('child_profiles').find({ id: { $in: childIds } }).toArray() : [];
+
+          // Build maps for quick lookup
+          const bookingMap = Object.fromEntries(bookings.map(b => [b.id, b]));
+          const classMap = Object.fromEntries(classes.map(c => [c.id, c]));
+          const userMap = Object.fromEntries(users.map(u => [u.id, u]));
+          const childMap = Object.fromEntries(children.map(c => [c.id, c]));
+
+          // Build CSV
+          const headers = ['Date', 'Time', 'Sport', 'Student Name', 'Parent Name', 'Parent Email', 'Status', 'Marked At'];
+          const rows = attendanceRecords.map(a => {
+            const booking = bookingMap[a.booking_id];
+            const cls = booking ? classMap[booking.class_id] : null;
+            const user = booking ? userMap[booking.user_id] : null;
+            const child = booking ? childMap[booking.child_profile_id] : null;
+            const sport = cls ? SPORTS.find(s => s.id === cls.sport_id)?.name : 'Unknown';
+            const studentName = child?.athlete_name || child?.child_name || 'Unknown';
+            const markedAt = a.marked_at ? new Date(a.marked_at).toLocaleString('en-IN') : '';
+
+            return [
+              cls?.date || '',
+              cls?.start_time || '',
+              sport,
+              studentName,
+              user?.full_name || '',
+              user?.email || '',
+              a.present ? 'Present' : 'Absent',
+              markedAt,
+            ];
+          });
+
+          // Create CSV string
+          const csv = [headers, ...rows]
+            .map(row => row.map(cell => `"${String(cell || '').replace(/"/g, '""')}"`).join(','))
+            .join('\n');
+
+          // Return as blob
+          return new NextResponse(csv, {
+            status: 200,
+            headers: {
+              'Content-Type': 'text/csv;charset=utf-8',
+              'Content-Disposition': `attachment; filename="attendance-${classId || new Date().toISOString().split('T')[0]}.csv"`,
+            },
+          });
+        } catch (e) {
+          console.error('Attendance export error:', e);
+          return err('Export failed: ' + e.message, 500);
+        }
+      }
+
       // -------- Payments (admin) --------
       if (route === '/admin/payments' && method === 'GET') {
         const url = new URL(request.url);
@@ -3413,9 +3923,21 @@ async function handleRoute(request, { params }) {
 
       // -------- Coaches --------
       if (route === '/admin/coaches' && method === 'POST') {
-        const { full_name, email, phone, sports, bio } = await request.json();
+        const { full_name, email, phone, sports, bio, photo_url, experience_years, qualifications, specialties } = await request.json();
         if (!full_name || !email) return err('full_name & email required');
-        const c = { id: uuidv4(), full_name, email: email.toLowerCase(), phone: phone || '', sports: Array.isArray(sports) ? sports : [], bio: bio || '', photo_url: '', created_at: new Date() };
+        const c = { 
+          id: uuidv4(), 
+          full_name, 
+          email: email.toLowerCase(), 
+          phone: phone || '', 
+          sports: Array.isArray(sports) ? sports : [], 
+          bio: bio || '',
+          photo_url: photo_url || '',
+          experience_years: experience_years ? parseInt(experience_years) : null,
+          qualifications: Array.isArray(qualifications) ? qualifications : [],
+          specialties: Array.isArray(specialties) ? specialties : [],
+          created_at: new Date() 
+        };
         await db.collection('coaches').insertOne(c);
         return j({ coach: clean(c) });
       }
@@ -3670,6 +4192,408 @@ async function handleRoute(request, { params }) {
         .slice(skip, skip + limit);
 
       return j({ leaderboard, sport_id, tag, total: leaderboard.length, skip, limit });
+    }
+
+    // -------- DATA INTEGRITY & VALIDATION --------
+    // GET /api/admin/data-health — check for consistency issues
+    if (route === '/admin/data-health' && method === 'GET') {
+      const auth = await requireUser(); if (auth.error) return auth.error;
+      if (auth.user.role !== 'admin') return err('Admin only', 403);
+
+      const now = new Date();
+      const issues = [];
+      const repairs = { auto_fixed: 0, auto_failed: 0 };
+
+      try {
+        // 1. Check for stale membership statuses (active but expired)
+        const staleMemberships = await db.collection('user_memberships').find({
+          status: 'active',
+          expiry_date: { $lt: now }
+        }).toArray();
+
+        if (staleMemberships.length > 0) {
+          issues.push({
+            type: 'stale_membership_status',
+            severity: 'high',
+            count: staleMemberships.length,
+            description: `${staleMemberships.length} memberships marked 'active' but expired`,
+            sample_ids: staleMemberships.slice(0, 5).map(m => m.id),
+          });
+
+          // Auto-fix: mark as expired
+          const fixResult = await db.collection('user_memberships').updateMany(
+            { status: 'active', expiry_date: { $lt: now } },
+            { $set: { status: 'expired', auto_fixed_at: now } }
+          );
+          repairs.auto_fixed += fixResult.modifiedCount;
+        }
+
+        // 2. Check for expired memberships marked as 'paused'
+        const expiredPaused = await db.collection('user_memberships').find({
+          status: 'paused',
+          expiry_date: { $lt: now }
+        }).toArray();
+
+        if (expiredPaused.length > 0) {
+          issues.push({
+            type: 'expired_paused_membership',
+            severity: 'medium',
+            count: expiredPaused.length,
+            description: `${expiredPaused.length} memberships are 'paused' but expired`,
+            sample_ids: expiredPaused.slice(0, 5).map(m => m.id),
+          });
+
+          // Auto-fix: mark as expired
+          const fixResult = await db.collection('user_memberships').updateMany(
+            { status: 'paused', expiry_date: { $lt: now } },
+            { $set: { status: 'expired', auto_fixed_at: now } }
+          );
+          repairs.auto_fixed += fixResult.modifiedCount;
+        }
+
+        // 3. Check for bookings with expired memberships
+        const allBookings = await db.collection('bookings').find({}).toArray();
+        const membershipIds = [...new Set(allBookings.map(b => b.user_membership_id).filter(Boolean))];
+        const memberships = membershipIds.length 
+          ? await db.collection('user_memberships').find({ id: { $in: membershipIds } }).toArray()
+          : [];
+        const membershipMap = Object.fromEntries(memberships.map(m => [m.id, m]));
+
+        // Get classes early so we can use classMap below
+        const classIds = [...new Set(allBookings.map(b => b.class_id))];
+        const classes = classIds.length 
+          ? await db.collection('classes').find({ id: { $in: classIds } }).toArray()
+          : [];
+        const classMap = Object.fromEntries(classes.map(c => [c.id, c]));
+
+        const bookingsWithExpiredMem = allBookings.filter(b => {
+          if (!b.user_membership_id) return false;
+          const mem = membershipMap[b.user_membership_id];
+          return mem && (mem.status === 'expired' || new Date(mem.expiry_date) < now);
+        });
+
+        if (bookingsWithExpiredMem.length > 0) {
+          // Get details about expired bookings - ONLY FUTURE ONES
+          const expiredBookingDetails = [];
+          
+          for (const booking of bookingsWithExpiredMem) {
+            const mem = membershipMap[booking.user_membership_id];
+            const cls = classMap[booking.class_id];
+            
+            const classDate = new Date(`${cls?.date}T${cls?.start_time || '00:00'}`);
+            const isPastClass = classDate < now;
+            
+            // Only include FUTURE classes that need cancelling
+            if (!isPastClass) {
+              const user = await db.collection('users').findOne({ id: booking.user_id });
+              const child = booking.child_profile_id ? await db.collection('child_profiles').findOne({ id: booking.child_profile_id }) : null;
+              const sportName = SPORTS.find(s => s.id === cls?.sport_id)?.name || 'Unknown';
+              
+              expiredBookingDetails.push({
+                student_name: child?.athlete_name || child?.child_name || user?.full_name || 'Unknown',
+                parent_name: user?.full_name || 'Unknown',
+                parent_email: user?.email || '',
+                sport: sportName,
+                class_date: cls?.date || 'Unknown',
+                class_time: cls?.start_time || 'Unknown',
+                membership_expired: new Date(mem.expiry_date).toLocaleDateString('en-IN'),
+                booking_id: booking.id
+              });
+              
+              if (expiredBookingDetails.length >= 20) break; // Limit to 20
+            }
+          }
+
+          if (expiredBookingDetails.length > 0) {
+            issues.push({
+              type: 'booking_with_expired_membership',
+              severity: 'medium',
+              count: expiredBookingDetails.length,
+              description: `${expiredBookingDetails.length} FUTURE bookings need cancelling (membership expired)`,
+              sample_ids: expiredBookingDetails.slice(0, 5).map(b => b.booking_id),
+              samples: expiredBookingDetails,
+            });
+          }
+        }
+
+        // 4. Check for orphaned attendance records (attendance without booking)
+        const allAttendance = await db.collection('attendance').find({}).toArray();
+        const bookingIds = [...new Set(allBookings.map(b => b.id))];
+        const orphanedAttendance = allAttendance.filter(a => !bookingIds.includes(a.booking_id));
+
+        if (orphanedAttendance.length > 0) {
+          issues.push({
+            type: 'orphaned_attendance',
+            severity: 'low',
+            count: orphanedAttendance.length,
+            description: `${orphanedAttendance.length} attendance records have no matching booking`,
+            sample_ids: orphanedAttendance.slice(0, 5).map(a => a.id),
+          });
+
+          // Auto-fix: delete orphaned records
+          const fixResult = await db.collection('attendance').deleteMany({
+            booking_id: { $nin: bookingIds }
+          });
+          repairs.auto_fixed += fixResult.deletedCount;
+        }
+
+        // 5. Check for bookings with non-existent class
+        const bookingsWithMissingClass = allBookings.filter(b => !classMap[b.class_id]);
+        if (bookingsWithMissingClass.length > 0) {
+          issues.push({
+            type: 'booking_missing_class',
+            severity: 'high',
+            count: bookingsWithMissingClass.length,
+            description: `${bookingsWithMissingClass.length} bookings reference non-existent classes`,
+            sample_ids: bookingsWithMissingClass.slice(0, 5).map(b => b.id),
+          });
+
+          // Auto-fix: cancel these bookings
+          const fixResult = await db.collection('bookings').updateMany(
+            { id: { $in: bookingsWithMissingClass.map(b => b.id) } },
+            { $set: { status: 'cancelled', auto_fixed_at: now, cancel_reason: 'class_deleted' } }
+          );
+          repairs.auto_fixed += fixResult.modifiedCount;
+        }
+
+        // 6. Check for duplicate active memberships for same child+sport
+        const membersByChildSport = {};
+        for (const mem of memberships) {
+          if (mem.status !== 'active' || new Date(mem.expiry_date) < now) continue;
+          const key = `${mem.child_profile_id || 'null'}_${mem.sport_id}`;
+          if (!membersByChildSport[key]) membersByChildSport[key] = [];
+          membersByChildSport[key].push(mem);
+        }
+
+        const duplicateActiveMems = Object.entries(membersByChildSport)
+          .filter(([_, mems]) => mems.length > 1)
+          .map(([key, mems]) => ({
+            child_sport: key,
+            member_ids: mems.map(m => m.id),
+            count: mems.length
+          }));
+
+        if (duplicateActiveMems.length > 0) {
+          // Get details about the duplicate memberships
+          const duplicateDetails = [];
+          for (const dup of duplicateActiveMems) {
+            const memIds = dup.member_ids;
+            const mems = memberships.filter(m => memIds.includes(m.id));
+            
+            // Get child profile info
+            const childId = mems[0]?.child_profile_id;
+            const child = childId ? await db.collection('child_profiles').findOne({ id: childId }) : null;
+            const parentId = mems[0]?.user_id;
+            const parent = parentId ? await db.collection('users').findOne({ id: parentId }) : null;
+            
+            const sportName = SPORTS.find(s => s.id === mems[0]?.sport_id)?.name || 'Unknown';
+            
+            duplicateDetails.push({
+              child_name: child?.athlete_name || child?.child_name || 'Unknown',
+              parent_name: parent?.full_name || 'Unknown',
+              parent_email: parent?.email || '',
+              sport: sportName,
+              memberships: mems.map(m => ({
+                id: m.id,
+                status: m.status,
+                expiry_date: m.expiry_date,
+                start_date: m.start_date
+              }))
+            });
+          }
+
+          issues.push({
+            type: 'duplicate_active_memberships',
+            severity: 'medium',
+            count: duplicateActiveMems.length,
+            description: `${duplicateActiveMems.length} children have duplicate active memberships for the same sport`,
+            samples: duplicateDetails,
+          });
+        }
+
+        // 7. Check for children without any bookings but with active memberships
+        const childProfiles = await db.collection('child_profiles').find({}).toArray();
+        const childrenWithBookings = [...new Set(allBookings.map(b => b.child_profile_id).filter(Boolean))];
+        const childrenWithMemberships = [...new Set(memberships.filter(m => m.status === 'active' && m.expiry_date > now).map(m => m.child_profile_id).filter(Boolean))];
+        
+        const unused = childrenWithMemberships.filter(id => !childrenWithBookings.includes(id));
+        if (unused.length > 0) {
+          issues.push({
+            type: 'unused_memberships',
+            severity: 'info',
+            count: unused.length,
+            description: `${unused.length} athletes have active memberships but no bookings`,
+            sample_ids: unused.slice(0, 5),
+          });
+        }
+
+        return j({
+          ok: true,
+          timestamp: now,
+          issues,
+          repairs,
+          summary: {
+            total_issues: issues.length,
+            high_severity: issues.filter(i => i.severity === 'high').length,
+            medium_severity: issues.filter(i => i.severity === 'medium').length,
+            low_severity: issues.filter(i => i.severity === 'low').length,
+            info: issues.filter(i => i.severity === 'info').length,
+          }
+        });
+      } catch (e) {
+        console.error('Data health check error:', e);
+        return err('Failed to check data health: ' + e.message, 500);
+      }
+    }
+
+    // POST /api/admin/data-health/repair — attempt to repair specific issues
+    if (route === '/admin/data-health/repair' && method === 'POST') {
+      const auth = await requireUser(); if (auth.error) return auth.error;
+      if (auth.user.role !== 'admin') return err('Admin only', 403);
+
+      const { issue_type } = await request.json();
+      if (!issue_type) return err('issue_type required', 400);
+
+      const now = new Date();
+      const repairs = { success: 0, failed: 0 };
+
+      try {
+        if (issue_type === 'stale_membership_status') {
+          const result = await db.collection('user_memberships').updateMany(
+            { status: 'active', expiry_date: { $lt: now } },
+            { $set: { status: 'expired', auto_fixed_at: now, repaired_by: auth.user.id } }
+          );
+          repairs.success = result.modifiedCount;
+        } else if (issue_type === 'expired_paused_membership') {
+          const result = await db.collection('user_memberships').updateMany(
+            { status: 'paused', expiry_date: { $lt: now } },
+            { $set: { status: 'expired', auto_fixed_at: now, repaired_by: auth.user.id } }
+          );
+          repairs.success = result.modifiedCount;
+        } else if (issue_type === 'orphaned_attendance') {
+          const bookings = await db.collection('bookings').find({}).toArray();
+          const bookingIds = bookings.map(b => b.id);
+          const result = await db.collection('attendance').deleteMany({
+            booking_id: { $nin: bookingIds }
+          });
+          repairs.success = result.deletedCount;
+        } else if (issue_type === 'booking_missing_class') {
+          // Get all bookings and classes
+          const allBookings = await db.collection('bookings').find({}).toArray();
+          const classIds = [...new Set(allBookings.map(b => b.class_id).filter(Boolean))];
+          
+          // Get all existing classes
+          const classes = classIds.length ? await db.collection('classes').find({ id: { $in: classIds } }).toArray() : [];
+          const existingClassIds = new Set(classes.map(c => c.id));
+          
+          // Find bookings where class_id doesn't exist in classes collection
+          const bookingsToCancel = [];
+          for (const booking of allBookings) {
+            if (booking.class_id && !existingClassIds.has(booking.class_id)) {
+              bookingsToCancel.push(booking);
+            }
+          }
+          
+          // Cancel them
+          if (bookingsToCancel.length > 0) {
+            // Try using _id field
+            const cancelIds = bookingsToCancel.map(b => b._id);
+            const result = await db.collection('bookings').updateMany(
+              { _id: { $in: cancelIds } },
+              { $set: { 
+                status: 'cancelled', 
+                auto_fixed_at: now, 
+                cancel_reason: 'class_deleted', 
+                repaired_by: auth.user.id 
+              } }
+            );
+            repairs.success = result.modifiedCount || bookingsToCancel.length;
+          }
+        } else if (issue_type === 'delete_missing_class_bookings') {
+          // Force delete approach - delete the bookings entirely
+          const allBookings = await db.collection('bookings').find({}).toArray();
+          const classIds = [...new Set(allBookings.map(b => b.class_id).filter(Boolean))];
+          const classes = classIds.length ? await db.collection('classes').find({ id: { $in: classIds } }).toArray() : [];
+          const existingClassIds = new Set(classes.map(c => c.id));
+          
+          const bookingsToDelete = allBookings.filter(b => b.class_id && !existingClassIds.has(b.class_id));
+          
+          if (bookingsToDelete.length > 0) {
+            const deleteIds = bookingsToDelete.map(b => b._id);
+            const result = await db.collection('bookings').deleteMany({
+              _id: { $in: deleteIds }
+            });
+            repairs.success = result.deletedCount;
+          }
+        } else {
+          return err('Unknown issue_type', 400);
+        }
+
+        return j({
+          ok: true,
+          issue_type,
+          repairs,
+          repaired_at: now
+        });
+      } catch (e) {
+        console.error('Repair error:', e);
+        return err('Repair failed: ' + e.message, 500);
+      }
+    }
+
+    // GET /api/admin/data-health/consistency-report — detailed consistency report
+    if (route === '/admin/data-health/consistency-report' && method === 'GET') {
+      const auth = await requireUser(); if (auth.error) return auth.error;
+      if (auth.user.role !== 'admin') return err('Admin only', 403);
+
+      try {
+        const now = new Date();
+        const report = {
+          generated_at: now,
+          collections: {},
+          integrity_scores: {}
+        };
+
+        // Count records in each collection
+        const collections = ['users', 'child_profiles', 'user_memberships', 'bookings', 'classes', 'attendance', 'athlete_metrics', 'athlete_levels', 'jerseys', 'payments'];
+        
+        for (const col of collections) {
+          const count = await db.collection(col).countDocuments({});
+          report.collections[col] = { record_count: count };
+        }
+
+        // Integrity scores (0-100)
+        const users = await db.collection('users').find({}).toArray();
+        const memberships = await db.collection('user_memberships').find({}).toArray();
+        const bookings = await db.collection('bookings').find({}).toArray();
+        const attendance = await db.collection('attendance').find({}).toArray();
+
+        // Membership integrity: % with valid expiry dates
+        const membershipScore = memberships.length > 0
+          ? Math.round((memberships.filter(m => m.expiry_date && new Date(m.expiry_date)).length / memberships.length) * 100)
+          : 100;
+
+        // Booking integrity: % with valid class + user + membership
+        const validBookings = bookings.filter(b => b.class_id && b.user_id && (b.user_membership_id || b.status === 'cancelled'));
+        const bookingScore = bookings.length > 0
+          ? Math.round((validBookings.length / bookings.length) * 100)
+          : 100;
+
+        // Overall score (average)
+        const overallScore = Math.round((membershipScore + bookingScore) / 2);
+
+        report.integrity_scores = {
+          overall: overallScore,
+          memberships: membershipScore,
+          bookings: bookingScore,
+          health_status: overallScore >= 95 ? 'excellent' : overallScore >= 80 ? 'good' : overallScore >= 60 ? 'fair' : 'poor'
+        };
+
+        return j(report);
+      } catch (e) {
+        console.error('Report error:', e);
+        return err('Failed to generate report: ' + e.message, 500);
+      }
     }
 
     return err(`Route ${route} not found`, 404);

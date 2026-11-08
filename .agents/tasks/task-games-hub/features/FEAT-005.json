@@ -1,0 +1,29 @@
+{
+  "id": "FEAT-005",
+  "type": "feat",
+  "description": "Enhance existing GET /api/games endpoint to include social_proof field per game, create games-hub-utils helper functions for client-side enrichment.",
+  "status": "pending",
+  "steps": [
+    "Create lib/flowternity/games-hub-utils.js with functions: getTrendingGames(games, period, limit) returns top games by join count, calculateSpotFilled(participants, maxPlayers) returns 0-100 percentage, enrichGameWithSocial(game, userId, friendsList) adds social_proof fields",
+    "Modify app/api/games route (in app/api/[[...path]]/route.js GET /games handler): for each game, call enrichGameWithSocial to add social_proof object",
+    "Add to GET /api/games response per game: social_proof object with fields: friendsPlaying (array of followed users in game), spotFilledPercent (0-100), trendingIndicator (boolean if top 10 this week), participantAvatars (4-5 recent joiners), isParticipantCountFresh (boolean if updated < 30s)",
+    "Test with and without auth: guest users see social_proof.friendsPlaying empty, auth users see their followed friends"
+  ],
+  "acceptance_criteria": [
+    "GET /api/games returns each game with social_proof object",
+    "social_proof.friendsPlaying contains only users from auth.user.followed_players",
+    "social_proof.spotFilledPercent calculates correctly (participants/maxPlayers * 100)",
+    "social_proof.trendingIndicator true if game in top 10 by joins this week",
+    "social_proof.participantAvatars shows 4-5 recent confirmed participants",
+    "Guest users (not authenticated) see social_proof.friendsPlaying as empty array"
+  ],
+  "verification": [
+    "GET /api/games → each game includes social_proof object with all fields",
+    "Test trending: mark game with 50 joins, call GET /api/games → trendingIndicator true for that game",
+    "Test friends playing: auth user follows another user who joined a game, GET /api/games → that game.social_proof.friendsPlaying includes followed user",
+    "Guest test: call GET /api/games without auth token → social_proof.friendsPlaying empty arrays",
+    "Spot filled: game with 8 of 10 players, spotFilledPercent = 80"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

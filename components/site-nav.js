@@ -16,10 +16,20 @@ export default function SiteNav({ dark = false }) {
   // Base links visible to everyone
   const baseLinks = [
     { href: '/memberships', label: 'Memberships' },
+    { href: '/schools', label: 'Schools' },
+    { href: '/corporate', label: 'Corporate' },
     { href: '/coaches', label: 'Coaches' },
     { href: '/games', label: 'Games' },
     { href: '/about', label: 'About' },
     { href: '/contact', label: 'Contact' },
+  ];
+
+  const sports = [
+    { id: 'basketball', name: 'Basketball', href: '/academy/basketball' },
+    { id: 'futsal', name: 'Futsal', href: '/academy/futsal' },
+    { id: 'skateboarding', name: 'Skateboarding', href: '/academy/skateboarding' },
+    { id: 'karate', name: 'Karate', href: '/academy/karate' },
+    { id: 'skating', name: 'Skating', href: '/academy/skating' },
   ];
 
   // Links only visible after login
@@ -41,11 +51,28 @@ export default function SiteNav({ dark = false }) {
         </Link>
 
         <nav className="hidden md:flex items-center gap-8">
-          {links.map(l => (
+          {baseLinks.map(l => (
             <Link key={l.href} href={l.href} className={`text-sm font-medium ${textColor} opacity-80 hover:opacity-100 transition`}>
               {l.label}
             </Link>
           ))}
+          
+          {/* Academy Dropdown */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className={`text-sm font-medium ${textColor} opacity-80 hover:opacity-100 transition cursor-pointer flex items-center gap-1`}>
+                Academy
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" /></svg>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-48">
+              {sports.map(sport => (
+                <DropdownMenuItem key={sport.id} asChild>
+                  <Link href={sport.href}>{sport.name}</Link>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </nav>
 
         <div className="hidden md:flex items-center gap-3">
@@ -94,9 +121,22 @@ export default function SiteNav({ dark = false }) {
       {open && (
         <div className={`md:hidden border-t ${border} ${dark ? 'bg-black' : 'bg-background'}`}>
           <div className="container py-4 flex flex-col gap-3">
-            {links.map(l => (
+            {baseLinks.map(l => (
               <Link key={l.href} href={l.href} className={`text-sm font-medium ${textColor} py-2`} onClick={() => setOpen(false)}>{l.label}</Link>
             ))}
+            
+            {/* Mobile Academy Submenu */}
+            <div className={`text-sm font-medium ${textColor} py-2 border-t ${border} mt-2 pt-4`}>
+              <div className="font-semibold mb-2">Academy</div>
+              <div className="pl-4 flex flex-col gap-2">
+                {sports.map(sport => (
+                  <Link key={sport.id} href={sport.href} className={`text-sm ${textColor} opacity-80 py-1`} onClick={() => setOpen(false)}>
+                    {sport.name}
+                  </Link>
+                ))}
+              </div>
+            </div>
+            
             {user ? (
               <>
                 <Link href="/dashboard" className={`text-sm font-medium ${textColor} py-2`} onClick={() => setOpen(false)}>Dashboard</Link>

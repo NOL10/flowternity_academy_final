@@ -1,0 +1,23 @@
+{
+  "project_type": "Next.js 15.5 full-stack application with React 18.3 frontend, MongoDB backend, Razorpay payments integration",
+  "language": "JavaScript (Node.js backend, React client)",
+  "build_system": "Next.js 15.5 with Yarn package manager (yarn@1.22.22). Build: yarn build, Dev: yarn dev on port 3000",
+  "test_framework": "None configured (manual testing via browser required)",
+  "build_command": "yarn dev (dev server with reload), yarn build && yarn start (production)",
+  "test_command": "Manual browser testing at http://localhost:3000/games; API testing via curl/Postman",
+  "verification_instructions": "For each FEAT: run yarn dev, verify no build errors, test feature manually in browser. Full integration test: load /games page, test hero section, filters, game cards, tournaments, leaderboard, player profiles, WebSocket updates.",
+  "snapshot_or_generated_files": "None (no build artifacts checked in except Next.js .next/ directory)",
+  "environment_constraints": "Dev server runs on port 3000. MongoDB connection via environment variables in .env file. Razorpay keys required for payment testing. WebSocket endpoint requires same origin as main app or explicit CORS configuration.",
+  "contribution_requirements": "Avoid modifying git config. Commit each FEAT separately to main branch (not feature branch). All new API endpoints must follow existing [[...path]]/route.js pattern in app/api/. All components must use 'use client' directive. Maintain existing styling (Tailwind CSS 3.4, Radix UI components already available).",
+  "key_patterns": "Existing patterns to follow: (1) API endpoints in app/api/[[...path]]/route.js use unified response schema {success, data, error, errorCode, pagination}; (2) Components use 'use client' with React hooks; (3) Authentication via useAuth() hook from @/app/providers; (4) UI components from @/components/ui/ (Button, Card, Dialog, Badge, Input, Label, etc.); (5) Icons from lucide-react; (6) Data fetching via React Query (useQuery, useMutation); (7) Styling with Tailwind + CSS-in-JS; (8) Database queries via mongodb driver (getDb(), collection methods); (9) Payment via Razorpay SDK already integrated.",
+  "relevant_files": [
+    "app/games/page.js (current game page to refactor)",
+    "lib/flowternity/config.js (SPORTS, MEMBERSHIPS, etc.)",
+    "lib/flowternity/db.js (MongoDB connection)",
+    "lib/flowternity/auth-server.js (auth utilities)",
+    "lib/flowternity/razorpay.js (payment integration)",
+    "app/providers.js (auth context provider)",
+    "components/ui/ (existing UI components)"
+  ],
+  "directory_structure": "app/ = Next.js pages and API routes; components/ = React components (ui/ subfolder for reusable); lib/flowternity/ = backend utilities (db, auth, config); public/ = static assets. New structure: components/games-hub/ for all new game hub components; app/api/ expanded with tournament, leaderboard, social endpoints; lib/flowternity/ expanded with utility functions and WebSocket handler."
+}

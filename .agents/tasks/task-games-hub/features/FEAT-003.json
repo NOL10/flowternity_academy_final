@@ -1,0 +1,34 @@
+{
+  "id": "FEAT-003",
+  "type": "feat",
+  "description": "Implement leaderboard ranking and player stats endpoints: per-sport leaderboards by period, player stats with breakdown, game history, public profile, batch player fetch with stats calculation utilities.",
+  "status": "pending",
+  "steps": [
+    "Create lib/flowternity/stats-calculator.js with functions: calculateWinRate(wins, losses) with zero-check, calculateCurrentStreak(gameHistory, sportId, period) with loss/no-show reset logic, calculatePoints(wins, totalGames, mvpVotes)",
+    "Create app/api/leaderboards/[sport_id]/route.js: GET with params period (week|month|all_time), limit, skip. Returns ranked players sorted by points desc with tie-breaking by wins then win_rate, cache 5 minutes",
+    "Create app/api/players/[user_id]/stats.js: GET returns user all-time stats + per-sport breakdown (total_games, wins, losses, win_rate, current_streak, points) + recent matches (10) + performance trend (30 days)",
+    "Create app/api/players/[user_id]/game-history.js: GET with params sport_id (optional), limit, skip. Returns paginated game records with opponent, result, date, replay_url",
+    "Create app/api/players/[user_id]/profile.js: GET returns public profile (name, avatar, bio, joinDate, sportsPlayed, statsSnapshot, followerCount, followingCount, badges, isFollowedByMe), cache 5 minutes",
+    "Create app/api/players/batch.js: GET with query param userIds=id1,id2,id3 (max 50). Returns array of player profiles for batch enrichment",
+    "Implement badge system: awarded on thresholds (50_games, 20_win_streak, mvp_favorite), stored in player document"
+  ],
+  "acceptance_criteria": [
+    "GET /api/leaderboards/basketball?period=week returns ranked players array, sorted by points desc, cache 5 minutes",
+    "Leaderboard includes rank, user object, wins, losses, win_rate, streak, points fields",
+    "GET /api/players/:user_id/stats returns all-time + per-sport breakdown + recent matches + 30-day trend",
+    "calculateCurrentStreak correctly resets to 0 on loss or no_show",
+    "GET /api/players/batch?userIds=id1,id2 returns array of 2 profiles",
+    "Badges system: user with 50+ games gets 50_games badge",
+    "Period logic: 'week' = ISO 8601 Mon-Sun UTC, 'month' = 1st-last day UTC, 'all_time' = entire history"
+  ],
+  "verification": [
+    "GET /api/leaderboards/basketball?period=week: returns array, rank field sequential 1,2,3..., points sorted desc",
+    "GET /api/players/:user_id/stats: win_rate calculated correctly, recent_matches array length <= 10",
+    "Streak calculation test: player history with 3 wins then loss → streak = 0",
+    "GET /api/players/batch?userIds=id1,id2: returns exactly 2 profiles",
+    "Badge test: create user, play 50 games, verify 50_games badge appears",
+    "Cache headers: response includes 'Cache-Control: max-age=300' for leaderboards"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

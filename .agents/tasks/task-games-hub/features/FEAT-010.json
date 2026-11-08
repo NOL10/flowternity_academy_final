@@ -1,0 +1,41 @@
+{
+  "id": "FEAT-010",
+  "type": "feat",
+  "description": "Build Leaderboard and TopPerformers components. Desktop: TanStack Table, Mobile: card view. Period filter, search, sort. Integrate into games page.",
+  "status": "pending",
+  "steps": [
+    "Create components/ui/responsive-table.js: Radix-based table component that adapts to mobile card view (<md breakpoint)",
+    "Create components/games-hub/leaderboard.js: fetch GET /api/leaderboards/:sport_id?period=week&limit=50 on mount",
+    "Desktop view: TanStack Table with columns Rank, Avatar, Name, Wins, Win%, Streak, Points",
+    "Mobile view: card layout with rank badge (gold/silver/bronze for top 3), player name, points, win rate, streak",
+    "Period selector: radio buttons Week / Month / All Time",
+    "Searchable: filter by player name (client-side)",
+    "Sortable: by Points (default), Win Rate, Games Played",
+    "Pagination: 'Load More' button, loads 20 at a time",
+    "Create components/games-hub/top-performers.js: grid of 5-10 performer cards with rank badge, avatar, name, sport, wins, win%, streak badge",
+    "TopPerformers updates on leaderboard refresh (via useState or context)",
+    "Add both sections to app/games/page.js"
+  ],
+  "acceptance_criteria": [
+    "Leaderboard renders with correct columns on desktop",
+    "Leaderboard renders as cards on mobile (<md breakpoint)",
+    "Period filter changes period param, re-fetches data",
+    "Search filters players by name (client-side)",
+    "Sort by Points works (highest first)",
+    "Pagination loads 20 more players on button click",
+    "TopPerformers displays top 5-10 with correct stats",
+    "Streak badges display for > 5 game streaks"
+  ],
+  "verification": [
+    "Load /games page, scroll to leaderboard section",
+    "Desktop: verify table with Rank, Name, Wins, Win%, Streak, Points columns",
+    "Mobile: resize to <640px, verify card layout with rank badge and stats",
+    "Change period filter to 'Month', verify data re-fetches and displays correctly",
+    "Search for player by name, verify list filters",
+    "Click 'Load More', verify 20 additional players added",
+    "TopPerformers section visible above leaderboard with top 5-10",
+    "Verify streak badges (e.g., '5-Game Win Streak') display"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

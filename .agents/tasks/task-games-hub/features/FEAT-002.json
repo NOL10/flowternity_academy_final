@@ -1,0 +1,35 @@
+{
+  "id": "FEAT-002",
+  "type": "feat",
+  "description": "Implement core tournament and bracket API endpoints: list, fetch full tournament, fetch bracket tree, join tournament, post match results with auto-advance logic.",
+  "status": "pending",
+  "steps": [
+    "Create app/api/tournaments/route.js: GET endpoint with filters (sport_id, status, limit=10, skip=0), returns tournament summaries with pagination, cache 1 minute",
+    "Create app/api/tournaments/[id]/route.js: GET endpoint returns full tournament object including bracket structure, cache 30 seconds",
+    "Create app/api/tournaments/[id]/bracket.js: GET endpoint returns optimized bracket JSON with rounds, matches, current_round, auto_advance_rule fields formatted for visualization",
+    "Create app/api/tournaments/[id]/join.js: POST endpoint, auth required, validates membership + max participants + no duplicate join, adds user to participants array, assigns seed number",
+    "Create app/api/tournaments/[id]/matches/[match_id]/score.js: POST endpoint, admin auth required, validates winner is seeded player, posts score, auto-generates next-round match",
+    "Implement consistent error responses: 400 (TOURNAMENT_FULL, SIGNUPS_CLOSED, DUPLICATE_JOIN, INVALID_WINNER), 401 (auth required), 404 (tournament/match not found), 409 (bracket conflict)",
+    "Add Cache-Control headers per endpoint: Tournament list/bracket 30s, summary 1m"
+  ],
+  "acceptance_criteria": [
+    "GET /api/tournaments returns array of tournament summaries with pagination (limit, skip, total, hasMore)",
+    "GET /api/tournaments/:id returns full tournament object with bracket structure",
+    "GET /api/tournaments/:id/bracket returns rounds array with matches and current_round field",
+    "POST /api/tournaments/:id/join adds authenticated user to participants, assigns seed number",
+    "POST /api/tournaments/:id/join returns 400 error if tournament full with errorCode 'TOURNAMENT_FULL'",
+    "POST /api/tournaments/:id/matches/:match_id/score posts result and generates next-round match",
+    "All error responses include errorCode field for client-side handling",
+    "Response format follows {success, data, error, errorCode, pagination, meta} schema"
+  ],
+  "verification": [
+    "Test GET /api/tournaments in browser: returns array with pagination, status 200",
+    "Test GET /api/tournaments/:id: returns tournament object with bracket, status 200",
+    "Test POST /api/tournaments/:id/join with auth: user added to participants, status 200",
+    "Test POST /api/tournaments/:id/join when full: returns 400 with errorCode TOURNAMENT_FULL",
+    "Test POST match score: next-round match auto-generated in bracket_matches collection",
+    "curl -H 'Content-Type: application/json' http://localhost:3000/api/tournaments tests all endpoints"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

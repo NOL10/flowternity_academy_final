@@ -1,0 +1,41 @@
+{
+  "id": "FEAT-008",
+  "type": "feat",
+  "description": "Build EnhancedGameCard component with social proof overlay and RecommendationCarousel with swipe gestures. Integrate into main games page.",
+  "status": "pending",
+  "steps": [
+    "Create components/games-hub/enhanced-game-card.js: extend existing game card to add social_proof fields (friendsPlaying, spotFilledPercent, trendingIndicator, participantAvatars)",
+    "Display overlay badges: 'X friends playing', 'Spots filling fast' (if > 70% full), 'Trending' (if trendingIndicator true)",
+    "Show quick-peek player avatars (4-5 recent participants) and 'Players You Know' indicator",
+    "Preserve all existing join/leave/payment logic",
+    "Create components/games-hub/recommendation-carousel.js with Framer Motion: fetch GET /api/recommendations/games on mount",
+    "Render 1 card on mobile, 3 cards on desktop (breakpoint-aware with CSS or dynamic state)",
+    "Implement swipe gesture (Framer Motion drag prop) for card navigation",
+    "Auto-rotate carousel: 5s interval, pause on user interaction",
+    "Dot pagination indicators below carousel",
+    "Error handling: show 'Check back later' if recommendations fail",
+    "Integrate both components into app/games/page.js: replace old cards with enhanced, add recommendation carousel between hero and games list"
+  ],
+  "acceptance_criteria": [
+    "EnhancedGameCard renders with all social_proof fields",
+    "Social proof badges displayed correctly (friends playing, trending, spots filling)",
+    "RecommendationCarousel shows 1 card on mobile, 3 on desktop",
+    "Swipe gesture works (drag card left/right changes visible cards)",
+    "Auto-rotate works: carousel advances card every 5s",
+    "Dot pagination shows current position",
+    "Carousel pauses auto-rotate on user interaction",
+    "Error fallback renders if recommendations endpoint fails"
+  ],
+  "verification": [
+    "Load /games page, verify games displayed with social_proof badges",
+    "Scroll down, verify recommendation carousel visible below hero",
+    "On mobile (<640px), verify carousel shows 1 card at a time",
+    "On desktop (>1024px), verify carousel shows 3 cards",
+    "Drag/swipe card in carousel, verify next card appears",
+    "Wait 5s, verify carousel auto-rotates to next card",
+    "Click/touch carousel, verify auto-rotate pauses",
+    "API error test: mock GET /api/recommendations to fail, verify fallback message"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

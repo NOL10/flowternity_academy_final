@@ -76,7 +76,7 @@ export default function DashboardPage() {
   );
 
   const activeMemberships = (data?.memberships || [])
-    .filter(m => m.status === 'active' || m.status === 'paused')
+    .filter(m => (m.status === 'active' || m.status === 'paused') && new Date(m.expiry_date) > new Date())
     .filter(m => !activeChild || !m.child_profile_id || m.child_profile_id === activeChild.id);
 
   return (

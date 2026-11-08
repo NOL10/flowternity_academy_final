@@ -1,7 +1,6 @@
 'use client';
-'use client';
 
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -20,7 +19,7 @@ import {
   Trash2, Plus, Users, Calendar, Activity, Sparkles, Search, CreditCard,
   Megaphone, UserCog, ClipboardList, CheckCircle2, XCircle, Save, Flame,
   LayoutDashboard, ArrowLeft, LogOut, ChevronRight, Home, TrendingUp, Gift, CalendarPlus, RotateCcw,
-  BarChart2, FileText, TrendingDown, Percent, BookOpen, Printer, Download
+  BarChart2, FileText, TrendingDown, Percent, BookOpen, Printer, Download, Upload, X
 } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -124,6 +123,7 @@ const NAV = [
   { id: 'games', label: 'Games', icon: Flame },
   { id: 'game-bookings', label: 'Game Bookings', icon: Flame },
   { id: 'members', label: 'Members', icon: Users },
+  { id: 'athletes', label: 'Athletes', icon: Users },
   { id: 'jerseys', label: 'Jerseys', icon: Gift },
   { id: 'performance', label: 'Performance', icon: TrendingUp },
   { id: 'trials', label: 'Free Trials', icon: Sparkles },
@@ -132,6 +132,7 @@ const NAV = [
   { id: 'reports', label: 'Reports', icon: BarChart2 },
   { id: 'coaches', label: 'Coaches', icon: UserCog },
   { id: 'announcements', label: 'Announcements', icon: Megaphone },
+  { id: 'data-health', label: 'Data Health', icon: CheckCircle2 },
   { id: 'settings', label: 'Settings', icon: Activity },
 ];
 
@@ -249,6 +250,7 @@ export default function AdminPage() {
             {tab === 'games' && <GamesSection />}
             {tab === 'game-bookings' && <GameBookingsSection />}
             {tab === 'members' && <MembersSection />}
+            {tab === 'athletes' && <AthletesSection />}
             {isAdmin && tab === 'jerseys' && <JerseysSection />}
             {tab === 'performance' && <PerformanceSection />}
             {tab === 'trials' && <TrialsSection />}
@@ -257,6 +259,7 @@ export default function AdminPage() {
             {tab === 'announcements' && <AnnouncementsSection />}
             {isAdmin && tab === 'payments' && <PaymentsSection />}
             {isAdmin && tab === 'coaches' && <CoachesSection />}
+            {isAdmin && tab === 'data-health' && <DataHealthSection />}
             {isAdmin && tab === 'settings' && <SettingsSection />}
           </div>
         </main>
@@ -735,9 +738,9 @@ function GamesSection() {
   const [games, setGames] = useState([]);
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState('single');
-  const emptyForm = { sport_id: 'basketball', title: '', description: '', date: '', start_time: '', end_time: '', max_players: 10, host_name: 'Flowternity', skill_level: 'all_levels', is_paid: false, fee: 0 };
+  const emptyForm = { sport_id: 'basketball', title: '', description: '', date: '', start_time: '', end_time: '', max_players: 10, host_name: 'Flowternity', skill_level: 'all_levels', is_paid: false, fee: 0, is_tournament: false, prize_pool: 0 };
   const [form, setForm] = useState(emptyForm);
-  const emptyBulk = { sport_id: 'basketball', title: '', description: '', host_name: 'Flowternity', skill_level: 'all_levels', max_players: 10, start_date: '', end_date: '', weekdays: [5, 6], slots: [{ start_time: '18:00', end_time: '19:30' }], is_paid: false, fee: 0 };
+  const emptyBulk = { sport_id: 'basketball', title: '', description: '', host_name: 'Flowternity', skill_level: 'all_levels', max_players: 10, start_date: '', end_date: '', weekdays: [5, 6], slots: [{ start_time: '18:00', end_time: '19:30' }], is_paid: false, fee: 0, is_tournament: false, prize_pool: 0 };
   const [bulk, setBulk] = useState(emptyBulk);
   const [saving, setSaving] = useState(false);
   const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -919,6 +922,44 @@ function GamesSection() {
                     </div>
                   )}
                 </div>
+                <div className="col-span-2 flex items-center gap-3 p-3 rounded-lg bg-slate-800/50 border border-slate-800">
+                  <input type="checkbox" id="is_tournament" checked={form.is_tournament || false} onChange={e => setForm({ ...form, is_tournament: e.target.checked, is_paid: e.target.checked })} className="w-4 h-4 rounded cursor-pointer" />
+                  <Label htmlFor="is_tournament" className="text-slate-300 text-xs uppercase tracking-widest cursor-pointer flex-1">Tournament</Label>
+                  {form.is_tournament && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400 text-xs">Entry Fee:</span>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        step="0.01" 
+                        className="h-8 w-20 bg-slate-800 text-white border-slate-700 hover:border-slate-600 focus:border-lime-400 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
+                        style={{ MozAppearance: 'textfield' }}
+                        value={form.fee === 0 ? '' : form.fee} 
+                        onChange={e => setForm({ ...form, fee: e.target.value ? parseFloat(e.target.value) : 0 })} 
+                        onFocus={e => e.target.select()}
+                        placeholder="500" 
+                      />
+                      <span className="text-slate-400 text-xs">₹</span>
+                    </div>
+                  )}
+                  {form.is_tournament && (
+                    <div className="flex items-center gap-2 ml-4">
+                      <span className="text-slate-400 text-xs">Prize Pool:</span>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        step="0.01" 
+                        className="h-8 w-24 bg-slate-800 text-white border-slate-700 hover:border-slate-600 focus:border-lime-400 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
+                        style={{ MozAppearance: 'textfield' }}
+                        value={form.prize_pool === 0 ? '' : form.prize_pool} 
+                        onChange={e => setForm({ ...form, prize_pool: e.target.value ? parseFloat(e.target.value) : 0 })} 
+                        onFocus={e => e.target.select()}
+                        placeholder="5000" 
+                      />
+                      <span className="text-slate-400 text-xs">₹</span>
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2"><QuickDateInput label="Date" required value={form.date} onChange={v => setForm({ ...form, date: v })} /></div>
@@ -980,6 +1021,44 @@ function GamesSection() {
                         onChange={e => setBulk({ ...bulk, fee: e.target.value ? parseFloat(e.target.value) : 0 })} 
                         onFocus={e => e.target.select()}
                         placeholder="0.00" 
+                      />
+                      <span className="text-slate-400 text-xs">₹</span>
+                    </div>
+                  )}
+                </div>
+                <div className="col-span-2 flex items-center gap-3 p-3 rounded-lg bg-slate-800/50 border border-slate-800">
+                  <input type="checkbox" id="bulk_is_tournament" checked={bulk.is_tournament || false} onChange={e => setBulk({ ...bulk, is_tournament: e.target.checked, is_paid: e.target.checked })} className="w-4 h-4 rounded cursor-pointer" />
+                  <Label htmlFor="bulk_is_tournament" className="text-slate-300 text-xs uppercase tracking-widest cursor-pointer flex-1">Tournament</Label>
+                  {bulk.is_tournament && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-slate-400 text-xs">Entry Fee:</span>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        step="0.01" 
+                        className="h-8 w-20 bg-slate-800 text-white border-slate-700 hover:border-slate-600 focus:border-lime-400 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
+                        style={{ MozAppearance: 'textfield' }}
+                        value={bulk.fee === 0 ? '' : bulk.fee} 
+                        onChange={e => setBulk({ ...bulk, fee: e.target.value ? parseFloat(e.target.value) : 0 })} 
+                        onFocus={e => e.target.select()}
+                        placeholder="500" 
+                      />
+                      <span className="text-slate-400 text-xs">₹</span>
+                    </div>
+                  )}
+                  {bulk.is_tournament && (
+                    <div className="flex items-center gap-2 ml-4">
+                      <span className="text-slate-400 text-xs">Prize Pool:</span>
+                      <Input 
+                        type="number" 
+                        min="0" 
+                        step="0.01" 
+                        className="h-8 w-24 bg-slate-800 text-white border-slate-700 hover:border-slate-600 focus:border-lime-400 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
+                        style={{ MozAppearance: 'textfield' }}
+                        value={bulk.prize_pool === 0 ? '' : bulk.prize_pool} 
+                        onChange={e => setBulk({ ...bulk, prize_pool: e.target.value ? parseFloat(e.target.value) : 0 })} 
+                        onFocus={e => e.target.select()}
+                        placeholder="5000" 
                       />
                       <span className="text-slate-400 text-xs">₹</span>
                     </div>
@@ -1861,6 +1940,7 @@ function AttendanceSection() {
   const [stats, setStats] = useState(null);
   const [statsLoading, setStatsLoading] = useState(true);
   const [showStats, setShowStats] = useState(false);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
     fetch('/api/admin/classes', { credentials: 'include' }).then(r => r.json()).then(d => setClasses(d.classes || []));
@@ -1888,19 +1968,68 @@ function AttendanceSection() {
     else toast.error('Failed');
   };
 
+  const downloadAttendance = async () => {
+    if (!selectedClass) {
+      toast.error('Please select a class first');
+      return;
+    }
+
+    setDownloading(true);
+    try {
+      const res = await fetch(`/api/admin/attendance/export?class_id=${selectedClass}`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to export');
+      
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      
+      // Get class details for filename
+      const selectedClassObj = classes.find(c => c.id === selectedClass);
+      const sport = SPORTS.find(s => s.id === selectedClassObj?.sport_id)?.name || 'class';
+      const filename = `attendance-${sport}-${selectedClassObj?.date || 'export'}.csv`;
+      
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+      
+      toast.success(`Downloaded attendance for ${selectedClassObj?.date || 'class'}`);
+    } catch (e) {
+      toast.error('Export failed: ' + e.message);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
   return (
     <>
       <SectionHeader title="Attendance" description="Mark attendance and view insights." />
       
-      {/* Stats Toggle Button */}
-      <Button 
-        onClick={() => setShowStats(!showStats)} 
-        className="mb-6 bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700"
-        variant="outline"
-      >
-        <BarChart2 className="w-4 h-4 mr-2" />
-        {showStats ? 'Hide Statistics' : 'View Statistics'}
-      </Button>
+      {/* Action Buttons */}
+      <div className="flex flex-wrap gap-2 mb-6">
+        <Button 
+          onClick={() => setShowStats(!showStats)} 
+          className="bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700"
+          variant="outline"
+        >
+          <BarChart2 className="w-4 h-4 mr-2" />
+          {showStats ? 'Hide Statistics' : 'View Statistics'}
+        </Button>
+        
+        {selectedClass && (
+          <Button 
+            onClick={downloadAttendance}
+            disabled={downloading || roster.length === 0}
+            className="bg-slate-800 hover:bg-slate-700 text-slate-100 border border-slate-700"
+            variant="outline"
+          >
+            <Download className="w-4 h-4 mr-2" />
+            {downloading ? 'Downloading...' : 'Download Class Attendance'}
+          </Button>
+        )}
+      </div>
 
       {/* Stats Dashboard - Collapsible */}
       {showStats && !statsLoading && stats && (
@@ -2293,6 +2422,46 @@ function TrialsSection() {
       <SectionHeader
         title="Free Trials"
         description={`${leads.length} lead${leads.length === 1 ? '' : 's'} · convert them into paying members.`}
+        action={
+          leads.length > 0 && (
+            <button
+              onClick={() => {
+                // Create CSV content
+                const headers = ['Name', 'Email', 'Phone', 'Sport', 'Status', 'Scheduled Date', 'Scheduled Time', 'Created Date'];
+                const rows = leads.map(l => [
+                  l.full_name,
+                  l.email,
+                  l.phone,
+                  l.sport_name,
+                  l.status,
+                  l.class ? new Date(l.class.date).toLocaleDateString('en-IN') : 'Not scheduled',
+                  l.class ? `${l.class.start_time}–${l.class.end_time}` : '',
+                  new Date(l.created_at).toLocaleDateString('en-IN')
+                ]);
+
+                // Build CSV string
+                const csvContent = [
+                  headers.join(','),
+                  ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+                ].join('\n');
+
+                // Create blob and download
+                const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+                const link = document.createElement('a');
+                const url = URL.createObjectURL(blob);
+                link.setAttribute('href', url);
+                link.setAttribute('download', `free-trials-${new Date().toISOString().split('T')[0]}.csv`);
+                link.style.visibility = 'hidden';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+              }}
+              className="text-xs px-3 py-1.5 bg-lime-400 text-black hover:bg-lime-300 rounded font-semibold transition"
+            >
+              ⬇️ Download CSV
+            </button>
+          )
+        }
       />
       <div className="flex flex-wrap gap-2 mb-4">
         {statuses.map(s => (
@@ -2470,25 +2639,115 @@ function JerseysSection() {
 function CoachesSection() {
   const [coaches, setCoaches] = useState([]);
   const [open, setOpen] = useState(false);
-  const emptyForm = { full_name: '', email: '', phone: '', sports: [], bio: '' };
+  const emptyForm = { 
+    full_name: '', 
+    email: '', 
+    phone: '', 
+    sports: [], 
+    bio: '',
+    photo_url: '',
+    experience_years: '',
+    qualifications: [],
+    specialties: []
+  };
   const [form, setForm] = useState(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [newQual, setNewQual] = useState('');
+  const [newSpec, setNewSpec] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [photoPreview, setPhotoPreview] = useState('');
 
   const load = () => fetch('/api/admin/coaches', { credentials: 'include' }).then(r => r.json()).then(d => setCoaches(d.coaches || []));
   useEffect(() => { load(); }, []);
 
   const toggleSport = (id) => setForm(f => ({ ...f, sports: f.sports.includes(id) ? f.sports.filter(x => x !== id) : [...f.sports, id] }));
+  
+  const handlePhotoUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Show preview
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setPhotoPreview(event.target?.result);
+    };
+    reader.readAsDataURL(file);
+
+    // Upload to server
+    setUploading(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await fetch('/api/upload', {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      });
+      
+      if (res.ok) {
+        const data = await res.json();
+        setForm(f => ({ ...f, photo_url: data.url }));
+        toast.success('Photo uploaded');
+      } else {
+        toast.error('Upload failed');
+        setPhotoPreview('');
+      }
+    } catch (err) {
+      toast.error('Upload error');
+      setPhotoPreview('');
+    } finally {
+      setUploading(false);
+    }
+  };
+  
+  const addQualification = () => {
+    if (newQual.trim()) {
+      setForm(f => ({ ...f, qualifications: [...(Array.isArray(f.qualifications) ? f.qualifications : []), newQual.trim()] }));
+      setNewQual('');
+    }
+  };
+  
+  const removeQualification = (idx) => {
+    setForm(f => ({ ...f, qualifications: (f.qualifications || []).filter((_, i) => i !== idx) }));
+  };
+
+  const addSpecialty = () => {
+    if (newSpec.trim()) {
+      setForm(f => ({ ...f, specialties: [...(Array.isArray(f.specialties) ? f.specialties : []), newSpec.trim()] }));
+      setNewSpec('');
+    }
+  };
+  
+  const removeSpecialty = (idx) => {
+    setForm(f => ({ ...f, specialties: (f.specialties || []).filter((_, i) => i !== idx) }));
+  };
 
   const create = async (e, keepOpen) => {
     e.preventDefault();
+    console.log('Submitting coach with data:', form);
     setSaving(true);
     const res = await fetch('/api/admin/coaches', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(form) });
     setSaving(false);
-    if (!res.ok) { toast.error('Failed'); return; }
+    if (!res.ok) { 
+      const error = await res.json();
+      console.error('Failed to add coach:', error);
+      toast.error('Failed'); 
+      return; 
+    }
+    const data = await res.json();
+    console.log('Coach added successfully:', data);
     toast.success('Coach added');
     load();
-    if (keepOpen) setForm(emptyForm);
-    else { setForm(emptyForm); setOpen(false); }
+    if (keepOpen) {
+      setForm(emptyForm);
+      setPhotoPreview('');
+    }
+    else { 
+      setForm(emptyForm); 
+      setPhotoPreview('');
+      setOpen(false); 
+    }
   };
 
   const remove = async (id) => {
@@ -2502,21 +2761,25 @@ function CoachesSection() {
       <SectionHeader
         title="Coaches"
         description={`${coaches.length} coaches on the roster`}
-        action={<Button onClick={() => setOpen(true)} className="bg-lime-400 text-slate-900 hover:bg-lime-300 font-semibold"><Plus className="w-4 h-4 mr-1.5" /> Add Coach</Button>}
+        action={<Button onClick={() => { setOpen(true); setPhotoPreview(''); setForm(emptyForm); }} className="bg-lime-400 text-slate-900 hover:bg-lime-300 font-semibold"><Plus className="w-4 h-4 mr-1.5" /> Add Coach</Button>}
       />
 
       {coaches.length === 0 ? (
-        <EmptyState icon={UserCog} title="No coaches yet" cta="Add your first coach" onClick={() => setOpen(true)} />
+        <EmptyState icon={UserCog} title="No coaches yet" cta="Add your first coach" onClick={() => { setOpen(true); setPhotoPreview(''); setForm(emptyForm); }} />
       ) : (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {coaches.map(c => (
             <Card key={c.id} className="p-4 rounded-lg bg-slate-900 border-slate-800">
               <div className="flex items-start justify-between">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-full bg-lime-400/20 text-lime-400 flex items-center justify-center font-bold flex-shrink-0">{c.full_name[0]?.toUpperCase()}</div>
+                  {c.photo_url ? (
+                    <img src={c.photo_url} alt={c.full_name} className="w-10 h-10 rounded-full object-cover flex-shrink-0" />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-lime-400/20 text-lime-400 flex items-center justify-center font-bold flex-shrink-0">{c.full_name[0]?.toUpperCase()}</div>
+                  )}
                   <div className="min-w-0">
                     <div className="font-medium text-slate-100 truncate">{c.full_name}</div>
-                    <div className="text-xs text-slate-500 truncate">{c.email}</div>
+                    {c.experience_years && <div className="text-xs text-lime-400 truncate">{c.experience_years}+ years exp.</div>}
                   </div>
                 </div>
                 <button onClick={() => remove(c.id)} className="p-1.5 rounded hover:bg-red-500/10 text-slate-500 hover:text-red-400"><Trash2 className="w-4 h-4" /></button>
@@ -2524,23 +2787,65 @@ function CoachesSection() {
               <div className="flex flex-wrap gap-1 mt-3">
                 {c.sports?.map(sid => <Badge key={sid} variant="secondary" className="bg-slate-800 text-slate-300 border-0 text-[10px]">{SPORTS.find(s => s.id === sid)?.name || sid}</Badge>)}
               </div>
-              {c.bio && <p className="text-xs text-slate-400 mt-2 line-clamp-2">{c.bio}</p>}
+              {c.qualifications?.length > 0 && (
+                <p className="text-xs text-slate-500 mt-2">📜 {c.qualifications.length} qualifications</p>
+              )}
+              {c.specialties?.length > 0 && (
+                <p className="text-xs text-slate-500">⭐ {c.specialties.length} specialties</p>
+              )}
             </Card>
           ))}
         </div>
       )}
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-w-lg bg-slate-900 border-slate-800 text-slate-100">
-          <DialogHeader><DialogTitle className="text-slate-50">Add coach</DialogTitle></DialogHeader>
-          <form onSubmit={(e) => create(e, false)} className="space-y-3">
-            <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Full name</Label><Input required className="h-11 mt-1" value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} /></div>
-            <div className="grid grid-cols-2 gap-3">
-              <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Email</Label><Input type="email" required className="h-11 mt-1" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
-              <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Phone</Label><Input className="h-11 mt-1" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} /></div>
-            </div>
+      <Dialog open={open} onOpenChange={o => { setOpen(o); if (!o) setPhotoPreview(''); }}>
+        <DialogContent className="max-w-xl bg-slate-900 border-slate-800 text-slate-100 max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle className="text-slate-50">Add Coach</DialogTitle></DialogHeader>
+          <form onSubmit={(e) => create(e, false)} className="space-y-4">
+            
+            {/* Photo Upload */}
             <div>
-              <Label className="text-slate-300 text-xs uppercase tracking-widest mb-1 block">Assigned sports</Label>
+              <Label className="text-slate-300 text-xs uppercase tracking-widest mb-2 block">Profile Photo</Label>
+              <div className="flex gap-4">
+                {(photoPreview || form.photo_url) && (
+                  <div className="flex-shrink-0">
+                    <img src={photoPreview || form.photo_url} alt="Preview" className="w-24 h-24 rounded-lg object-cover border-2 border-slate-700" />
+                  </div>
+                )}
+                <div className="flex-1">
+                  <label className="flex items-center justify-center gap-2 p-4 border-2 border-dashed border-slate-700 rounded-lg hover:border-slate-600 cursor-pointer transition">
+                    <Upload className="w-4 h-4 text-slate-400" />
+                    <span className="text-sm text-slate-400">Click to upload photo</span>
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      onChange={handlePhotoUpload}
+                      disabled={uploading}
+                      className="hidden" 
+                    />
+                  </label>
+                  {uploading && <p className="text-xs text-slate-400 mt-2">Uploading...</p>}
+                </div>
+              </div>
+            </div>
+
+            {/* Basic Info */}
+            <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Full name *</Label><Input required className="h-11 mt-1 bg-slate-950 border-slate-700" value={form.full_name} onChange={e => setForm({ ...form, full_name: e.target.value })} /></div>
+            
+            <div className="grid grid-cols-2 gap-3">
+              <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Email</Label><Input type="email" className="h-11 mt-1 bg-slate-950 border-slate-700" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
+              <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Phone</Label><Input className="h-11 mt-1 bg-slate-950 border-slate-700" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} /></div>
+            </div>
+
+            {/* Experience */}
+            <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Experience (years)</Label><Input type="number" className="h-11 mt-1 bg-slate-950 border-slate-700" value={form.experience_years} onChange={e => setForm({ ...form, experience_years: e.target.value })} placeholder="5" /></div>
+
+            {/* Bio */}
+            <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Bio</Label><Textarea rows={2} className="mt-1 bg-slate-950 border-slate-700" value={form.bio} onChange={e => setForm({ ...form, bio: e.target.value })} placeholder="One-liner about the coach" /></div>
+
+            {/* Sports */}
+            <div>
+              <Label className="text-slate-300 text-xs uppercase tracking-widest mb-1 block">Assigned sports *</Label>
               <div className="grid grid-cols-2 gap-2">
                 {SPORTS.filter(s => s.status === 'active').map(s => (
                   <label key={s.id} className="flex items-center gap-2 p-2 rounded border border-slate-700 bg-slate-950 cursor-pointer hover:border-slate-600">
@@ -2550,10 +2855,58 @@ function CoachesSection() {
                 ))}
               </div>
             </div>
-            <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Bio</Label><Textarea rows={3} value={form.bio} onChange={e => setForm({ ...form, bio: e.target.value })} placeholder="One-liner about the coach" /></div>
+
+            {/* Qualifications */}
+            <div>
+              <Label className="text-slate-300 text-xs uppercase tracking-widest mb-2 block">Qualifications</Label>
+              <div className="flex gap-2 mb-2">
+                <Input 
+                  placeholder="e.g., BSc Sports Science" 
+                  value={newQual} 
+                  onChange={e => setNewQual(e.target.value)}
+                  className="h-10 bg-slate-950 border-slate-700 text-sm" 
+                />
+                <Button type="button" onClick={addQualification} className="bg-lime-400 text-slate-900 hover:bg-lime-300 font-semibold h-10 px-4 whitespace-nowrap">Add</Button>
+              </div>
+              {form.qualifications && form.qualifications.length > 0 && (
+                <div className="space-y-2">
+                  {form.qualifications.map((q, idx) => (
+                    <div key={idx} className="flex items-center justify-between gap-2 p-2 bg-slate-950 rounded border border-slate-700">
+                      <span className="text-sm text-slate-300">{q}</span>
+                      <button type="button" onClick={() => removeQualification(idx)} className="text-red-400 hover:text-red-300 flex-shrink-0"><X className="w-4 h-4" /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Specialties */}
+            <div>
+              <Label className="text-slate-300 text-xs uppercase tracking-widest mb-2 block">Specialties</Label>
+              <div className="flex gap-2 mb-2">
+                <Input 
+                  placeholder="e.g., Ball Handling" 
+                  value={newSpec} 
+                  onChange={e => setNewSpec(e.target.value)}
+                  className="h-10 bg-slate-950 border-slate-700 text-sm" 
+                />
+                <Button type="button" onClick={addSpecialty} className="bg-lime-400 text-slate-900 hover:bg-lime-300 font-semibold h-10 px-4 whitespace-nowrap">Add</Button>
+              </div>
+              {form.specialties && form.specialties.length > 0 && (
+                <div className="space-y-2">
+                  {form.specialties.map((s, idx) => (
+                    <div key={idx} className="flex items-center justify-between gap-2 p-2 bg-slate-950 rounded border border-slate-700">
+                      <span className="text-sm text-slate-300">{s}</span>
+                      <button type="button" onClick={() => removeSpecialty(idx)} className="text-red-400 hover:text-red-300 flex-shrink-0"><X className="w-4 h-4" /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <DialogFooter className="pt-3 flex-col-reverse sm:flex-row gap-2">
-              <Button type="button" variant="outline" onClick={() => setOpen(false)} className="border-slate-700 bg-transparent hover:bg-slate-800 text-slate-100">Cancel</Button>
-              <Button type="submit" disabled={saving} className="bg-lime-400 text-slate-900 hover:bg-lime-300 font-semibold"><Plus className="w-4 h-4 mr-1.5" /> {saving ? 'Adding…' : 'Add coach'}</Button>
+              <Button type="button" variant="outline" onClick={() => { setOpen(false); setPhotoPreview(''); }} className="border-slate-700 bg-transparent hover:bg-slate-800 text-slate-100">Cancel</Button>
+              <Button type="submit" disabled={saving || uploading || !form.full_name.trim() || form.sports.length === 0} className="bg-lime-400 text-slate-900 hover:bg-lime-300 font-semibold"><Plus className="w-4 h-4 mr-1.5" /> {saving ? 'Adding…' : 'Add Coach'}</Button>
             </DialogFooter>
           </form>
         </DialogContent>
@@ -4048,6 +4401,278 @@ function ReportsSection() {
   );
 }
 
+// -------- Data Health Section --------
+function DataHealthSection() {
+  const [health, setHealth] = useState(null);
+  const [report, setReport] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [repairing, setRepairing] = useState(false);
+  const [selectedIssue, setSelectedIssue] = useState(null);
+
+  const autoRepairIssues = async (healthData) => {
+    const repairableTypes = ['stale_membership_status', 'expired_paused_membership', 'orphaned_attendance', 'booking_missing_class'];
+    const toRepair = healthData.issues.filter(i => repairableTypes.includes(i.type));
+    
+    if (toRepair.length > 0) {
+      for (const issue of toRepair) {
+        try {
+          let issueTypeToUse = issue.type;
+          
+          // For booking_missing_class, try the delete approach
+          if (issue.type === 'booking_missing_class') {
+            issueTypeToUse = 'delete_missing_class_bookings';
+          }
+          
+          const res = await fetch('/api/admin/data-health/repair', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ issue_type: issueTypeToUse }),
+          });
+          const data = await res.json();
+          if (data.ok && data.repairs.success > 0) {
+            console.log(`✓ Repaired ${issue.type}: ${data.repairs.success} records`);
+          }
+        } catch (e) {
+          console.error(`Failed to repair ${issue.type}:`, e);
+        }
+      }
+    }
+  };
+
+  const loadHealth = async () => {
+    setLoading(true);
+    try {
+      const [healthRes, reportRes] = await Promise.all([
+        fetch('/api/admin/data-health', { credentials: 'include' }),
+        fetch('/api/admin/data-health/consistency-report', { credentials: 'include' }),
+      ]);
+      const healthData = await healthRes.json();
+      const reportData = await reportRes.json();
+      
+      // Auto-repair fixable issues
+      if (healthData.ok && healthData.issues.length > 0) {
+        await autoRepairIssues(healthData);
+        
+        // Wait a moment then reload health after repairs
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const reloadRes = await fetch('/api/admin/data-health', { credentials: 'include' });
+        const reloadedData = await reloadRes.json();
+        setHealth(reloadedData);
+      } else {
+        setHealth(healthData);
+      }
+      
+      setReport(reportData);
+    } catch (e) {
+      console.error('Failed to load data health:', e);
+      toast.error('Failed to load data health');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const repairIssue = async (issueType) => {
+    if (!confirm(`Repair ${issueType}? This may take a moment.`)) return;
+    setRepairing(true);
+    try {
+      const res = await fetch('/api/admin/data-health/repair', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ issue_type: issueType }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        toast.success(`Repaired ${data.repairs.success} records`);
+        loadHealth();
+      } else {
+        toast.error(data.error || 'Repair failed');
+      }
+    } catch (e) {
+      toast.error('Repair failed: ' + e.message);
+    } finally {
+      setRepairing(false);
+    }
+  };
+
+  useEffect(() => { loadHealth(); }, []);
+
+  if (loading || !health || !report) {
+    return <div className="text-slate-400 py-8">Loading data health...</div>;
+  }
+
+  const getHealthColor = (score) => {
+    if (score >= 95) return 'text-green-400';
+    if (score >= 80) return 'text-yellow-400';
+    if (score >= 60) return 'text-orange-400';
+    return 'text-red-400';
+  };
+
+  const getSeverityColor = (severity) => {
+    switch (severity) {
+      case 'high': return 'bg-red-400/20 border-red-400/30 text-red-300';
+      case 'medium': return 'bg-yellow-400/20 border-yellow-400/30 text-yellow-300';
+      case 'low': return 'bg-blue-400/20 border-blue-400/30 text-blue-300';
+      case 'info': return 'bg-slate-700/50 border-slate-600 text-slate-200';
+      default: return 'bg-slate-800 border-slate-700 text-slate-300';
+    }
+  };
+
+  return (
+    <div className="space-y-8">
+      <SectionHeader title="Data Health & Integrity" description="Monitor and repair data consistency issues" />
+
+      {/* Health Summary */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card className="p-6 border-slate-800 bg-slate-900">
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="text-xs uppercase tracking-widest text-slate-400 font-medium mb-2">Overall Health</p>
+              <div className={`text-4xl font-bold font-mono ${getHealthColor(report.integrity_scores.overall)}`}>
+                {report.integrity_scores.overall}%
+              </div>
+              <p className="text-sm text-slate-400 mt-2 capitalize">{report.integrity_scores.health_status}</p>
+            </div>
+            <Activity className={`w-6 h-6 ${getHealthColor(report.integrity_scores.overall)}`} />
+          </div>
+        </Card>
+
+        <Card className="p-6 border-slate-800 bg-slate-900">
+          <div>
+            <p className="text-xs uppercase tracking-widest text-slate-400 font-medium mb-3">Issues Found</p>
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-slate-300">High Severity</span>
+                <span className="font-mono font-semibold text-red-400">{health.summary.high_severity}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-slate-300">Medium Severity</span>
+                <span className="font-mono font-semibold text-yellow-400">{health.summary.medium_severity}</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-slate-300">Low Severity</span>
+                <span className="font-mono font-semibold text-blue-400">{health.summary.low_severity}</span>
+              </div>
+            </div>
+          </div>
+        </Card>
+      </div>
+
+      {/* Collection Stats */}
+      <div>
+        <h3 className="text-lg font-semibold text-slate-100 mb-3">Collection Records</h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
+          {Object.entries(report.collections).map(([col, stats]) => (
+            <Card key={col} className="p-3 border-slate-800 bg-slate-900">
+              <p className="text-xs uppercase tracking-widest text-slate-400 font-medium">{col}</p>
+              <p className="text-2xl font-mono font-semibold text-slate-100 mt-1">{stats.record_count}</p>
+            </Card>
+          ))}
+        </div>
+      </div>
+
+      {/* Issues List */}
+      <div>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-slate-100">Detected Issues</h3>
+          <button
+            onClick={() => loadHealth()}
+            disabled={loading}
+            className="text-xs px-3 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 disabled:opacity-50"
+          >
+            Refresh
+          </button>
+        </div>
+
+        {health.issues.length === 0 ? (
+          <Card className="p-8 border-slate-800 bg-slate-900 text-center">
+            <CheckCircle2 className="w-8 h-8 text-green-400 mx-auto mb-2" />
+            <p className="text-slate-300">All systems healthy! ✓</p>
+          </Card>
+        ) : (
+          <div className="space-y-3">
+            {health.issues.map((issue, idx) => (
+              <Card
+                key={idx}
+                className={`p-4 border cursor-pointer transition ${getSeverityColor(issue.severity)}`}
+                onClick={() => setSelectedIssue(selectedIssue === idx ? null : idx)}
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge className="text-xs uppercase tracking-widest">{issue.severity}</Badge>
+                      <span className="font-mono text-xs">{issue.count} records</span>
+                    </div>
+                    <p className="text-sm font-medium">{issue.description}</p>
+                    {selectedIssue === idx && (
+                      <div className="mt-3 pt-3 border-t border-current/30">
+                        <p className="text-xs text-slate-300 mb-2">Sample IDs:</p>
+                        <code className="text-xs bg-slate-950/50 p-2 rounded block overflow-auto">
+                          {issue.sample_ids?.slice(0, 3).join(', ') || 'N/A'}
+                        </code>
+                        
+                        {/* Show expired booking details */}
+                        {issue.type === 'booking_with_expired_membership' && issue.samples && issue.samples.length > 0 && (
+                          <div className="mt-3 space-y-2">
+                            <p className="text-xs font-semibold text-slate-100">Bookings to Cancel (Future Classes):</p>
+                            {issue.samples.map((sample, i) => (
+                              <div key={i} className="bg-orange-950/30 p-2 rounded text-xs border border-orange-700/30">
+                                <p className="font-medium text-slate-100">{sample.student_name}</p>
+                                <p className="text-slate-400">Parent: {sample.parent_name}</p>
+                                <p className="text-slate-500 text-xs">{sample.parent_email}</p>
+                                <p className="text-slate-300 mt-1">{sample.sport} • {sample.class_date} at {sample.class_time}</p>
+                                <p className="text-orange-300 text-xs mt-1">⚠️ Membership expired: {sample.membership_expired}</p>
+                              </div>
+                            ))}
+                            <p className="text-xs text-slate-400 mt-2">Total: {issue.count} future bookings need cancelling</p>
+                          </div>
+                        )}
+                        
+                        {/* Show duplicate membership details */}
+                        {issue.type === 'duplicate_active_memberships' && issue.samples && issue.samples.length > 0 && (
+                          <div className="mt-3 space-y-2">
+                            <p className="text-xs font-semibold text-slate-100">Students with Duplicates:</p>
+                            {issue.samples.map((sample, i) => (
+                              <div key={i} className="bg-slate-950/50 p-2 rounded text-xs">
+                                <p className="font-medium text-slate-100">{sample.child_name}</p>
+                                <p className="text-slate-400">Parent: {sample.parent_name}</p>
+                                <p className="text-slate-400">Email: {sample.parent_email}</p>
+                                <p className="text-slate-400">Sport: {sample.sport}</p>
+                                <p className="text-slate-300 mt-1 font-semibold">Memberships:</p>
+                                {sample.memberships.map((mem, j) => (
+                                  <div key={j} className="text-slate-400 ml-2">
+                                    • Expires: {new Date(mem.expiry_date).toLocaleDateString('en-IN')} (Status: {mem.status})
+                                  </div>
+                                ))}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <ChevronRight className={`w-4 h-4 transition-transform flex-shrink-0 ${selectedIssue === idx ? 'rotate-90' : ''}`} />
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Repairs Summary */}
+      {(health.repairs.auto_fixed > 0 || health.repairs.auto_failed > 0) && (
+        <Card className="p-4 border-slate-800 bg-lime-400/5">
+          <p className="text-sm text-lime-300">
+            ✓ Auto-fixed {health.repairs.auto_fixed} records
+            {health.repairs.auto_failed > 0 && ` · Failed to fix ${health.repairs.auto_failed}`}
+          </p>
+        </Card>
+      )}
+    </div>
+  );
+}
+
 // -------- Settings Section --------
 function SettingsSection() {
   const [settings, setSettings] = useState({ max_bookings_per_member: 3 });
@@ -4117,6 +4742,703 @@ function SettingsSection() {
           </Button>
         </div>
       </Card>
+    </>
+  );
+}
+
+// ===================== ATHLETES =====================
+function AthletesSection() {
+  const [allAthletes, setAllAthletes] = useState([]);
+  const [filteredAthletes, setFilteredAthletes] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedAthlete, setSelectedAthlete] = useState(null);
+  const [athleteDetails, setAthleteDetails] = useState(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const [editingTag, setEditingTag] = useState(false);
+  const [tagValue, setTagValue] = useState('');
+  const [savingTag, setSavingTag] = useState(false);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 20;
+  const cacheRef = useRef({});
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      // Fetch all members (increased limit to get everyone)
+      const res = await fetch('/api/admin/members?limit=500&include_children=true', { credentials: 'include' });
+      const data = await res.json();
+      
+      // Flatten immediately to show to user
+      const flatList = [];
+      for (const member of (data.members || [])) {
+        const children = member.children || [];
+        for (const child of children) {
+          flatList.push({
+            ...child,
+            parent_id: member.id,
+            parent_name: member.full_name,
+            parent_email: member.email,
+            parent_phone: member.phone,
+          });
+        }
+      }
+      
+      const sorted = flatList.sort((a, b) => (a.athlete_name || a.child_name).localeCompare(b.athlete_name || b.child_name));
+      setAllAthletes(sorted);
+      setFilteredAthletes(sorted);
+      setPage(1);
+      setSearchQuery('');
+    } catch (e) {
+      console.error('Error loading athletes:', e);
+      setAllAthletes([]);
+      setFilteredAthletes([]);
+    }
+    setLoading(false);
+  };
+
+  const handleSearch = (query) => {
+    setSearchQuery(query);
+    setPage(1);
+    
+    if (!query.trim()) {
+      setFilteredAthletes(allAthletes);
+      return;
+    }
+
+    const lowerQuery = query.toLowerCase();
+    const filtered = allAthletes.filter(athlete => {
+      const name = (athlete.athlete_name || athlete.child_name).toLowerCase();
+      const parentName = (athlete.parent_name || '').toLowerCase();
+      const email = (athlete.parent_email || '').toLowerCase();
+      
+      return name.includes(lowerQuery) || parentName.includes(lowerQuery) || email.includes(lowerQuery);
+    });
+    
+    setFilteredAthletes(filtered);
+  };
+
+  const handleEditTag = () => {
+    setEditingTag(true);
+    setTagValue(athleteDetails?.athlete_tag || '');
+  };
+
+  const handleSaveTag = async () => {
+    if (!athleteDetails) return;
+    setSavingTag(true);
+    try {
+      const res = await fetch(`/api/admin/athletes/${athleteDetails.id}/tag`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ tag: tagValue.trim() })
+      });
+      
+      if (res.ok) {
+        // Update local state
+        setAthleteDetails({ ...athleteDetails, athlete_tag: tagValue.trim() });
+        cacheRef.current[athleteDetails.id] = { ...athleteDetails, athlete_tag: tagValue.trim() };
+        
+        // Update allAthletes list
+        const updated = allAthletes.map(a => 
+          a.id === athleteDetails.id ? { ...a, athlete_tag: tagValue.trim() } : a
+        );
+        setAllAthletes(updated);
+        setFilteredAthletes(updated);
+        
+        setEditingTag(false);
+      }
+    } catch (e) {
+      console.error('Error saving athlete tag:', e);
+    }
+    setSavingTag(false);
+  };
+
+  const loadAthleteDetails = async (athlete) => {
+    if (cacheRef.current[athlete.id]) {
+      setAthleteDetails(cacheRef.current[athlete.id]);
+      return;
+    }
+
+    setDetailLoading(true);
+    try {
+      // Parallel fetches for detail + performance + attendance + jerseys
+      const [detailRes, perfRes, attendanceRes, jerseysRes] = await Promise.all([
+        fetch(`/api/admin/members/${athlete.parent_id}/detail`, { credentials: 'include' }),
+        fetch(`/api/admin/athletes/${athlete.id}/performance`, { credentials: 'include' }),
+        fetch(`/api/children/${athlete.id}/attendance`, { credentials: 'include' }).catch(() => ({ ok: false })),
+        fetch(`/api/admin/jerseys?child_id=${athlete.id}`, { credentials: 'include' }).catch(() => ({ ok: false }))
+      ]);
+      
+      const detailData = await detailRes.json();
+      const perfData = perfRes.ok ? await perfRes.json() : {};
+      const attendanceData = attendanceRes.ok ? await attendanceRes.json() : {};
+      const jerseysData = jerseysRes.ok ? await jerseysRes.json() : { jerseys: [] };
+      
+      const fullChild = detailData.children?.find(c => c.id === athlete.id);
+      if (fullChild) {
+        // Filter jerseys for this athlete
+        const athleteJerseys = (jerseysData.jerseys || []).filter(j => j.child_profile_id === athlete.id);
+        
+        const combined = {
+          ...athlete,
+          ...fullChild,
+          performance: perfData.subject ? {
+            sports: perfData.sports || [],
+            levels_catalog: perfData.levels_catalog || []
+          } : {},
+          attendance: attendanceData.attendance || {},
+          jerseys: athleteJerseys
+        };
+        
+        cacheRef.current[athlete.id] = combined;
+        setAthleteDetails(combined);
+      }
+    } catch (e) {
+      console.error('Error loading athlete detail:', e);
+    }
+    setDetailLoading(false);
+  };
+
+  useEffect(() => { load(); }, []);
+
+  // Pagination
+  const totalPages = Math.ceil(filteredAthletes.length / PAGE_SIZE);
+  const startIdx = (page - 1) * PAGE_SIZE;
+  const endIdx = startIdx + PAGE_SIZE;
+  const paginatedAthletes = filteredAthletes.slice(startIdx, endIdx);
+
+  return (
+    <>
+      <SectionHeader
+        title="Athletes"
+        description={`${filteredAthletes.length} of ${allAthletes.length} athletes${filteredAthletes.length > PAGE_SIZE ? ` — Page ${page} of ${totalPages}` : ''}`}
+      />
+
+      {/* Search Bar */}
+      <div className="mb-6 mt-4">
+        <div className="relative">
+          <Search className="absolute left-3 top-3 w-4 h-4 text-slate-500" />
+          <Input
+            placeholder="Search by name, parent name, or email..."
+            value={searchQuery}
+            onChange={(e) => handleSearch(e.target.value)}
+            className="h-10 pl-10 bg-slate-900 border-slate-700 text-slate-100 placeholder:text-slate-500"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => handleSearch('')}
+              className="absolute right-3 top-3 text-slate-400 hover:text-slate-100 text-sm"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="grid md:grid-cols-3 gap-4 mt-6">{[1,2,3,4,5,6].map(i => <div key={i} className="h-64 bg-secondary rounded-2xl animate-pulse" />)}</div>
+      ) : filteredAthletes.length === 0 ? (
+        <Card className="p-12 rounded-3xl border-dashed text-center">
+          <Users className="w-12 h-12 mx-auto text-muted-foreground" />
+          <h3 className="font-display font-bold text-2xl mt-4">No athletes found</h3>
+          <p className="text-muted-foreground mt-2">{searchQuery ? 'Try adjusting your search.' : 'Athletes will appear here once parents register.'}</p>
+        </Card>
+      ) : (
+        <>
+          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 mt-6">
+            {paginatedAthletes.map(athlete => (
+              <Card key={`${athlete.parent_id}-${athlete.id}`} className="p-4 rounded-lg bg-slate-900 border-slate-800 cursor-pointer hover:border-lime-400/50 transition-colors">
+                <div className="flex items-start justify-between mb-3">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <div className="w-10 h-10 rounded-full bg-lime-400/20 text-lime-400 flex items-center justify-center font-bold text-sm flex-shrink-0">
+                      {(athlete.athlete_name || athlete.child_name)?.[0]?.toUpperCase() || '?'}
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-semibold text-slate-100 truncate">{athlete.athlete_name || athlete.child_name}</div>
+                      <div className="text-xs text-slate-500 truncate">{new Date(athlete.dob).toLocaleDateString('en-IN')}</div>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="space-y-2 text-sm mb-4">
+                  <div>
+                    <p className="text-xs text-slate-500 uppercase tracking-widest">Parent</p>
+                    <p className="text-slate-300 truncate">{athlete.parent_name}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500 uppercase tracking-widest">Contact</p>
+                    <p className="text-slate-400 text-xs truncate">{athlete.parent_email}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-slate-500 uppercase tracking-widest">Sports</p>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {(athlete.selected_sports || []).slice(0, 2).map(sid => {
+                        const sport = SPORTS.find(s => s.id === sid);
+                        return (
+                          <Badge key={sid} variant="secondary" className="bg-lime-400/10 text-lime-300 border-0 text-[10px]">
+                            {sport?.name || sid}
+                          </Badge>
+                        );
+                      })}
+                      {athlete.selected_sports?.length > 2 && (
+                        <Badge variant="secondary" className="bg-slate-700 text-slate-300 border-0 text-[10px]">
+                          +{athlete.selected_sports.length - 2} more
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <Button
+                  onClick={() => {
+                    setSelectedAthlete(athlete);
+                    loadAthleteDetails(athlete);
+                  }}
+                  variant="outline"
+                  size="sm"
+                  className="w-full text-xs h-8 border-slate-700 hover:bg-slate-800"
+                >
+                  View Details →
+                </Button>
+              </Card>
+            ))}
+          </div>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 mt-8">
+              <Button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1}
+                variant="outline"
+                size="sm"
+                className="border-slate-700"
+              >
+                ← Previous
+              </Button>
+              <div className="flex items-center gap-1">
+                {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
+                  <Button
+                    key={p}
+                    onClick={() => setPage(p)}
+                    variant={page === p ? 'default' : 'outline'}
+                    size="sm"
+                    className={page === p ? 'bg-lime-400 text-slate-900' : 'border-slate-700'}
+                  >
+                    {p}
+                  </Button>
+                ))}
+              </div>
+              <Button
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                variant="outline"
+                size="sm"
+                className="border-slate-700"
+              >
+                Next →
+              </Button>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Detail Modal */}
+      <Dialog open={!!selectedAthlete} onOpenChange={(open) => {
+        if (!open) {
+          setSelectedAthlete(null);
+          setAthleteDetails(null);
+        }
+      }}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-slate-950 border-slate-800">
+          <DialogHeader className="border-b border-slate-800 pb-4">
+            <DialogTitle className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-lime-400 text-slate-950 flex items-center justify-center font-bold text-lg">
+                {(athleteDetails?.athlete_name || athleteDetails?.child_name)?.[0]?.toUpperCase()}
+              </div>
+              <div>
+                <div className="text-slate-100">{athleteDetails?.athlete_name || athleteDetails?.child_name}</div>
+                <div className="text-sm font-normal text-slate-400">Athlete Profile</div>
+              </div>
+            </DialogTitle>
+          </DialogHeader>
+
+          {detailLoading ? (
+            <div className="space-y-3">
+              {[1,2,3,4].map(i => <div key={i} className="h-8 bg-slate-800 rounded animate-pulse" />)}
+            </div>
+          ) : (
+            <div className="space-y-6">
+              {/* Quick Stats - Attendance */}
+              {athleteDetails?.attendance && (
+                <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                  <div className="bg-slate-900 p-4 rounded-lg border border-slate-800">
+                    <p className="text-xs text-slate-400 uppercase tracking-widest mb-1">Attendance Rate</p>
+                    <p className="text-2xl font-bold text-emerald-400">{athleteDetails.attendance.attendance_rate || 0}%</p>
+                  </div>
+                  <div className="bg-slate-900 p-4 rounded-lg border border-slate-800">
+                    <p className="text-xs text-slate-400 uppercase tracking-widest mb-1">Classes Booked</p>
+                    <p className="text-2xl font-bold text-blue-400">{athleteDetails.attendance.total_classes || 0}</p>
+                  </div>
+                  <div className="bg-slate-900 p-4 rounded-lg border border-slate-800">
+                    <p className="text-xs text-slate-400 uppercase tracking-widest mb-1">Classes Attended</p>
+                    <p className="text-2xl font-bold text-purple-400">{athleteDetails.attendance.attended_classes || 0}</p>
+                  </div>
+                  <div className="bg-slate-900 p-4 rounded-lg border border-slate-800">
+                    <p className="text-xs text-slate-400 uppercase tracking-widest mb-1">Rank</p>
+                    <p className="text-2xl font-bold text-lime-400">{athleteDetails.performance?.rank || '—'}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Personal Information */}
+              <div>
+                <h3 className="text-sm font-semibold text-lime-400 uppercase tracking-widest mb-3">Personal Information</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-slate-900 p-4 rounded-lg border border-slate-800">
+                    <p className="text-xs text-slate-400 uppercase tracking-widest mb-2">Full Name</p>
+                    <p className="text-slate-100 font-medium">{athleteDetails?.athlete_name || athleteDetails?.child_name}</p>
+                  </div>
+                  <div className="bg-slate-900 p-4 rounded-lg border border-slate-800">
+                    <p className="text-xs text-slate-400 uppercase tracking-widest mb-2">Date of Birth</p>
+                    <p className="text-slate-100 font-medium">{athleteDetails?.dob ? new Date(athleteDetails.dob).toLocaleDateString('en-IN') : '—'}</p>
+                  </div>
+                  <div className="bg-slate-900 p-4 rounded-lg border border-slate-800">
+                    <p className="text-xs text-slate-400 uppercase tracking-widest mb-2">Gender</p>
+                    <p className="text-slate-100 font-medium">{athleteDetails?.gender || '—'}</p>
+                  </div>
+                  <div className="bg-slate-900 p-4 rounded-lg border border-slate-800">
+                    <p className="text-xs text-slate-400 uppercase tracking-widest mb-2">Age</p>
+                    <p className="text-slate-100 font-medium">
+                      {athleteDetails?.dob 
+                        ? Math.floor((new Date() - new Date(athleteDetails.dob)) / (365.25 * 24 * 60 * 60 * 1000))
+                        : '—'
+                      } years
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Parent Information */}
+              <div>
+                <h3 className="text-sm font-semibold text-lime-400 uppercase tracking-widest mb-3">Parent/Guardian</h3>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="bg-slate-900 p-4 rounded-lg border border-slate-800 col-span-2">
+                    <p className="text-xs text-slate-400 uppercase tracking-widest mb-2">Name</p>
+                    <p className="text-slate-100 font-medium">{athleteDetails?.parent_name}</p>
+                  </div>
+                  <div className="bg-slate-900 p-4 rounded-lg border border-slate-800">
+                    <p className="text-xs text-slate-400 uppercase tracking-widest mb-2">Email</p>
+                    <p className="text-slate-100 text-sm break-all font-medium">{athleteDetails?.parent_email}</p>
+                  </div>
+                  <div className="bg-slate-900 p-4 rounded-lg border border-slate-800">
+                    <p className="text-xs text-slate-400 uppercase tracking-widest mb-2">Phone</p>
+                    <p className="text-slate-100 font-medium">{athleteDetails?.parent_phone || '—'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Sports Enrollment */}
+              <div>
+                <h3 className="text-sm font-semibold text-lime-400 uppercase tracking-widest mb-3">Sports & Performance Scores</h3>
+                <div className="bg-slate-900 p-4 rounded-lg border border-slate-800">
+                  {athleteDetails?.selected_sports && athleteDetails.selected_sports.length > 0 ? (
+                    <div className="space-y-4">
+                      {athleteDetails.selected_sports.map(sid => {
+                        const sport = SPORTS.find(s => s.id === sid);
+                        const sportStats = athleteDetails.attendance?.by_sport?.[sid];
+                        const sportPerformance = athleteDetails.performance?.sports?.find(s => s.sport_id === sid);
+                        
+                        return (
+                          <div key={sid} className="bg-slate-950 p-4 rounded border border-slate-700">
+                            {/* Sport Name and Attendance */}
+                            <div className="flex items-center justify-between mb-3">
+                              <Badge className="bg-lime-400/30 text-lime-300 border-lime-400/50 font-medium">
+                                {sport?.name || sid}
+                              </Badge>
+                              {sportStats && (
+                                <span className="text-xs text-slate-400">
+                                  Attendance: <span className="text-emerald-400 font-bold">{sportStats.rate}%</span>
+                                  <span className="text-slate-600 mx-1">•</span>
+                                  <span className="text-slate-300">{sportStats.attended}/{sportStats.total}</span>
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Level */}
+                            {sportPerformance?.level_info && (
+                              <div className="mb-3 pb-3 border-b border-slate-800">
+                                <p className="text-xs text-slate-400 uppercase tracking-widest mb-1">Level</p>
+                                <p className="text-sm font-bold text-blue-400">{sportPerformance.level_info.name || sportPerformance.level_info}</p>
+                              </div>
+                            )}
+
+                            {/* Performance Scores */}
+                            {sportPerformance?.scores && Object.keys(sportPerformance.scores).length > 0 && (
+                              <div>
+                                <p className="text-xs text-slate-400 uppercase tracking-widest mb-2">Performance Scores</p>
+                                <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                                  {Object.entries(sportPerformance.scores).map(([metric, score]) => (
+                                    <div key={metric} className="bg-slate-900 p-2 rounded text-xs">
+                                      <p className="text-slate-500 capitalize">{metric.replace(/_/g, ' ')}</p>
+                                      <p className="text-lg font-bold text-lime-400">{score}/10</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            
+                            {!sportPerformance?.scores && (
+                              <p className="text-xs text-slate-500">No performance scores recorded</p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p className="text-slate-400">No sports enrolled</p>
+                  )}
+                </div>
+              </div>
+
+              {/* Memberships */}
+              {athleteDetails?.memberships && athleteDetails.memberships.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-lime-400 uppercase tracking-widest mb-3">Membership History</h3>
+                  <div className="space-y-2">
+                    {athleteDetails.memberships.map((m, idx) => {
+                      const plan = MEMBERSHIPS_LOCAL.find(p => p.id === m.plan_id);
+                      return (
+                        <div key={idx} className="bg-slate-900 p-4 rounded-lg border border-slate-800">
+                          <div className="flex items-center justify-between mb-3">
+                            <p className="font-semibold text-slate-100">{plan?.name || m.plan_id}</p>
+                            <Badge className={m.status === 'active' ? 'bg-lime-400/30 text-lime-300 border-lime-400/50' : 'bg-slate-800 text-slate-400 border-slate-700'}>
+                              {m.status}
+                            </Badge>
+                          </div>
+                          <div className="grid grid-cols-3 gap-3 text-xs">
+                            <div>
+                              <p className="text-slate-500 mb-1">Sport</p>
+                              <p className="text-slate-300 font-medium">{SPORTS.find(s => s.id === m.sport_id)?.name || m.sport_id}</p>
+                            </div>
+                            <div>
+                              <p className="text-slate-500 mb-1">Start Date</p>
+                              <p className="text-slate-300 font-medium">{new Date(m.start_date).toLocaleDateString('en-IN')}</p>
+                            </div>
+                            {m.end_date && (
+                              <div>
+                                <p className="text-slate-500 mb-1">End Date</p>
+                                <p className="text-slate-300 font-medium">{new Date(m.end_date).toLocaleDateString('en-IN')}</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Emergency Contact */}
+              {athleteDetails?.emergency_contact && (
+                <div>
+                  <h3 className="text-sm font-semibold text-lime-400 uppercase tracking-widest mb-3">Emergency Contact</h3>
+                  <div className="grid grid-cols-3 gap-4">
+                    <div className="bg-slate-900 p-4 rounded-lg border border-slate-800 col-span-3">
+                      <p className="text-xs text-slate-400 uppercase tracking-widest mb-2">Name</p>
+                      <p className="text-slate-100 font-medium">{athleteDetails.emergency_contact.name || '—'}</p>
+                    </div>
+                    <div className="bg-slate-900 p-4 rounded-lg border border-slate-800">
+                      <p className="text-xs text-slate-400 uppercase tracking-widest mb-2">Relationship</p>
+                      <p className="text-slate-100 font-medium">{athleteDetails.emergency_contact.relationship || '—'}</p>
+                    </div>
+                    <div className="bg-slate-900 p-4 rounded-lg border border-slate-800 col-span-2">
+                      <p className="text-xs text-slate-400 uppercase tracking-widest mb-2">Phone</p>
+                      <p className="text-slate-100 font-medium">{athleteDetails.emergency_contact.phone || '—'}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Medical Information */}
+              {athleteDetails?.medical_info && Object.keys(athleteDetails.medical_info).length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-lime-400 uppercase tracking-widest mb-3">Medical Information</h3>
+                  <div className="bg-slate-900 p-4 rounded-lg border border-slate-800 space-y-3">
+                    {athleteDetails.medical_info.allergies && (
+                      <div>
+                        <p className="text-xs text-slate-400 uppercase tracking-widest mb-1">Allergies</p>
+                        <p className="text-slate-300">{athleteDetails.medical_info.allergies || 'None'}</p>
+                      </div>
+                    )}
+                    {athleteDetails.medical_info.medications && (
+                      <div>
+                        <p className="text-xs text-slate-400 uppercase tracking-widest mb-1">Medications</p>
+                        <p className="text-slate-300">{athleteDetails.medical_info.medications || 'None'}</p>
+                      </div>
+                    )}
+                    {athleteDetails.medical_info.conditions && (
+                      <div>
+                        <p className="text-xs text-slate-400 uppercase tracking-widest mb-1">Medical Conditions</p>
+                        <p className="text-slate-300">{athleteDetails.medical_info.conditions || 'None'}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Athlete Tag */}
+              <div>
+                <h3 className="text-sm font-semibold text-lime-400 uppercase tracking-widest mb-3">Athlete Tag</h3>
+                <div className="bg-slate-900 p-4 rounded-lg border border-slate-800">
+                  {editingTag ? (
+                    <div className="space-y-3">
+                      <Input
+                        type="text"
+                        placeholder="Enter athlete tag (e.g., #7, Star Player, etc.)"
+                        value={tagValue}
+                        onChange={(e) => setTagValue(e.target.value)}
+                        maxLength={50}
+                        className="h-10 bg-slate-950 border-slate-700 text-slate-100"
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={handleSaveTag}
+                          disabled={savingTag}
+                          size="sm"
+                          className="flex-1 bg-lime-400 text-slate-900 hover:bg-lime-300 font-semibold"
+                        >
+                          {savingTag ? 'Saving...' : 'Save'}
+                        </Button>
+                        <Button
+                          onClick={() => {
+                            setEditingTag(false);
+                            setTagValue('');
+                          }}
+                          disabled={savingTag}
+                          variant="outline"
+                          size="sm"
+                          className="flex-1 border-slate-700"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between">
+                      <div>
+                        {athleteDetails?.athlete_tag ? (
+                          <p className="text-lg font-semibold text-lime-400">{athleteDetails.athlete_tag}</p>
+                        ) : (
+                          <p className="text-slate-500 italic">No tag set</p>
+                        )}
+                      </div>
+                      <Button
+                        onClick={handleEditTag}
+                        variant="outline"
+                        size="sm"
+                        className="border-slate-700 hover:bg-slate-800"
+                      >
+                        Edit
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Jersey Information */}
+              {athleteDetails?.jerseys && athleteDetails.jerseys.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold text-lime-400 uppercase tracking-widest mb-3">Jersey Information</h3>
+                  <div className="space-y-3">
+                    {athleteDetails.jerseys.map((jersey, idx) => (
+                      <div key={jersey.id || idx} className="bg-slate-900 p-4 rounded-lg border border-slate-800">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-3">
+                            <div className="w-12 h-12 bg-gradient-to-br from-lime-400/20 to-slate-700 rounded flex items-center justify-center">
+                              <span className="text-lg font-bold text-lime-400">{jersey.number || '—'}</span>
+                            </div>
+                            <div>
+                              <p className="font-semibold text-slate-100">{jersey.name || 'Jersey'}</p>
+                              <p className="text-xs text-slate-500">Sport: {SPORTS.find(s => s.id === jersey.sport_id)?.name || jersey.sport_id}</p>
+                            </div>
+                          </div>
+                          <Badge className={jersey.status === 'active' ? 'bg-emerald-400/30 text-emerald-300 border-emerald-400/50' : 'bg-slate-700 text-slate-300 border-slate-600'}>
+                            {jersey.status || 'Active'}
+                          </Badge>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                          <div className="bg-slate-950 p-2 rounded text-xs">
+                            <p className="text-slate-500 mb-1">Size</p>
+                            <p className="font-bold text-slate-200">{jersey.size || '—'}</p>
+                          </div>
+                          <div className="bg-slate-950 p-2 rounded text-xs">
+                            <p className="text-slate-500 mb-1">Height</p>
+                            <p className="font-bold text-slate-200">{jersey.height || '—'}</p>
+                          </div>
+                          <div className="bg-slate-950 p-2 rounded text-xs">
+                            <p className="text-slate-500 mb-1">Weight</p>
+                            <p className="font-bold text-slate-200">{jersey.weight || '—'}</p>
+                          </div>
+                          <div className="bg-slate-950 p-2 rounded text-xs">
+                            <p className="text-slate-500 mb-1">Enrolled</p>
+                            <p className="font-bold text-slate-200">{jersey.created_at ? new Date(jersey.created_at).toLocaleDateString('en-IN') : '—'}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Athletic History */}
+              <div>
+                <h3 className="text-sm font-semibold text-lime-400 uppercase tracking-widest mb-3">Athletic History</h3>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-slate-900 p-4 rounded-lg border border-slate-800">
+                    <p className="text-xs text-slate-400 uppercase tracking-widest mb-2">Joined</p>
+                    <p className="text-slate-100 font-medium">
+                      {athleteDetails?.created_at ? new Date(athleteDetails.created_at).toLocaleDateString('en-IN') : '—'}
+                    </p>
+                  </div>
+                  <div className="bg-slate-900 p-4 rounded-lg border border-slate-800">
+                    <p className="text-xs text-slate-400 uppercase tracking-widest mb-2">Tenure</p>
+                    <p className="text-lime-400 font-bold text-lg">
+                      {athleteDetails?.created_at 
+                        ? Math.floor((new Date() - new Date(athleteDetails.created_at)) / (30 * 24 * 60 * 60 * 1000))
+                        : '—'
+                      } months
+                    </p>
+                  </div>
+                  <div className="bg-slate-900 p-4 rounded-lg border border-slate-800">
+                    <p className="text-xs text-slate-400 uppercase tracking-widest mb-2">Total Sports</p>
+                    <p className="text-blue-400 font-bold text-lg">{athleteDetails?.selected_sports?.length || 0}</p>
+                  </div>
+                  <div className="bg-slate-900 p-4 rounded-lg border border-slate-800">
+                    <p className="text-xs text-slate-400 uppercase tracking-widest mb-2">Total Jerseys</p>
+                    <p className="text-purple-400 font-bold text-lg">{athleteDetails?.jerseys?.length || 0}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <DialogFooter className="border-t border-slate-800 mt-6 pt-4">
+            <Button
+              onClick={() => {
+                setSelectedAthlete(null);
+                setAthleteDetails(null);
+                setEditingTag(false);
+              }}
+              className="bg-slate-800 hover:bg-slate-700 text-slate-100"
+            >
+              Close
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

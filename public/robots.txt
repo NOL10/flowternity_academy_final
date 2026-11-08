@@ -1,0 +1,18 @@
+# Robots.txt for Flowternity Academy
+# https://flowternity.com
+
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+Disallow: /checkout/
+Disallow: /*.json$
+Disallow: /*?*sort=
+Disallow: /*?*filter=
+Disallow: /*?*page=
+
+# Crawl delays
+Crawl-delay: 1
+
+# Sitemaps
+Sitemap: https://flowternity.com/sitemap.xml

@@ -1,12 +1,12 @@
 import Link from 'next/link';
 import Image from 'next/image';
-import { Mail, Phone } from 'lucide-react';
+import { Mail, Phone, Instagram, Facebook } from 'lucide-react';
 
 export default function SiteFooter() {
   return (
     <footer className="border-t border-border bg-background">
       <div className="container py-12 md:py-16">
-        <div className="grid md:grid-cols-4 gap-8 md:gap-12">
+        <div className="grid md:grid-cols-5 gap-8 md:gap-12">
           {/* Brand */}
           <div className="md:col-span-1">
             <Link href="/" className="inline-block mb-4">
@@ -56,6 +56,24 @@ export default function SiteFooter() {
               <li><Link href="/privacy" className="text-muted-foreground hover:text-foreground transition">Privacy Policy</Link></li>
               <li><Link href="/#faq" className="text-muted-foreground hover:text-foreground transition">FAQs</Link></li>
             </ul>
+          </div>
+
+          {/* Social Media */}
+          <div>
+            <h3 className="font-display font-bold text-sm uppercase tracking-wider mb-4">Follow Us</h3>
+            <div className="space-y-3">
+              <a href="https://www.instagram.com/flowternity_sports/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition">
+                <Instagram className="w-4 h-4" />
+                <span className="text-sm">Instagram</span>
+              </a>
+              <a href="https://www.facebook.com/flowternitysports" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition">
+                <Facebook className="w-4 h-4" />
+                <span className="text-sm">Facebook</span>
+              </a>
+              <a href="https://academy.flowternity.com/" target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-muted-foreground hover:text-foreground transition">
+                <span className="text-sm">🌐 Website</span>
+              </a>
+            </div>
           </div>
         </div>
 

@@ -11,8 +11,13 @@ import { motion } from 'framer-motion';
 import { ArrowRight, Check, Zap, Users, Calendar, Trophy, Sparkles, CalendarCheck2, ChevronDown } from 'lucide-react';
 import { SPORTS, MEMBERSHIPS } from '@/lib/flowternity/config';
 import { useAuth } from '@/app/providers';
+import { BreadcrumbSchema } from '@/components/structured-data';
 
 const HERO_IMG = 'https://images.stockcake.com/public/1/b/f/1bfadcea-7ec1-49e5-94d3-ad24ada973ff_large/basketball-court-drama-stockcake.jpg';
+
+const breadcrumbItems = [
+  { name: 'Home', url: '/' },
+];
 
 function App() {
   const { user, activeMembership } = useAuth();
@@ -23,6 +28,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-background">
+      <BreadcrumbSchema items={breadcrumbItems} />
       {/* HERO */}
       <div className="relative min-h-screen bg-black overflow-hidden">
         <div className="absolute inset-0">
@@ -120,6 +126,7 @@ function App() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {SPORTS.map((sport, i) => {
               const isActive = sport.status === 'active';
+              const isDisabled = sport.status === 'disabled';
               const card = (
                 <div className="group relative aspect-[4/5] overflow-hidden rounded-2xl bg-secondary cursor-pointer">
                   <Image src={sport.image} alt={sport.name} fill className="object-cover transition-transform duration-700 group-hover:scale-110" sizes="400px" />
@@ -139,8 +146,8 @@ function App() {
               );
               return (
                 <motion.div key={sport.id} initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} transition={{ delay: i * 0.05 }}>
-                  {isActive ? (
-                    <Link href={`/trial?sport=${sport.id}`} aria-label={`Book free ${sport.name} class`}>{card}</Link>
+                  {(isActive || isDisabled) ? (
+                    <Link href={`/academy/${sport.id}`} aria-label={`View ${sport.name} academy`}>{card}</Link>
                   ) : card}
                 </motion.div>
               );
@@ -271,9 +278,8 @@ function App() {
       <section className="py-24 md:py-32 bg-secondary/30">
         <div className="container max-w-4xl">
           <div className="text-center mb-14">
-            <p className="text-sm uppercase tracking-widest text-muted-foreground mb-3">From 1 August 2026</p>
             <h2 className="font-display font-black text-4xl md:text-6xl tracking-tight">Frequently asked questions.</h2>
-            <p className="text-muted-foreground mt-4 max-w-xl mx-auto">Everything you need to know about the new membership and class-booking system.</p>
+            <p className="text-muted-foreground mt-4 max-w-xl mx-auto">Everything you need to know about Flowternity Sports Academy programmes, membership, coaching and facilities.</p>
           </div>
           <FaqSection />
         </div>
@@ -287,87 +293,40 @@ const FAQ_GROUPS = [
   {
     group: 'General',
     items: [
-      { q: 'When will the new membership system begin?', a: 'The new membership and class-booking system is effective from 1 August 2026. From this date, students must have an active membership and book classes in advance before attending.' },
-      { q: 'Why is Flowternity changing the current batch system?', a: 'The current system limits most students to two fixed classes per week. The new system provides more weekly training opportunities, greater flexibility for families, better class organisation, more focused coaching, level-specific training, and an improved player development pathway.' },
-      { q: 'Is this only a change in fees?', a: 'No. This is a complete upgrade to how coaching classes are organised and delivered — including flexible booking, access to multiple sessions per week, level-based coaching categories, better capacity management, and a clearer player development pathway.' },
-      { q: 'Will the old fixed batches continue after 1 August 2026?', a: 'The academy will transition away from fixed batches. Students will book suitable classes from the timetable based on their active membership, assigned development category, the class schedule, and available capacity.' },
+      { q: 'What sports and coaching programmes are available at Flowternity Sports?', a: 'Flowternity Sports offers coaching and sporting activities in Basketball, Skating, Skateboarding, Futsal, Yoga and more. We welcome beginners and experienced athletes of different ages and skill levels. Visit our academy website to explore the currently available programmes.' },
+      { q: 'What age groups can join Flowternity Sports Academy?', a: 'Our programmes cater to children, teenagers and adults. Students are grouped based on their age, skill level and experience to ensure appropriate coaching and development. Beginners are always welcome!' },
+      { q: 'Can I attend a free trial class before joining?', a: 'Yes! We offer a FREE introductory trial class for eligible new students to experience our coaching, meet our coaches and explore the facility before enrolling. Book your trial at https://academy.flowternity.com/' },
+      { q: 'What are the coaching days and timings?', a: 'Coaching schedules vary by sport and skill level. Our basketball classes include weekday evening and weekend morning/evening batches. Skating, Skateboarding and Futsal have separate coaching schedules. For the latest days, timings and available slots, visit https://academy.flowternity.com/' },
     ],
   },
   {
-    group: 'Basketball Memberships',
+    group: 'Memberships & Fees',
     items: [
-      { q: 'What are the new basketball membership plans?', a: 'Annual Basketball Pass — ₹24,708 (₹2,059/month). Half-Yearly Basketball Pass — ₹16,704 (₹2,784/month). Monthly Basketball Pass — ₹3,102 (approximately ₹129 per class when attending six classes per week).' },
-      { q: 'How is the Annual Pass calculated at ₹2,059 per month?', a: '₹24,708 ÷ 12 months = ₹2,059 per month. The annual plan provides the best monthly value among all basketball memberships.' },
-      { q: 'How is the Half-Yearly Pass calculated at ₹2,784 per month?', a: '₹16,704 ÷ 6 months = ₹2,784 per month.' },
-      { q: 'How does the Monthly Pass work out to ₹129 per class?', a: '₹3,102 ÷ 24 classes (six per week × four weeks) = approximately ₹129 per class. The actual effective cost depends on how many eligible classes you book and attend.' },
-      { q: 'Does the Monthly Pass guarantee six classes every week?', a: 'No. Six classes per week demonstrates the potential value. Actual availability depends on the published timetable, your assigned category, advance booking, available capacity, and academy guidelines.' },
-      { q: 'Can basketball students attend more than two classes per week?', a: 'Yes — this is one of the major benefits of the new system. Students may book multiple eligible classes during the week, subject to their active membership, correct category, advance booking, slot availability, and academy guidelines.' },
-      { q: 'Must students attend the same class every week?', a: 'No. Students may select suitable classes from the available schedule. This provides flexibility around school timings, exams, travel, and family commitments. Regular and consistent attendance is strongly recommended for steady progress.' },
-      { q: 'Can a student attend any basketball category?', a: 'No. Students must attend classes assigned to their development category. Categories are planned according to skill level, basketball understanding, physical readiness, age where relevant, and training requirements.' },
+      { q: 'What are the membership fees and available plans?', a: 'Flowternity offers flexible membership options depending on the sport. Basketball memberships are available on monthly, half-yearly and annual plans. Other sports have their own membership options. Visit our Memberships Page to view current prices, benefits and available plans.' },
+      { q: 'How do I enrol and book coaching classes?', a: 'Joining Flowternity is simple! (1) Visit https://academy.flowternity.com/ (2) Create your student or parent account (3) Select your preferred sport and purchase a membership (4) Log in to your dashboard and book your preferred eligible classes. Advance booking is mandatory for all regular coaching classes. An active membership alone does not reserve a class slot.' },
+      { q: 'How many classes can I attend with my membership?', a: 'Your membership allows you to book eligible coaching sessions based on your sport, skill level, schedule and class availability. Students can book multiple sessions where permitted by their membership. The number of classes is subject to available slots and the applicable membership terms.' },
+      { q: 'Can I join multiple sports with one membership?', a: 'You can participate in multiple sports at Flowternity! However, each sport requires a separate applicable membership or booking. For example, a basketball membership does not automatically include Skating, Skateboarding or Futsal.' },
     ],
   },
   {
-    group: 'Class Categories',
+    group: 'Performance & Development',
     items: [
-      { q: 'What does "one category per class hour" mean?', a: 'Each coaching hour is assigned to one specific player category. A session may be for beginners, intermediate players, intermediate-advanced, or advanced players. Different categories will not be unnecessarily combined in the same session.' },
-      { q: 'Why is category-based coaching better?', a: 'Coaches can plan drills for one specific level, provide more relevant corrections, maintain appropriate intensity, give greater individual attention, introduce skills at the correct stage, and track progress more accurately.' },
-      { q: "How will my child's category be decided?", a: 'The coaching team considers current basketball skill, movement ability, game understanding, training experience, confidence, physical readiness, ability to follow the session, and coachability. Age may be considered but placement will not be based on age alone.' },
-      { q: "Can parents choose their child's category?", a: "Parents may discuss development with the coaching team, but the final placement decision is made by Flowternity Sports — to place each student in the environment that best supports their safety, confidence, and long-term progress." },
-      { q: 'Can a student move to a higher category?', a: 'Yes, when the coaching team believes they are ready. Progression depends on technical ability, basketball understanding, attendance, effort, coachability, behaviour, physical readiness, and performance. Promotion is not automatic based on age or time enrolled.' },
-      { q: 'What happens if a student books the wrong category?', a: 'The student may be asked to move to the appropriate session or may not be permitted to participate. Contact the Flowternity team if you are unsure about the correct category.' },
+      { q: 'How do you track student performance and development?', a: 'Our coaches focus on technical skills, fitness, discipline, teamwork and game intelligence. We use skill assessments, attendance records, performance tracking and development feedback to monitor progress. Students and parents can access available attendance and performance information through their academy dashboard. We also encourage development through tournaments, competitive games and student recognition programmes.' },
+      { q: 'What is included in the performance tracking?', a: 'Performance tracking includes attendance rates, classes booked and attended, rank among peers, skill level assessment, performance scores across multiple metrics (speed, technique, consistency, etc.), and overall development progress feedback from coaches.' },
     ],
   },
   {
-    group: 'Booking',
+    group: 'Facilities',
     items: [
-      { q: 'Is advance booking compulsory?', a: 'Yes. From 1 August 2026, every class must be booked in advance through the Flowternity Sports website. Students should not arrive for a class without a confirmed booking.' },
-      { q: 'Where should classes be booked?', a: 'Classes must be booked at www.flowternity.com. You can view the available schedule and select eligible sessions through the website.' },
-      { q: 'Why is advance booking necessary?', a: 'Advance booking helps control class sizes, avoid overcrowding, maintain coach-to-student ratios, allocate coaches correctly, prepare equipment, and plan drills based on expected attendance.' },
-      { q: 'Can a student attend without booking?', a: 'No. Entry depends on an active membership, correct category selection, advance booking, and available capacity. This keeps sessions organised and fair for all members.' },
-      { q: 'What happens if a class is full?', a: 'Additional bookings may not be accepted once capacity is reached. Select another eligible session from the timetable. Book preferred classes early to avoid disappointment.' },
-      { q: 'What should I do if my child cannot attend a booked class?', a: 'Cancel the booking through the website as early as possible so the slot becomes available to another student. Repeatedly booking and not attending may affect other members.' },
-      { q: 'Can I book several classes in advance?', a: 'Yes, subject to membership validity, category eligibility, published schedules, available capacity, and academy booking rules.' },
-      { q: 'Will the class timetable remain the same every week?', a: 'The academy may update schedules due to events, tournaments, holidays, coach availability, facility requirements, or operational changes. Always check the website before booking.' },
+      { q: 'What facilities are available at Flowternity Sports?', a: 'Our multi-sport facility features: Two international-standard basketball courts, Dedicated skatepark, Calisthenics training area, Spectator seating, Changing rooms and washrooms, In-house café and refreshments, Ample parking, Floodlighting for evening sessions, and Ice-bath and recovery provision (subject to availability).' },
+      { q: 'Do you provide transportation for students?', a: 'Flowternity is developing a pickup and drop-off service for coaching students in nearby areas. Transport availability depends on the student\'s location, coaching schedule and route feasibility. Additional charges may apply. Parents interested in the service can submit a transport enquiry through our website.' },
     ],
   },
   {
-    group: 'Attendance & Progress',
+    group: 'Contact & Location',
     items: [
-      { q: 'Is it compulsory to attend many classes every week?', a: 'No, but consistency is key. Regular attendance improves fundamentals, fitness, confidence, decision-making, game understanding, and teamwork.' },
-      { q: 'Will my child fall behind attending only twice a week?', a: 'Students can still benefit from twice-weekly attendance if consistent and practising appropriately. The new system simply allows motivated students to train more frequently.' },
-      { q: 'Will attending more classes guarantee faster promotion?', a: 'Not automatically. Progression also depends on skill improvement, basketball understanding, effort, coachability, physical readiness, behaviour, and ability to apply learning. Quality and consistency matter more than attendance numbers alone.' },
-      { q: 'Will students get more individual attention?', a: 'Category-based sessions are designed to improve the quality of attention each student receives. Because each class focuses on one category, coaches can deliver more relevant instruction.' },
-      { q: 'Will student progress be assessed?', a: 'Yes. Coaches observe technical ability, game understanding, physical readiness, attendance, effort, coachability, behaviour, and teamwork to determine category placement and progression.' },
-    ],
-  },
-  {
-    group: 'Other Sports',
-    items: [
-      { q: 'What are the monthly fees for other sports?', a: 'Skateboarding — ₹5,000/month. Skating — ₹2,000/month. Futsal — ₹2,000/month. Karate — ₹2,000/month.' },
-      { q: 'Are other sports included in the Basketball Pass?', a: 'No. The Basketball Pass is specifically for eligible basketball sessions. Skateboarding, Skating, Futsal, and Karate have separate monthly memberships.' },
-      { q: 'Can a student join basketball and another sport?', a: 'Yes. A student may enrol in basketball and another sport by taking the applicable memberships separately, subject to schedules, level requirements, advance booking, and available capacity.' },
-      { q: 'Do other sports also need to be booked online?', a: 'Class-booking requirements will be communicated for each sport through the website and official Flowternity communication.' },
-    ],
-  },
-  {
-    group: 'Membership & Payments',
-    items: [
-      { q: 'When does the membership period begin?', a: 'The membership period begins on the activation date shown at the time of registration or purchase. Review the membership details before completing payment.' },
-      { q: 'Can the Annual or Half-Yearly Pass be paid monthly?', a: 'The ₹2,059/month and ₹2,784/month figures represent the effective monthly cost over the full membership duration — not a monthly instalment plan. Payment terms shown during registration apply.' },
-      { q: 'Can memberships be transferred to another student?', a: 'No. Memberships are issued to the registered student and cannot be transferred, exchanged, or shared.' },
-      { q: 'Can memberships be paused or extended?', a: 'Any pause, extension, or special request is handled according to official Flowternity Sports membership terms. Contact the management team for exceptional circumstances.' },
-      { q: 'Will missed classes be refunded?', a: 'Missing a booked or available class does not normally create an automatic refund or extension. Exceptional cases are considered according to the applicable membership policy.' },
-      { q: 'Are membership fees refundable?', a: 'Refunds and cancellations are governed by the membership terms accepted at the time of purchase. Review the applicable terms carefully before completing payment.' },
-    ],
-  },
-  {
-    group: 'Transition',
-    items: [
-      { q: 'What happens to students who are already enrolled?', a: 'Existing students will be guided through the transition. Flowternity Sports will communicate membership options, the new timetable, the student\'s category, the website login process, and booking instructions.' },
-      { q: 'Will existing students retain their previous batch timings?', a: 'Previous batch timings may change as the academy moves to the category-based schedule. Students will view and book eligible classes from the updated timetable.' },
-      { q: 'What if the new timings are not convenient?', a: 'The new system provides more choices than the previous fixed-batch model. Parents can review available sessions and select classes that suit their schedule, subject to availability.' },
-      { q: 'What if parents find the online system difficult to use?', a: 'The Flowternity team will support parents during transition — with help logging in, selecting a membership, identifying the correct category, viewing the timetable, booking, and cancelling.' },
-      { q: 'Who should I contact if my question is not answered here?', a: 'Contact Flowternity Sports at www.flowternity.com or call 9886696155. Our team will assist with membership selection, category placement, bookings, and transition questions.' },
+      { q: 'Where is Flowternity Sports located, and how can I contact you?', a: 'Flowternity Sports is located in Horamavu–Kalkere, Bengaluru, near Green Gardenia Restaurant. We are conveniently accessible from Hennur, Kalyan Nagar, Banaswadi, Ramamurthy Nagar and surrounding areas. Get Directions on Google Maps. Call / WhatsApp: +91 98866 96155. Academy Website: https://academy.flowternity.com/.' },
+      { q: 'How can I stay updated about programmes and schedules?', a: 'Follow us on social media: Instagram: https://www.instagram.com/flowternity_sports/ | Facebook: https://www.facebook.com/flowternitysports | Visit our website https://academy.flowternity.com/ or contact us directly at +91 98866 96155 to stay informed about all updates, schedules, and new programmes.' },
     ],
   },
 ];

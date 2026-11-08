@@ -1,0 +1,28 @@
+{
+  "id": "FEAT-001",
+  "type": "feat",
+  "description": "Create MongoDB schema migrations and initialize core tournament, leaderboard, and player social collections. Set up Zod validation schemas and populate with seed data for testing.",
+  "status": "pending",
+  "steps": [
+    "Create lib/flowternity/schemas.js with Zod schema definitions: Tournament, BracketMatch, Leaderboard, GameHistory, PlayerSocial, CommunityStats models matching design spec",
+    "Add database indexes to MongoDB: tournaments (sport_id, status, created_at), bracket_matches (tournament_id, round), leaderboards (sport_id, period, rank), player_social (user_id), game_history (user_id, game_id, date)",
+    "Create seed script at /scripts/seed-tournaments.js that populates: 5 tournaments with various statuses, 20 bracket matches across tournaments, sample leaderboard entries, community stats snapshot",
+    "Run seed script during development setup to verify collections created and data populated without errors"
+  ],
+  "acceptance_criteria": [
+    "lib/flowternity/schemas.js exports all 6 Zod schemas",
+    "MongoDB collections created: tournaments, bracket_matches, leaderboards, game_history, player_social, community_stats",
+    "Indexes created successfully with no errors",
+    "Seed script populates at least 5 tournaments and 20 matches",
+    "db.tournaments.countDocuments() > 0 after seed",
+    "yarn dev starts without build errors"
+  ],
+  "verification": [
+    "Run seed script: node scripts/seed-tournaments.js (output: 'Seeding complete')",
+    "MongoDB shell: db.tournaments.countDocuments() returns 5+",
+    "yarn dev starts successfully on port 3000",
+    "Check console: no errors during startup"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

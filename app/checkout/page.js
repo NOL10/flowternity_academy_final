@@ -93,16 +93,13 @@ function CheckoutInner() {
     
     if (isBasketball && isMonthlyHalfOrYearly && notSlotPlan) {
       if (user && selectedChildId && selectedChildId !== 'new') {
-        // Check if THIS specific athlete already has ANY basketball membership (not expired)
-        fetch('/api/auth/me', { credentials: 'include' })
+        // Check if THIS specific athlete has EVER had a basketball membership (active or expired)
+        fetch(`/api/children/${selectedChildId}/membership-history`, { credentials: 'include' })
           .then(r => r.json())
           .then(d => {
-            const hasBasketballForThisAthlete = d.active_memberships?.some(m => 
-              m.sport_id === 'basketball' &&
-              m.membership_snapshot?.type !== 'slot'
-            );
-            // No enrollment fee or jersey form for renewals
-            if (hasBasketballForThisAthlete) {
+            const hasEverHadBasketball = d.has_ever_had_basketball || false;
+            // No enrollment fee or jersey form if they've ever had a basketball membership
+            if (hasEverHadBasketball) {
               setEnrollmentFee(0);
               setShowJerseyForm(false);
             } else {

@@ -1,0 +1,42 @@
+{
+  "id": "FEAT-013",
+  "type": "feat",
+  "description": "Polish mobile responsiveness, add Framer Motion animations, run comprehensive integration testing. Ensure all components responsive (<md breakpoint), animations smooth, no console errors, accessibility.",
+  "status": "pending",
+  "steps": [
+    "Mobile responsiveness: audit all components for mobile (<sm 640px, md 768px breakpoints). Hero stacks vertically, FilterBar chip scroll or dropdown, GameCards full-width single column, Leaderboard card view, Bracket horizontal scroll, Carousels 1 visible card",
+    "Add Framer Motion animations: page load (hero fade-in 0.5s, stats animate 0-target 1s staggered, content fade-in 0.5s delay), bracket modal slide-up on mobile/center on desktop, live score pulse (200ms), filter apply cross-fade (100ms), carousel drag-to-swipe",
+    "Card hover effects: shadow deepens, scale 1.02x, 150-200ms ease-out",
+    "Verify touch interactions: min tap target 44×44px, swipe gestures (Framer Motion drag), long-press modals (optional)",
+    "Performance audit: lazy-load components (next/dynamic), code-split bracket rendering, monitor React DevTools Profiler for slow renders",
+    "Comprehensive manual testing: page load (no errors), all sections visible (responsive), game join (free/paid/guest), filter changes update list, leaderboard period filter, player profile modal open/close, follow/block actions, WebSocket updates (or polling fallback), animations smooth (60fps), error toasts",
+    "Browser testing: Chrome, Safari, Firefox (mobile iOS Safari, mobile Chrome, desktop versions)",
+    "Accessibility: ARIA labels on buttons/filters/modals, keyboard navigation Tab through filters → games → leaderboard, color contrast WCAG AA, screen reader test (read page structure)"
+  ],
+  "acceptance_criteria": [
+    "Page renders correctly on mobile (<sm), tablet (md), desktop (lg) viewports",
+    "All animations play smoothly (60fps, no jank) verified in DevTools Performance tab",
+    "Touch interactions work: tap (44×44 min), swipe (carousel), long-press (modals optional)",
+    "Full manual test suite passes: hero renders, filters work, games update, tournaments visible, leaderboard searchable/sortable, player profiles open, follow/block buttons work, WebSocket updates or polling fallback, no console errors",
+    "Browser compatibility: renders correctly in Chrome, Safari, Firefox",
+    "Accessibility: ARIA labels present, keyboard navigation works, color contrast meets WCAG AA",
+    "Performance: Largest Contentful Paint < 3s, no layout thrashing",
+    "All animations use CSS transforms + opacity (GPU-accelerated)"
+  ],
+  "verification": [
+    "Run yarn dev, open DevTools, console tab",
+    "Load http://localhost:3000/games, verify no errors in console",
+    "Verify all sections visible and responsive on mobile (< 640px viewport)",
+    "Test game join flow: click 'Join Free' on free game, verify join succeeds",
+    "Apply filters: select sport, skill level, verify games list updates",
+    "Leaderboard: change period to 'Month', verify data refreshes, search for player by name",
+    "Player profile: click leaderboard player name, modal opens, verify stats display correctly",
+    "Follow: click 'Follow' button, verify POST /api/social/follow called, button updates",
+    "WebSocket: check DevTools Network > WS, verify connection, watch ping frames every 30s",
+    "Animations: watch page load, verify stats counters animate smoothly (1s per counter), bracket open/close smooth slide",
+    "Performance: open DevTools Performance tab, record page load, verify no long tasks, LCP < 3s",
+    "Accessibility: Tab through page, verify keyboard navigation works, check contrast with color picker tool"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

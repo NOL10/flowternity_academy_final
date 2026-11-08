@@ -1,0 +1,34 @@
+{
+  "id": "FEAT-006",
+  "type": "feat",
+  "description": "Build animated HeroSection component with community stats counters. Display total games, active players, tournaments with Framer Motion animations.",
+  "status": "pending",
+  "steps": [
+    "Create components/games-hub/hero-section.js: React component that fetches GET /api/community/stats on mount",
+    "Render headline 'Connect. Compete. Elevate your game.' with subheading using display font",
+    "Implement animated stat counters using Framer Motion: animate from 0 to actual count over 1 second, staggered (100ms between each)",
+    "Icons pulse briefly when counter reaches target (use lucide-react icons: Users for active players, Zap for games, Trophy for tournaments)",
+    "Show loading skeleton while fetching stats (--  placeholders)",
+    "Include CTA buttons: 'Join a Game' (scrolls to games section) and 'View Tournaments' (scrolls to tournaments)",
+    "Responsive: full width on mobile, padded container on desktop, single column on mobile, three-column stat layout"
+  ],
+  "acceptance_criteria": [
+    "HeroSection component renders without errors",
+    "Stats counters animate on page load (0 → target, 1s duration)",
+    "Stats are staggered by ~100ms each",
+    "Loading skeleton displays while fetching",
+    "CTA buttons present and functional",
+    "Responsive on sm (mobile), md (tablet), lg (desktop)",
+    "Icons pulse when counter reaches target"
+  ],
+  "verification": [
+    "Run yarn dev, navigate to /games page",
+    "Observe hero section renders with headline and 3 stat counters",
+    "Watch stat counters animate from 0 on page load (duration ~1s per counter, staggered)",
+    "Resize window to <640px (sm), verify mobile layout",
+    "Click 'Join a Game' button, verify scroll to games section",
+    "Check browser console for errors (should be clean)"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

@@ -1,0 +1,36 @@
+{
+  "id": "FEAT-004",
+  "type": "feat",
+  "description": "Implement social engagement endpoints: follow/unfollow, block, friends playing, recommendation algorithm, community stats, recent results, announcements.",
+  "status": "pending",
+  "steps": [
+    "Create app/api/social/follow.js: POST /:user_id, auth required, add to followers array, trigger async email notification job (if user preference set), return 200 with followedUserId and followerCount",
+    "Create app/api/social/unfollow.js: POST /:user_id, remove from followers array, return 200",
+    "Create app/api/social/block.js: POST /:user_id, add to blocked array (idempotent), blocked user cannot view blocker's profile",
+    "Create app/api/social/friends-playing.js: GET, auth required, return followed users with upcoming/live games (joined games in next 24 hours), cache 1 minute",
+    "Create app/api/recommendations/games.js: GET, auth required, query limit (max 20). Implement scoring: +30 favorite sport, +20 time match (inferred from history ± 2h), +25 friends playing, +15 trending this week, +10 skill match. Filter out joined, past, full games. Cache 15 minutes",
+    "Create app/api/community/stats.js: GET, query period (week|month|all_time), return total_games_completed, total_active_players, total_tournaments, average_game_quality_score, trending_sport, top_performers (5), most_popular_skill_level. Cache 1 hour",
+    "Create app/api/community/recent-results.js: GET, query limit (max 50), skip. Return recent completed games with final_score, winner, mvp_user, replay_url. Pagination",
+    "Create app/api/community/announcements.js: GET, return announcements array (tournament_launch, milestone, alert, countdown types), filter expired. Cache 30 minutes"
+  ],
+  "acceptance_criteria": [
+    "POST /api/social/follow/:user_id adds user to followers array, returns 200",
+    "POST /api/social/block/:user_id prevents blocked user from viewing blocker's profile (404 or private response)",
+    "GET /api/social/friends-playing returns only users in auth.user.followed_players with upcoming games",
+    "GET /api/recommendations/games returns games scored and sorted correctly (highest score first)",
+    "Recommendation scoring: sport match = +30, time match = +20, friends = +25, trending = +15, skill = +10",
+    "GET /api/community/stats returns all fields populated",
+    "Recent results return actual completed game records with scores"
+  ],
+  "verification": [
+    "Follow test: POST /api/social/follow/userId → user added to auth.user.followers",
+    "Unfollow test: POST /api/social/unfollow/userId → user removed from followers",
+    "Block test: block user, then GET /api/players/blocked_user_id/profile → 403 or 'private profile'",
+    "Friends playing test: follow 2 users who joined games, GET /api/social/friends-playing → returns both with games",
+    "Recommendation test: user with basketball history, call GET /api/recommendations/games → basketball games top-scored",
+    "Community stats test: GET /api/community/stats?period=week → has totalGamesCompleted, trending_sport, top performers",
+    "Recent results: GET /api/community/recent-results → returns latest games with scores"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

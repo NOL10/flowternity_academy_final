@@ -1,0 +1,40 @@
+{
+  "id": "FEAT-011",
+  "type": "feat",
+  "description": "Build PlayerProfilePreview modal component. Display player stats, recent games, follow/unfollow, block actions. Triggered by clicking player avatars across page.",
+  "status": "pending",
+  "steps": [
+    "Create components/games-hub/player-profile-preview.js: modal component that fetches GET /api/players/:user_id/profile + GET /api/players/:user_id/stats on open",
+    "Display: profile pic, name, sports played, total games, win rate, current streak, recent results (3-4 games), badges",
+    "Follow button: if not followed POST /api/social/follow, update button to 'Unfollow'; if followed POST /api/social/unfollow, update to 'Follow'",
+    "Block button: show confirmation dialog, POST /api/social/block/:user_id",
+    "Loading state: skeleton loaders for stats fields",
+    "Error state: 'Profile unavailable' message (e.g., if user blocked or private profile)",
+    "Add avatar click handlers: leaderboard player names, game cards 'Players You Know', recent results MVP",
+    "Modal responsive: slides up on mobile, centers on desktop",
+    "Show toast on follow/block success/error"
+  ],
+  "acceptance_criteria": [
+    "Click player avatar opens profile modal",
+    "Profile displays correct stats: games, wins, win rate, streak",
+    "Recent games list shows last 3-4 matches",
+    "Follow button works: POST /api/social/follow, updates to 'Unfollow'",
+    "Unfollow button works: POST /api/social/unfollow, updates to 'Follow'",
+    "Block button shows confirmation dialog",
+    "Block POST succeeds, toast shows 'User blocked'",
+    "Blocked user cannot view profile (404 or 'Private profile')",
+    "Badges display correctly (50_games, 20_win_streak, mvp_favorite)"
+  ],
+  "verification": [
+    "Click player name in leaderboard, modal opens",
+    "Verify profile displays correct stats for that player",
+    "Click 'Follow', verify POST /api/social/follow called",
+    "Button updates to 'Unfollow', click it, verify POST /api/social/unfollow called",
+    "Click 'Block', confirm dialog appears, accept, verify POST /api/social/block called",
+    "Test blocked user: login as different user, try to view blocked user's profile, verify error",
+    "Resize to mobile, verify modal slides up from bottom",
+    "Test profile unavailable: mock GET /api/players/:id/profile to 404, verify 'Profile unavailable' message"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

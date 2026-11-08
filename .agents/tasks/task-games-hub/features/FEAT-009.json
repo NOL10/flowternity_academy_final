@@ -1,0 +1,35 @@
+{
+  "id": "FEAT-009",
+  "type": "feat",
+  "description": "Build TournamentCard, TournamentBracket, and BracketModal components. Add tournament showcase section to games page. Implement bracket tree visualization and live match updates.",
+  "status": "pending",
+  "steps": [
+    "Create lib/flowternity/tournament-bracket-utils.js: functions generateBracketJSON(matches, totalRounds, currentRound) and calculateBracketLayout(rounds) for SVG positioning",
+    "Create components/games-hub/tournament-card.js: displays status badge (Signups Open, In Progress, Completed, Cancelled), entry fee, prize pool, participant count progress bar, countdown timer if signups closing soon, 'View Bracket' and 'Join' buttons",
+    "Create components/games-hub/tournament-bracket.js: renders SVG/canvas bracket tree, shows current round highlighted, match results (seed 1 vs seed 2, score if completed), mobile horizontal scroll, desktop full view",
+    "Create modal wrapper: DialogContent with TournamentBracket + tournament details (prize pool, participants, dates, rules)",
+    "Add TournamentShowcase section to app/games/page.js: grid of 2-3 featured tournaments, fetch GET /api/tournaments?limit=5&status=signups_open,in_progress",
+    "Implement WebSocket subscription for match score updates in bracket (bonus: FEAT-012 prerequisite)"
+  ],
+  "acceptance_criteria": [
+    "TournamentCard renders all fields: status badge, entry fee, prize pool, participant progress",
+    "Click 'View Bracket' opens modal with bracket visualization",
+    "Bracket displays all matches with correct round grouping",
+    "Current round highlighted in bracket",
+    "Bracket responsive: scrollable on mobile, full view on desktop",
+    "Status badge colors and text correct for each status",
+    "Countdown timer displays if signups closing soon",
+    "Pagination works: can paginate through tournament list"
+  ],
+  "verification": [
+    "Load /games page, scroll to tournament section",
+    "Verify tournament cards render with status, entry fee, progress",
+    "Click 'View Bracket' on a tournament, modal opens with bracket",
+    "Verify bracket shows all matches, current round highlighted",
+    "Resize to mobile, verify bracket scrollable horizontally",
+    "Test each status (Signups Open, In Progress, Completed, Cancelled)",
+    "Verify countdown timer displays for tournaments with near signup close time"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

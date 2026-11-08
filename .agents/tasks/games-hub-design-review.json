@@ -1,0 +1,239 @@
+{
+  "verdict": "APPROVED",
+  "reviewDate": "2025-01-13",
+  "revisionReviewDate": "2025-01-14",
+  "reviewType": "Revision Review - Re-checking Prior Findings",
+  "priorReviewFindings": 20,
+  "priorHighFindings": 10,
+  "priorMediumFindings": 7,
+  "priorNitFindings": 3,
+  "closedHighFindings": 10,
+  "closedMediumFindings": 7,
+  "closedNitFindings": 3,
+  "newHighFindings": 0,
+  "newMediumFindings": 0,
+  "newNitFindings": 0,
+  "totalBlockingFindings": 0,
+  "summaryOfChanges": "All 20 findings from Review 1 successfully addressed in revised design. 10 HIGH findings closed with detailed specifications for algorithms, API responses, WebSocket, bracket progression, batch endpoints, and recommendation logic. 7 MEDIUM findings closed with privacy controls, streak calculation, error handling, carousel spec, and cache invalidation rules. 3 NIT findings closed with MVP phasing, accessibility targets, and success metrics. No new blocking issues identified.",
+  "priorFindingsResolution": {
+    "high": [
+      {
+        "id": 1,
+        "title": "Leaderboard period filter ambiguous",
+        "status": "CLOSED",
+        "evidence": "Added 'Leaderboard Period Definitions' section with ISO 8601 calendar weeks (Mon-Sun UTC), calendar months, all-time. Model updated with period_start_date, period_end_date. Timezone handling clarified: all calculations in UTC."
+      },
+      {
+        "id": 2,
+        "title": "API response structure undefined",
+        "status": "CLOSED",
+        "evidence": "Defined consistent schema: { success, data, error, errorCode, pagination, meta }. Paginated endpoints include limit, skip, total, page, hasMore. All endpoints documented with error codes for client-side handling."
+      },
+      {
+        "id": 3,
+        "title": "WebSocket incomplete",
+        "status": "CLOSED",
+        "evidence": "Added full lifecycle: 30s heartbeat, 90s timeout, exponential backoff reconnection (1s→2s→4s→8s up to 60s), messageId acknowledgment, error types (auth_expired, rate_limit, server_error). Client best practices section added."
+      },
+      {
+        "id": 4,
+        "title": "Tournament bracket progression undefined",
+        "status": "CLOSED",
+        "evidence": "Added 'Bracket Progression Specification': single elimination (MVP), random seeding, auto-advance on match completion, bye logic for odd participants, admin round progression. Schema updated with bracketType, seedingStrategy, totalRounds, currentRound."
+      },
+      {
+        "id": 5,
+        "title": "Player profile N+1 risk",
+        "status": "CLOSED",
+        "evidence": "Defined batch endpoint: GET /api/players/batch?userIds=id1,id2,... (max 50 IDs). Fallback strategy: if batch unavailable, sequential fetch with 100ms delay. Data enrichment section updated."
+      },
+      {
+        "id": 6,
+        "title": "Recommendation algorithm too vague",
+        "status": "CLOSED",
+        "evidence": "Added scoring formula: sport_match +30, time_match +20, friends_playing +25, trending +15, skill_match +10. Time inference: if 10+ games, use typical game time ± 2 hours. Error fallback to generic recommendations."
+      },
+      {
+        "id": 7,
+        "title": "Tournament signup closure timing unspecified",
+        "status": "CLOSED",
+        "evidence": "Clarified: signup_close_time in UTC, hard cutoff (no grace period), error response includes timestamp. UI displays close time in user's local timezone. Error code 'SIGNUPS_CLOSED' specified."
+      },
+      {
+        "id": 8,
+        "title": "Bracket conflict resolution incomplete",
+        "status": "CLOSED",
+        "evidence": "Added handling: match status check prevents updates on completed matches (200 OK no-op if duplicate), or 409 Conflict with 'BRACKET_CONFLICT' code if conflicting result detected. Admin can post override. Audit logging specified."
+      },
+      {
+        "id": 9,
+        "title": "Mobile leaderboard UI underspecified",
+        "status": "CLOSED",
+        "evidence": "Defined mobile card layout: rank badge (gold/silver/bronze), avatar, name, points, win rate, streak. Cards fixed-height 120px, full-width, sortable by Points/Win Rate/Games Played, searchable by name. Tap to expand full profile."
+      },
+      {
+        "id": 10,
+        "title": "Filter persistence conflict handling missing",
+        "status": "CLOSED",
+        "evidence": "Added validation on load: check saved filters against SPORTS config and user membership. Invalid filters silently reset to defaults. FilterBar component tracks invalidFilters state and shows validation errors."
+      }
+    ],
+    "medium": [
+      {
+        "id": 11,
+        "title": "Pagination limit inconsistency",
+        "status": "CLOSED",
+        "evidence": "Standardized to limit=50 default (max 100). GET /api/games max 50; GET /api/leaderboards max 100. Reasoning: leaderboards need higher limit for periodic rankings. All endpoints include total, hasMore in response."
+      },
+      {
+        "id": 12,
+        "title": "Social engagement privacy unspecified",
+        "status": "CLOSED",
+        "evidence": "Added privacy_setting field: 'public' | 'private'. Private users: profile visible to followers only. Added blockedBy array. Clarified: followers/following/blocked arrays not exposed in public profile, only counts shown. Blocking is non-mutual."
+      },
+      {
+        "id": 13,
+        "title": "Streak calculation incomplete",
+        "status": "CLOSED",
+        "evidence": "Added detailed function: calculateCurrentStreak() returns streak count, start date, no-show flag. Resets on loss OR no_show. UTC timezone handling. Triggered after each game completion. Code sample provided."
+      },
+      {
+        "id": 14,
+        "title": "Email notifications scope undefined",
+        "status": "CLOSED",
+        "evidence": "Clarified: out of scope for hub design but required for social flow. Template defined: 'Your friend [Name] just joined [Game Name]'. Frequency cap per user preference (daily/weekly/never). Noted for Phase 2 implementation."
+      },
+      {
+        "id": 15,
+        "title": "Carousel interaction underspecified",
+        "status": "CLOSED",
+        "evidence": "Specified: Framer Motion built-in drag detection (no external library). Visible items: <sm: 1, sm: 1.5, md: 2, lg: 3. Auto-rotate 5s (pause on interaction). Dot pagination indicators. Swipe left/right on mobile."
+      },
+      {
+        "id": 16,
+        "title": "Error messages too generic",
+        "status": "CLOSED",
+        "evidence": "All errors include errorCode ('GAME_FULL', 'RATE_LIMITED', 'AUTH_REQUIRED', etc.). Rate limits include retryAfter timestamp. Server 500 errors include errorId for support lookup. Recovery paths specified for each error type."
+      },
+      {
+        "id": 17,
+        "title": "Cache invalidation too vague",
+        "status": "CLOSED",
+        "evidence": "Added explicit 'Cache Invalidation Triggers' section: games (immediate on join/leave, 5min background), leaderboards (immediate on match score, period rollover, 5min), recommendations (immediate on game change, trending update, daily refresh), etc."
+      }
+    ],
+    "nit": [
+      {
+        "id": 18,
+        "title": "MVP phasing not mentioned",
+        "status": "CLOSED",
+        "evidence": "Added 'MVP Feature Phasing': Phase 1 (games, hero stats, leaderboard, join flow). Phase 2 (tournaments, recommendations, recent results). Phase 3 (social follow, weekly/monthly leaderboards, profiles). Phase 4 (email, news, algorithm tuning)."
+      },
+      {
+        "id": 19,
+        "title": "Accessibility WCAG level not specified",
+        "status": "CLOSED",
+        "evidence": "Targeted WCAG AA compliance. Specified ARIA labels on all interactive elements, keyboard navigation (Tab, Enter), bracket keyboard nav (arrow keys). Note: full validation requires manual testing with screen readers."
+      },
+      {
+        "id": 20,
+        "title": "Success metrics lack baseline",
+        "status": "CLOSED",
+        "evidence": "Expanded to 11 metrics: page load < 2s (Lighthouse), join flow < 3 clicks, leaderboard sort < 100ms, WebSocket latency < 1s, 70% filter engagement, 40% tournament conversion, < 0.5% error rate, etc. Note: current baseline TBD."
+      }
+    ]
+  },
+  "newFindings": [],
+  "verifiedAssumptions": [
+    {
+      "category": "UI Components",
+      "claim": "Radix UI Dialog, Avatar, Badge, Button, Card, Input, Label available",
+      "verified": true,
+      "evidence": "All present in package.json; used in existing games/page.js"
+    },
+    {
+      "category": "Animation Library",
+      "claim": "Framer Motion available and suitable",
+      "verified": true,
+      "evidence": "framer-motion@11.18.0 in dependencies; appropriate for specified animations and gestures"
+    },
+    {
+      "category": "Data Fetching",
+      "claim": "React Query available for caching strategy",
+      "verified": true,
+      "evidence": "@tanstack/react-query@5.56.2 in dependencies; suitable for cache invalidation strategy"
+    },
+    {
+      "category": "Payments",
+      "claim": "Razorpay integration and guest checkout already exist",
+      "verified": true,
+      "evidence": "games/page.js implements full Razorpay + guest checkout flow; design preserves this"
+    },
+    {
+      "category": "Sports Config",
+      "claim": "SPORTS array with id, name, status defined",
+      "verified": true,
+      "evidence": "config.js contains active/disabled/coming_soon sports; design references correctly"
+    },
+    {
+      "category": "Membership System",
+      "claim": "MEMBERSHIPS array sport-specific",
+      "verified": true,
+      "evidence": "config.js shows sport_id referenced in MEMBERSHIPS; aligns with leaderboard design"
+    },
+    {
+      "category": "Auth Context",
+      "claim": "useAuth() hook available for extended user context",
+      "verified": true,
+      "evidence": "Used in games/page.js; can extend with user.followed_players"
+    },
+    {
+      "category": "Tech Stack",
+      "claim": "Tailwind, Radix UI, Lucide locked in as foundation",
+      "verified": true,
+      "evidence": "All in package.json; design technology stack matches repo"
+    }
+  ],
+  "unverifiedAssumptions": [
+    {
+      "category": "Database",
+      "assumption": "Tournaments collection exists with schema and seeding",
+      "verified": false,
+      "risk": "HIGH",
+      "recommendation": "Verify tournaments schema with backend team before sprint. Confirm fields: _id, participants, bracket, status, entry_fee, prize_pool, etc."
+    },
+    {
+      "category": "Architecture",
+      "assumption": "WebSocket support available (/ws/games endpoint)",
+      "verified": false,
+      "risk": "MEDIUM",
+      "recommendation": "Clarify architecture: custom Node.js server for WebSocket (not serverless), or polling-only MVP? Design includes polling fallback, but real-time scope affected."
+    },
+    {
+      "category": "Backend Process",
+      "assumption": "Leaderboard stats pre-calculated hourly via batch job",
+      "verified": false,
+      "risk": "MEDIUM",
+      "recommendation": "Confirm backend has hourly cron job to calculate leaderboard ranks, tie-breaking, and populate leaderboards collection. If not, budget time to build."
+    },
+    {
+      "category": "Admin Tooling",
+      "assumption": "Admin dashboard for posting tournament bracket results exists or in-scope",
+      "verified": false,
+      "risk": "LOW_MEDIUM",
+      "recommendation": "Clarify: is admin bracket UI separate task? Hub can show read-only brackets, but feature requires admin tooling to input match results."
+    }
+  ],
+  "implementation_guidance": {
+    "phasing": "Phase 1 (MVP): Games + filters + hero + enhanced cards (~2 weeks). Phase 2: Tournaments + brackets + recommendations (~2 weeks). Phase 3: Social + profiles + leaderboards (~1 week). Phase 4 (stretch): Email + news carousel + algorithm tuning.",
+    "pre_sprint_checklist": [
+      "Confirm tournaments collection schema with backend",
+      "Decide: WebSocket + custom server, or polling fallback only?",
+      "Verify hourly leaderboard batch job exists or schedule build",
+      "Establish current games page load baseline (for success metrics)",
+      "If admin UI out-of-scope, clarify how match results will be posted during testing"
+    ],
+    "estimated_scope": "MVP ~5 weeks (all phases). Phase 1 suitable for 2-week sprint."
+  },
+  "reviewDoc": "/Users/noel/Desktop/P R O J E C T S/flowternity_academy-main final/.agents/tasks/games-hub-design-review.md"
+}

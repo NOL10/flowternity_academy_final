@@ -1,0 +1,41 @@
+{
+  "id": "FEAT-012",
+  "type": "feat",
+  "description": "Implement WebSocket for real-time updates (participant count, match scores, leaderboard ranks). Add polling fallback if WebSocket unavailable. Implement heartbeat, auto-reconnect, error handling.",
+  "status": "pending",
+  "steps": [
+    "Create app/api/ws/route.js: WebSocket endpoint that accepts connections, verifies auth token (optional), broadcasts match updates, participant count changes, leaderboard updates to all subscribers",
+    "Create lib/flowternity/websocket.js: useWebSocket hook that connects to ws://[domain]/ws/games on mount",
+    "Implement heartbeat: server sends ping every 30s, client responds pong, client closes if no ping for 90s",
+    "Implement auto-reconnect: exponential backoff (1s → 2s → 4s → 8s, max 60s)",
+    "Queue local updates during disconnect, sync on reconnect via API fetch",
+    "Subscribe to channels: game:all, tournament:[id], leaderboard:[sport_id]",
+    "Broadcast message types: game:participant_joined, game:participant_left, match:score_updated, leaderboard:updated, announcement:new",
+    "Implement polling fallback: if WebSocket unavailable (timeout after 5s), poll /api/games, /api/tournaments/:id/bracket, /api/leaderboards/:sport_id every 30s-60s via React Query refetchInterval",
+    "UI indicator: show 'Reconnecting...' toast when offline, 'Connected' when online",
+    "Integrate into app/games/page.js: call useWebSocket on mount, update component state on message receive"
+  ],
+  "acceptance_criteria": [
+    "WebSocket connects on page load (verify in DevTools Network tab)",
+    "Heartbeat ping/pong every 30s (verify in DevTools)",
+    "Participant count updates in real-time when user joins (< 1s latency)",
+    "Match score broadcast updates bracket in real-time",
+    "Leaderboard refreshes when match completes",
+    "Auto-reconnect works: close connection, verify reconnect after 1s",
+    "Polling fallback activates when WebSocket unavailable",
+    "Message queue and sync works: queue message while offline, sync on reconnect",
+    "Error handling: malformed message, auth failure logged"
+  ],
+  "verification": [
+    "Run yarn dev, open /games in browser, open DevTools Network > WS",
+    "Verify ws://localhost:3000/ws/games connection established",
+    "Watch ping frames every 30s in Network tab",
+    "Open game in another window/tab, join it, verify participant count updates in real-time in first tab (< 1s)",
+    "Post match score via API, verify bracket updates in real-time on subscribed clients",
+    "Disable network (offline mode), verify 'Reconnecting...' toast, enable network, verify 'Connected' toast",
+    "Close DevTools, open Network, filter to WS, verify reconnect frames on disconnect/reconnect",
+    "Stop WebSocket server (if possible) or timeout connection, verify polling fallback activates (check XHR requests every 30s)"
+  ],
+  "blocked_reason": null,
+  "findings": ""
+}

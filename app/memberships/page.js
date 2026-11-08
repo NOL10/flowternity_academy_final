@@ -40,15 +40,17 @@ function MembershipsInner() {
 
         {/* Basketball — 3 tiers */}
         <div className="mt-14">
-          <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 rounded-xl overflow-hidden bg-secondary flex-shrink-0">
-              <img src={sportFor('basketball')?.image} alt="Basketball" className="w-full h-full object-cover" />
+          <Link href="/academy/basketball">
+            <div className="flex items-center gap-3 mb-6 cursor-pointer hover:opacity-80 transition-opacity">
+              <div className="w-10 h-10 rounded-xl overflow-hidden bg-secondary flex-shrink-0">
+                <img src={sportFor('basketball')?.image} alt="Basketball" className="w-full h-full object-cover" />
+              </div>
+              <div>
+                <h2 className="font-display font-black text-2xl">Basketball</h2>
+                <p className="text-sm text-muted-foreground">{sportFor('basketball')?.tagline}</p>
+              </div>
             </div>
-            <div>
-              <h2 className="font-display font-black text-2xl">Basketball</h2>
-              <p className="text-sm text-muted-foreground">{sportFor('basketball')?.tagline}</p>
-            </div>
-          </div>
+          </Link>
 
           {/* Unlimited classes plans */}
           <div className="mb-12">
@@ -165,20 +167,22 @@ function MembershipsInner() {
               const sport = sportFor(plan.sport_id);
               return (
                 <Card key={plan.id} className="rounded-2xl overflow-hidden group">
-                  <div className="h-32 relative overflow-hidden">
-                    {sport?.image && (
-                      <img
-                        src={sport.image}
-                        alt={sport.name}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      />
-                    )}
-                    <div className="absolute inset-0 bg-black/40" />
-                    <div className="absolute bottom-3 left-4">
-                      <h3 className="font-display font-black text-white text-xl">{sport?.name}</h3>
-                      <p className="text-white/70 text-xs">{sport?.tagline}</p>
+                  <Link href={`/academy/${sport?.id}`}>
+                    <div className="h-32 relative overflow-hidden cursor-pointer">
+                      {sport?.image && (
+                        <img
+                          src={sport.image}
+                          alt={sport.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
+                      )}
+                      <div className="absolute inset-0 bg-black/40" />
+                      <div className="absolute bottom-3 left-4">
+                        <h3 className="font-display font-black text-white text-xl">{sport?.name}</h3>
+                        <p className="text-white/70 text-xs">{sport?.tagline}</p>
+                      </div>
                     </div>
-                  </div>
+                  </Link>
                   <div className="p-5">
                     <div className="flex items-baseline justify-between mb-4">
                       <div>
