@@ -167,55 +167,129 @@ function App() {
 
           {/* Basketball tiers */}
           <div className="max-w-4xl mx-auto">
-            <p className="text-white/50 text-sm uppercase tracking-widest mb-6 text-center">Basketball · 3 plans</p>
-            <div className="grid md:grid-cols-3 gap-4 mb-10">
-              {basketballPlans.map(p => {
-                const monthlyPrice = Math.round(p.price / p.duration_months);
-                // What you'd pay if buying 1-month plan repeatedly
-                const payMonthlyTotal = 3102 * p.duration_months;
-                const savingVsMonthly = payMonthlyTotal - p.price;
-                const savingPct = Math.round((savingVsMonthly / payMonthlyTotal) * 100);
-                // Only show discount for multi-month plans
-                const showDiscount = p.duration_months > 1;
-                // 12m is best value, not 6m
-                const isBestValue = p.duration_months === 12;
+            {/* Unlimited Classes */}
+            <div className="mb-16">
+              <p className="text-white/50 text-sm uppercase tracking-widest mb-6 text-center">Basketball · Unlimited Classes</p>
+              <div className="grid md:grid-cols-3 gap-4 mb-10">
+                {basketballPlans.filter(p => p.type === 'unlimited').map(p => {
+                  const monthlyPrice = Math.round(p.price / p.duration_months);
+                  // What you'd pay if buying 1-month plan repeatedly
+                  const payMonthlyTotal = 3102 * p.duration_months;
+                  const savingVsMonthly = payMonthlyTotal - p.price;
+                  const savingPct = Math.round((savingVsMonthly / payMonthlyTotal) * 100);
+                  // Only show discount for multi-month plans
+                  const showDiscount = p.duration_months > 1;
+                  // 12m is best value, not 6m
+                  const isBestValue = p.duration_months === 12;
 
-                return (
-                  <div key={p.id} className={`bg-white/5 border rounded-2xl p-6 relative flex flex-col ${isBestValue ? 'border-accent shadow-lg shadow-accent/20' : 'border-white/10'}`}>
-                    {isBestValue && <Badge className="absolute -top-3 left-6 bg-accent text-black hover:bg-accent font-bold tracking-wide">BEST VALUE</Badge>}
+                  return (
+                    <div key={p.id} className={`bg-white/5 border rounded-2xl p-6 relative flex flex-col ${isBestValue ? 'border-accent shadow-lg shadow-accent/20' : 'border-white/10'}`}>
+                      {isBestValue && <Badge className="absolute -top-3 left-6 bg-accent text-black hover:bg-accent font-bold tracking-wide">BEST VALUE</Badge>}
 
-                    <div className="text-xs uppercase tracking-widest text-white/40 font-bold mb-1">ACADEMY</div>
-                    <div className="font-display font-black text-xl mb-1">
-                      {p.duration_months === 1 ? 'Monthly (1 Month)' : p.duration_months === 6 ? 'Half-year (6 Months)' : 'Annual (12 Months)'}
-                    </div>
-                    {showDiscount && <div className="text-xs text-accent mb-3">{savingPct}% cheaper than monthly</div>}
-
-                    <ul className="space-y-1.5 mb-4 text-sm">
-                      <li className="flex items-center gap-2 text-white/70"><span className="text-accent">●</span> Unlimited classes</li>
-                      {p.pause_days > 0 && <li className="flex items-center gap-2 text-white/70"><span className="text-accent">●</span> {p.pause_days} pause days</li>}
-                    </ul>
-
-                    {/* Pricing */}
-                    <div className="mt-auto">
-                      {showDiscount && (
-                        <div className="flex items-center gap-2 mb-1">
-                          <span className="text-white/30 line-through text-sm">₹{payMonthlyTotal.toLocaleString('en-IN')}</span>
-                          <span className="bg-red-500/20 text-red-400 text-xs font-semibold px-2 py-0.5 rounded">{savingPct}% off</span>
-                        </div>
-                      )}
-                      <div className="flex items-baseline gap-1">
-                        <span className="font-display font-black text-4xl md:text-5xl">₹{monthlyPrice.toLocaleString('en-IN')}</span>
-                        <span className="text-white/40 text-sm">/month</span>
+                      <div className="text-xs uppercase tracking-widest text-white/40 font-bold mb-1">ACADEMY</div>
+                      <div className="font-display font-black text-xl mb-1">
+                        {p.duration_months === 1 ? 'Monthly (1 Month)' : p.duration_months === 6 ? 'Half-year (6 Months)' : 'Annual (12 Months)'}
                       </div>
-                      <div className="text-white/40 text-xs mt-0.5">₹{p.price.toLocaleString('en-IN')} total</div>
-                    </div>
+                      {showDiscount && <div className="text-xs text-accent mb-3">{savingPct}% cheaper than monthly</div>}
 
-                    <Link href={`/checkout?plan=${p.id}`}>
-                      <Button className="w-full mt-5 bg-accent text-black hover:bg-accent/90 h-11 font-semibold">Get Started</Button>
-                    </Link>
+                      <ul className="space-y-1.5 mb-4 text-sm">
+                        <li className="flex items-center gap-2 text-white/70"><span className="text-accent">●</span> Unlimited classes</li>
+                        {p.pause_days > 0 && <li className="flex items-center gap-2 text-white/70"><span className="text-accent">●</span> {p.pause_days} pause days</li>}
+                      </ul>
+
+                      {/* Pricing */}
+                      <div className="mt-auto">
+                        {showDiscount && (
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className="text-white/30 line-through text-sm">₹{payMonthlyTotal.toLocaleString('en-IN')}</span>
+                            <span className="bg-red-500/20 text-red-400 text-xs font-semibold px-2 py-0.5 rounded">{savingPct}% off</span>
+                          </div>
+                        )}
+                        <div className="flex items-baseline gap-1">
+                          <span className="font-display font-black text-4xl md:text-5xl">₹{monthlyPrice.toLocaleString('en-IN')}</span>
+                          <span className="text-white/40 text-sm">/month</span>
+                        </div>
+                        <div className="text-white/40 text-xs mt-0.5">₹{p.price.toLocaleString('en-IN')} total</div>
+                      </div>
+
+                      <Link href={`/checkout?plan=${p.id}`}>
+                        <Button className="w-full mt-5 bg-accent text-black hover:bg-accent/90 h-11 font-semibold">Get Started</Button>
+                      </Link>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Pay Per Class */}
+            <div className="mb-16">
+              <p className="text-white/50 text-sm uppercase tracking-widest mb-6 text-center">Basketball · Pay Per Class</p>
+              <div className="flex justify-center">
+                <div className="w-full md:w-1/3">
+                  <div className="grid gap-4 mb-10">
+                    {basketballPlans.filter(p => p.type === 'slot').map(p => (
+                      <div key={p.id} className="bg-white/5 border border-white/10 rounded-2xl p-6 flex flex-col">
+                        <div className="text-xs uppercase tracking-widest text-white/40 font-bold mb-1">BASKETBALL</div>
+                        <div className="font-display font-black text-xl mb-1">Single Class</div>
+                        <div className="text-xs text-white/50 mb-3">15-day validity per slot</div>
+
+                        <ul className="space-y-1.5 mb-4 text-sm">
+                          <li className="flex items-center gap-2 text-white/70"><span className="text-accent">●</span> Pay per class</li>
+                          <li className="flex items-center gap-2 text-white/70"><span className="text-accent">●</span> Buy 1 or more slots</li>
+                        </ul>
+
+                        <div className="mt-auto">
+                          <div className="flex items-baseline gap-1 mb-1">
+                            <span className="font-display font-black text-4xl md:text-5xl">₹{p.price.toLocaleString('en-IN')}</span>
+                            <span className="text-white/40 text-sm">/slot</span>
+                          </div>
+                        </div>
+
+                        <Link href={`/checkout?plan=${p.id}`}>
+                          <Button className="w-full mt-5 bg-white/10 text-white hover:bg-white/20 h-11 font-semibold border border-white/20">Get Started</Button>
+                        </Link>
+                      </div>
+                    ))}
                   </div>
-                );
-              })}
+                </div>
+              </div>
+            </div>
+
+            {/* One-on-One Training */}
+            <div className="mb-16">
+              <p className="text-white/50 text-sm uppercase tracking-widest mb-6 text-center">Basketball · One-on-One Training</p>
+              <div className="grid md:grid-cols-3 gap-4 mb-10">
+                {basketballPlans.filter(p => p.type === 'one_on_one').map(p => {
+                  const pricePerSession = Math.round(p.price / p.sessions);
+                  return (
+                    <div key={p.id} className="bg-gradient-to-br from-purple-500/10 to-purple-600/5 border border-purple-500/30 rounded-2xl p-6 flex flex-col">
+                      <Badge className="w-fit bg-purple-500 text-white text-xs mb-3">PERSONAL COACHING</Badge>
+                      
+                      <div className="text-xs uppercase tracking-widest text-purple-300 font-bold mb-1">One-on-One</div>
+                      <div className="font-display font-black text-xl mb-1">{p.sessions} Sessions</div>
+                      <div className="text-xs text-white/50 mb-3">Personal coaching with expert trainers</div>
+
+                      <ul className="space-y-1.5 mb-4 text-sm">
+                        <li className="flex items-center gap-2 text-white/70"><span className="text-purple-400">●</span> {p.sessions} coaching sessions</li>
+                        <li className="flex items-center gap-2 text-white/70"><span className="text-purple-400">●</span> Custom training plan</li>
+                        <li className="flex items-center gap-2 text-white/70"><span className="text-purple-400">●</span> Expert trainer assigned</li>
+                      </ul>
+
+                      <div className="mt-auto">
+                        <div className="flex items-baseline gap-1 mb-1">
+                          <span className="font-display font-black text-4xl md:text-5xl">₹{pricePerSession.toLocaleString('en-IN')}</span>
+                          <span className="text-white/40 text-sm">/session</span>
+                        </div>
+                        <div className="text-white/40 text-xs">₹{p.price.toLocaleString('en-IN')} total</div>
+                      </div>
+
+                      <Link href={`/checkout?plan=${p.id}`}>
+                        <Button className="w-full mt-5 bg-purple-500 text-white hover:bg-purple-600 h-11 font-semibold">Get Started</Button>
+                      </Link>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
 
             {/* Other sports */}
@@ -271,6 +345,103 @@ function App() {
               </div>
             </div>
           </Card>
+        </div>
+      </section>
+
+      {/* LOCATION & MAP */}
+      <section className="py-24 md:py-32">
+        <div className="container">
+          <div className="grid md:grid-cols-2 gap-12 items-center">
+            {/* Location Info */}
+            <motion.div initial={{ opacity: 0, x: -20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ duration: 0.6 }}>
+              <p className="text-sm uppercase tracking-widest text-muted-foreground mb-3">Visit us</p>
+              <h2 className="font-display font-black text-5xl md:text-6xl tracking-tight mb-6">World-class facility in Bangalore.</h2>
+              
+              <div className="space-y-6">
+                <div className="flex gap-4">
+                  <div className="w-12 h-12 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-6 h-6 text-accent" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-lg mb-1">Horamavu–Kalkere, Bengaluru</h4>
+                    <p className="text-muted-foreground">Near Green Gardenia Restaurant, Bengaluru 560043</p>
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  <div className="w-12 h-12 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-6 h-6 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-lg mb-1">Get in Touch</h4>
+                    <p className="text-muted-foreground">
+                      <a href="tel:+919886696155" className="hover:text-accent transition">+91 91104 27144</a>
+                      {' '}· WhatsApp available
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  <div className="w-12 h-12 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-6 h-6 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-lg mb-1">Hours</h4>
+                    <p className="text-muted-foreground">
+                      Mon–Sun: 6:00 AM – 10:00 PM<br />
+                      <span className="text-xs">Classes available throughout the day</span>
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex gap-4">
+                  <div className="w-12 h-12 rounded-full bg-accent/20 flex items-center justify-center flex-shrink-0">
+                    <svg className="w-6 h-6 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h4 className="font-semibold text-lg mb-1">Easy Access</h4>
+                    <p className="text-muted-foreground">
+                      Near Hennur, Kalyan Nagar, Banaswadi<br />
+                      <span className="text-xs">Ample parking · Public transport nearby</span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-8">
+                <a href="https://www.google.com/maps/place/Flowternity+Sports,+Bengaluru" target="_blank" rel="noopener noreferrer">
+                  <Button className="bg-accent text-black hover:bg-accent/90 h-12 px-6">
+                    Get Directions <ArrowRight className="w-4 h-4 ml-2" />
+                  </Button>
+                </a>
+              </div>
+            </motion.div>
+
+            {/* Map */}
+            <motion.div initial={{ opacity: 0, x: 20 }} whileInView={{ opacity: 1, x: 0 }} viewport={{ once: true }} transition={{ duration: 0.6 }}>
+              <div className="rounded-3xl overflow-hidden shadow-2xl h-96 md:h-[500px]">
+                <iframe
+                  src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3887.5234567890!2d77.67!3d13.00!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3bae1a0000000000%3A0x0000000000000000!2sFlowternity%20Sports%20Academy!5e0!3m2!1sen!2sin!4v1234567890"
+                  width="100%"
+                  height="100%"
+                  style={{ border: 0 }}
+                  allowFullScreen=""
+                  loading="lazy"
+                  referrerPolicy="no-referrer-when-downgrade"
+                  title="Flowternity Sports Academy Location"
+                />
+              </div>
+            </motion.div>
+          </div>
         </div>
       </section>
 

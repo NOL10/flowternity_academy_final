@@ -16,9 +16,10 @@ function MembershipsInner() {
   const basketballPlans = MEMBERSHIPS.filter(m => m.sport_id === 'basketball');
   const otherPlans = MEMBERSHIPS.filter(m => m.sport_id !== 'basketball');
 
-  // Separate slot plans from regular plans for basketball
-  const basketballRegularPlans = basketballPlans.filter(m => m.type !== 'slot');
+  // Separate slot plans, one-on-one, and regular unlimited plans for basketball
+  const basketballRegularPlans = basketballPlans.filter(m => m.type === 'unlimited');
   const basketballSlotPlans = basketballPlans.filter(m => m.type === 'slot');
+  const basketballOneOnOne = basketballPlans.filter(m => m.type === 'one_on_one');
 
   const choose = (plan) => {
     router.push(`/checkout?plan=${plan.id}`);
@@ -38,23 +39,26 @@ function MembershipsInner() {
           </p>
         </div>
 
-        {/* Basketball — 3 tiers */}
-        <div className="mt-14">
+        {/* Basketball Section */}
+        <div className="mt-16 pt-12 border-t border-border">
           <Link href="/academy/basketball">
-            <div className="flex items-center gap-3 mb-6 cursor-pointer hover:opacity-80 transition-opacity">
-              <div className="w-10 h-10 rounded-xl overflow-hidden bg-secondary flex-shrink-0">
+            <div className="flex items-center gap-3 mb-8 cursor-pointer hover:opacity-80 transition-opacity">
+              <div className="w-12 h-12 rounded-xl overflow-hidden bg-secondary flex-shrink-0">
                 <img src={sportFor('basketball')?.image} alt="Basketball" className="w-full h-full object-cover" />
               </div>
               <div>
-                <h2 className="font-display font-black text-2xl">Basketball</h2>
+                <h2 className="font-display font-black text-3xl">Basketball</h2>
                 <p className="text-sm text-muted-foreground">{sportFor('basketball')?.tagline}</p>
               </div>
             </div>
           </Link>
 
           {/* Unlimited classes plans */}
-          <div className="mb-12">
-            <h3 className="text-sm uppercase tracking-widest font-bold text-muted-foreground mb-4">Unlimited Classes</h3>
+          <div className="mb-16 pb-12 border-b border-border">
+            <div className="mb-6">
+              <h3 className="text-sm uppercase tracking-widest font-bold text-muted-foreground mb-2">Unlimited Classes</h3>
+              <p className="text-xs text-muted-foreground">Train anytime, as many times as you want</p>
+            </div>
             <div className="grid md:grid-cols-3 gap-6">
               {basketballRegularPlans.map(plan => {
                 const monthlyPrice = Math.round(plan.price / plan.duration_months);
@@ -114,8 +118,11 @@ function MembershipsInner() {
 
           {/* Single Class plans */}
           {basketballSlotPlans.length > 0 && (
-            <div>
-              <h3 className="text-sm uppercase tracking-widest font-bold text-muted-foreground mb-4">Pay Per Class</h3>
+            <div className="mb-16 pb-12 border-b border-border">
+              <div className="mb-6">
+                <h3 className="text-sm uppercase tracking-widest font-bold text-muted-foreground mb-2">Pay Per Class</h3>
+                <p className="text-xs text-muted-foreground">No commitment. Pay only when you train</p>
+              </div>
               <div className="grid md:grid-cols-3 gap-6">
                 {basketballSlotPlans.map(plan => (
                   <Card key={plan.id} className="p-6 md:p-8 rounded-3xl border-2 border-accent/30">
@@ -153,10 +160,66 @@ function MembershipsInner() {
               </div>
             </div>
           )}
+
+          {/* One-on-One Training */}
+          {basketballOneOnOne.length > 0 && (
+            <div className="mb-16">
+              <div className="mb-6">
+                <h3 className="text-sm uppercase tracking-widest font-bold text-muted-foreground mb-2">One-on-One Training</h3>
+                <p className="text-xs text-muted-foreground">Personal coaching with expert trainers</p>
+              </div>
+              <div className="grid md:grid-cols-3 gap-6">
+                {basketballOneOnOne.map(plan => {
+                  const pricePerSession = Math.round(plan.price / plan.sessions);
+                  return (
+                    <Card key={plan.id} className="p-6 md:p-8 rounded-3xl border-2 border-purple-500/30 relative">
+                      <Badge className="absolute -top-3 left-8 bg-purple-500 text-white hover:bg-purple-500 font-semibold">PERSONAL COACHING</Badge>
+
+                      <div className="mb-4 mt-2">
+                        <div className="text-sm uppercase tracking-widest font-bold text-foreground">One-on-One</div>
+                      </div>
+
+                      <div className="mb-1">
+                        <div className="font-display font-black text-2xl md:text-3xl">
+                          {plan.sessions} Sessions
+                        </div>
+                      </div>
+
+                      <div className="text-sm text-muted-foreground mb-4">Personal coaching with expert trainers</div>
+
+                      <ul className="mt-4 space-y-2 text-sm mb-6">
+                        <li className="flex items-start gap-2"><span className="text-purple-500">●</span> {plan.sessions} personal coaching sessions</li>
+                        <li className="flex items-start gap-2"><span className="text-purple-500">●</span> Custom training plan</li>
+                        <li className="flex items-start gap-2"><span className="text-purple-500">●</span> Expert trainer assignment</li>
+                        <li className="flex items-start gap-2"><span className="text-purple-500">●</span> {plan.duration_months} month{plan.duration_months > 1 ? 's' : ''} validity</li>
+                      </ul>
+
+                      <div className="space-y-1">
+                        <div className="flex items-baseline gap-1">
+                          <span className="font-display font-black text-5xl md:text-6xl">₹{pricePerSession.toLocaleString('en-IN')}</span>
+                          <span className="text-muted-foreground text-base">/session</span>
+                        </div>
+                        <div className="text-sm text-muted-foreground font-medium">
+                          ₹{plan.price.toLocaleString('en-IN')} total
+                        </div>
+                      </div>
+
+                      <Button
+                        onClick={() => choose(plan)}
+                        className="w-full mt-6 h-12 text-base font-semibold bg-purple-500 text-white hover:bg-purple-600"
+                      >
+                        Get Started <ArrowRight className="w-4 h-4 ml-2" />
+                      </Button>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Other sports — prices vary */}
-        <div className="mt-16">
+        <div className="mt-16 pt-12 border-t border-border">
           <div className="mb-6">
             <h2 className="font-display font-black text-2xl">Other Sports</h2>
             <p className="text-sm text-muted-foreground mt-1">1 month · prices vary by sport.</p>
@@ -208,8 +271,8 @@ function MembershipsInner() {
 
         {/* Coming soon sports */}
         {SPORTS.filter(s => s.status === 'coming_soon').length > 0 && (
-          <div className="mt-12">
-            <p className="text-sm uppercase tracking-widest text-muted-foreground mb-3">Coming Soon</p>
+          <div className="mt-16 pt-12 border-t border-border">
+            <p className="text-sm uppercase tracking-widest text-muted-foreground mb-4">Coming Soon</p>
             <div className="flex flex-wrap gap-2">
               {SPORTS.filter(s => s.status === 'coming_soon').map(s => (
                 <Badge key={s.id} variant="outline" className="px-4 py-2 text-sm rounded-full text-muted-foreground">

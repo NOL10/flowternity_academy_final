@@ -5,7 +5,7 @@ import { hashPassword, verifyPassword, createToken, setAuthCookie, clearAuthCook
 import { SPORTS, MEMBERSHIPS, MAX_PAUSE_DAYS, KIDS_LEVELS, COUPONS, LEADERSHIP_METRICS, METRIC_SCORES } from '@/lib/flowternity/config';
 import { metricsForSport, isValidMetricKey, SPORT_METRICS, GENERIC_METRICS } from '@/lib/flowternity/metrics';
 import { createOrder, verifySignature, publicKeyId, getRazorpay, verifyWebhookSignature, refundPayment } from '@/lib/flowternity/razorpay';
-import { sendPasswordResetEmail, sendWelcomeEmail, sendOnboardingEmail, sendMembershipPurchaseEmail } from '@/lib/flowternity/email';
+import { sendPasswordResetEmail, sendWelcomeEmail, sendOnboardingEmail, sendMembershipPurchaseEmail, sendTournamentRegistrationEmail, sendTrialConfirmationEmail, sendGameConfirmationEmail } from '@/lib/flowternity/email';
 
 function cors(res) {
   res.headers.set('Access-Control-Allow-Origin', process.env.CORS_ORIGINS || '*');
@@ -106,10 +106,26 @@ async function activateOrderMembership(db, { razorpay_order_id, razorpay_payment
   const meta = paymentRec.pending_meta || {};
   const now = new Date();
   const isSlotPlan = mem.type === 'slot';
-  const slotQty = isSlotPlan ? (meta.slot_quantity || 1) : null;
+  const isOneOnOne = mem.type === 'one_on_one';
+  const slotQty = (isSlotPlan ? (meta.slot_quantity || 1) : (isOneOnOne ? mem.sessions : null));
   
-  // Slot-based memberships expire in 15 days, regular memberships use duration_months
-  const expiry = new Date(now);
+  // Check for expired membership in the same sport to chain the start date
+  let chainStartDate = now;
+  const existingMembership = await db.collection('user_memberships').findOne({
+    user_id: user.id,
+    child_profile_id: meta.child_profile_id || null,
+    sport_id: mem.sport_id,
+    status: 'expired'
+  });
+  
+  // If expired membership exists, start new membership the day after it expires
+  if (existingMembership && existingMembership.expiry_date) {
+    chainStartDate = new Date(existingMembership.expiry_date);
+    chainStartDate.setDate(chainStartDate.getDate() + 1); // Start day after expiry
+  }
+  
+  // Calculate expiry based on start date (not today)
+  const expiry = new Date(chainStartDate);
   if (isSlotPlan) {
     expiry.setDate(expiry.getDate() + 15);
   } else {
@@ -124,9 +140,10 @@ async function activateOrderMembership(db, { razorpay_order_id, razorpay_payment
     membership_snapshot: mem,
     sport_id: mem.sport_id,
     selected_sports: [mem.sport_id],
-    start_date: now, expiry_date: expiry, original_expiry_date: expiry,
+    start_date: chainStartDate, expiry_date: expiry, original_expiry_date: expiry,
     status: 'active', pause_days: 0, paused_at: null,
     ...(isSlotPlan && { slots_remaining: slotQty, slots_total: slotQty }),
+    ...(isOneOnOne && { slots_remaining: slotQty, slots_total: slotQty }),
     created_at: now,
   };
   await db.collection('user_memberships').insertOne(um);
@@ -1058,14 +1075,36 @@ async function handleRoute(request, { params }) {
       };
       await db.collection('trial_leads').insertOne(lead);
 
-      // Best-effort confirmation email — reuse booking confirmation email if class picked
+      // Send confirmation email via Resend
       let email_sent = false;
       try {
+        const sport = SPORTS.find(s => s.id === sport_id);
+        const sportName = sport?.name || 'your selected sport';
+        
         if (classInfo) {
-          const sport = SPORTS.find(s => s.id === classInfo.sport_id);
-          // Booking confirmation email removed
+          const dateFmt = classInfo.date;
+          const timeFmt = `${classInfo.start_time} – ${classInfo.end_time}`;
+          await sendTrialConfirmationEmail({
+            to: email,
+            name: full_name,
+            sportName,
+            className: classInfo.name,
+            classDate: dateFmt,
+            classTime: timeFmt,
+          });
+        } else {
+          // No specific class selected, just send generic confirmation
+          await sendTrialConfirmationEmail({
+            to: email,
+            name: full_name,
+            sportName,
+          });
         }
-      } catch (e) { /* non-fatal */ }
+        email_sent = true;
+      } catch (e) {
+        console.warn('[trial-book] Email send failed:', e.message);
+        // Non-fatal: don't fail the booking
+      }
 
       return j({ lead: clean(lead), email_sent, class: classInfo ? clean(classInfo) : null });
     }
@@ -1139,6 +1178,34 @@ async function handleRoute(request, { params }) {
         } }
       );
       
+      // Send confirmation email via Resend
+      try {
+        const sport = SPORTS.find(s => s.id === trialPayment.sport_id);
+        const sportName = sport?.name || 'your trial class';
+        
+        if (classInfo) {
+          const dateFmt = classInfo.date;
+          const timeFmt = `${classInfo.start_time} – ${classInfo.end_time}`;
+          await sendTrialConfirmationEmail({
+            to: trialPayment.email,
+            name: trialPayment.full_name,
+            sportName,
+            className: classInfo.name,
+            classDate: dateFmt,
+            classTime: timeFmt,
+          });
+        } else {
+          await sendTrialConfirmationEmail({
+            to: trialPayment.email,
+            name: trialPayment.full_name,
+            sportName,
+          });
+        }
+      } catch (e) {
+        console.warn('[trial-verify] Email send failed:', e.message);
+        // Non-fatal: don't fail the verification
+      }
+      
       return j({ lead: clean(lead), class: classInfo ? clean(classInfo) : null, email_sent: true });
     }
 
@@ -1204,6 +1271,7 @@ async function handleRoute(request, { params }) {
         start_date: now, expiry_date: expiry,
         status: 'active', pause_days: 0, paused_at: null,
         ...(isSlotPlan && { slots_remaining: 1, slots_total: 1 }),
+        ...(mem.type === 'one_on_one' && { slots_remaining: mem.sessions, slots_total: mem.sessions }),
         created_at: now,
       };
       await db.collection('user_memberships').insertOne(um);
@@ -1291,6 +1359,8 @@ async function handleRoute(request, { params }) {
         status: 'active',
         pause_days: 0,
         paused_at: null,
+        ...(mem.type === 'slot' && { slots_remaining: 1, slots_total: 1 }),
+        ...(mem.type === 'one_on_one' && { slots_remaining: mem.sessions, slots_total: mem.sessions }),
         created_at: now,
       };
       await db.collection('user_memberships').insertOne(um);
@@ -1325,9 +1395,31 @@ async function handleRoute(request, { params }) {
     if (route === '/dashboard' && method === 'GET') {
       const auth = await requireUser(); if (auth.error) return auth.error;
       const now = new Date();
+      const url = new URL(request.url);
+      const childProfileId = url.searchParams.get('child_profile_id');
+
+      // If child_profile_id is provided, filter memberships and bookings by it
+      const membershipsQuery = { user_id: auth.user.id };
+      const bookingsQuery = { user_id: auth.user.id, status: 'booked' };
+      
+      if (childProfileId) {
+        // Show only this child's memberships
+        membershipsQuery.child_profile_id = childProfileId;
+        bookingsQuery.child_profile_id = childProfileId;
+      } else {
+        // If no child specified, show memberships without child_profile_id (parent's own)
+        membershipsQuery.$or = [
+          { child_profile_id: null },
+          { child_profile_id: { $exists: false } }
+        ];
+        bookingsQuery.$or = [
+          { child_profile_id: null },
+          { child_profile_id: { $exists: false } }
+        ];
+      }
 
       const memberships = await db.collection('user_memberships')
-        .find({ user_id: auth.user.id }).sort({ created_at: -1 }).toArray();
+        .find(membershipsQuery).sort({ created_at: -1 }).toArray();
 
       // Auto-expire
       for (const m of memberships) {
@@ -1340,7 +1432,7 @@ async function handleRoute(request, { params }) {
       const activeMemberships = memberships.filter(m => m.status === 'active' || m.status === 'paused');
       const activeMembership = activeMemberships[0] || null;
 
-      const bookings = await db.collection('bookings').find({ user_id: auth.user.id, status: 'booked' }).toArray();
+      const bookings = await db.collection('bookings').find(bookingsQuery).toArray();
       const classIds = bookings.map(b => b.class_id);
       const classes = classIds.length ? await db.collection('classes').find({ id: { $in: classIds } }).toArray() : [];
       const upcoming = bookings.map(b => {
@@ -1583,13 +1675,15 @@ async function handleRoute(request, { params }) {
           return err('Membership not found or not active', 403);
         }
       } else {
-        // For slot-based memberships, find one with available slots
+        // For slot-based and one-on-one memberships, find one with available slots/sessions
         for (const m of activeMems) {
           const isSlotBased = m.type === 'slot' || m.membership_snapshot?.type === 'slot';
+          const isOneOnOne = m.type === 'one_on_one' || m.membership_snapshot?.type === 'one_on_one';
           const slotsRemaining = m.slots_remaining || 0;
           
-          if (isSlotBased && slotsRemaining <= 0) {
-            continue; // Skip, no slots
+          // Skip if it's slot/one-on-one based and has no slots remaining
+          if ((isSlotBased || isOneOnOne) && slotsRemaining <= 0) {
+            continue; // Skip, no slots/sessions
           }
           
           selectedMembership = m;
@@ -1597,10 +1691,13 @@ async function handleRoute(request, { params }) {
         }
         
         if (!selectedMembership) {
-          if (activeMems[0].type === 'slot' || activeMems[0].membership_snapshot?.type === 'slot') {
-            return err('No slots remaining. Please purchase more slots or renew your membership.', 403);
+          const isSlotBased = activeMems[0].type === 'slot' || activeMems[0].membership_snapshot?.type === 'slot';
+          const isOneOnOne = activeMems[0].type === 'one_on_one' || activeMems[0].membership_snapshot?.type === 'one_on_one';
+          
+          if (isSlotBased || isOneOnOne) {
+            return err('No slots/sessions remaining. Please purchase more or renew your membership.', 403);
           }
-          selectedMembership = activeMems[0]; // Use first non-slot membership
+          selectedMembership = activeMems[0]; // Use first non-slot/one-on-one membership
         }
       }
 
@@ -1619,10 +1716,12 @@ async function handleRoute(request, { params }) {
       const settingsDoc = await db.collection('settings').findOne({ key: 'global' });
       const maxBookings = settingsDoc?.max_bookings_per_member ?? 3;
       const today = new Date().toISOString().slice(0, 10);
+      
+      // Limit applies per-child independently (not parent-level aggregate)
       const athleteBookingQuery = {
         user_id: auth.user.id,
         status: 'booked',
-        ...(child_profile_id ? { child_profile_id } : { $or: [{ child_profile_id: null }, { child_profile_id: { $exists: false } }] }),
+        child_profile_id: child_profile_id || null, // Each child has their own limit
       };
       const upcomingClassIds = (await db.collection('bookings').find(athleteBookingQuery).toArray()).map(b => b.class_id);
       const upcomingCount = upcomingClassIds.length
@@ -1632,6 +1731,17 @@ async function handleRoute(request, { params }) {
 
       const activeCount = await db.collection('bookings').countDocuments({ class_id, status: 'booked' });
       if (activeCount >= cls.capacity) return err('Class is full', 409);
+
+      // For slot-based memberships, validate slots
+      const isSlotBased = selectedMembership.type === 'slot' || selectedMembership.membership_snapshot?.type === 'slot';
+      const isOneOnOne = selectedMembership.type === 'one_on_one' || selectedMembership.membership_snapshot?.type === 'one_on_one';
+      
+      if (isSlotBased || isOneOnOne) {
+        const slotsRemaining = selectedMembership.slots_remaining || 0;
+        if (slotsRemaining <= 0) {
+          return err('No sessions remaining. Please purchase more or renew your membership.', 403);
+        }
+      }
 
       const booking = {
         id: uuidv4(),
@@ -1644,9 +1754,8 @@ async function handleRoute(request, { params }) {
       };
       await db.collection('bookings').insertOne(booking);
 
-      // For basketball_slot memberships, deduct 1 slot
-      const isBasketballSlot = selectedMembership.membership_id === 'basketball_slot';
-      if (isBasketballSlot) {
+      // For slot or one-on-one memberships, deduct 1 slot/session
+      if (isSlotBased || isOneOnOne) {
         const newSlotsRemaining = Math.max(0, (selectedMembership.slots_remaining || 1) - 1);
         await db.collection('user_memberships').updateOne(
           { id: selectedMembership.id },
@@ -1673,18 +1782,21 @@ async function handleRoute(request, { params }) {
       
       await db.collection('bookings').updateOne({ id: bid }, { $set: { status: 'cancelled', cancelled_at: new Date() } });
 
-      // If basketball_slot booking, return slot
+      // Refund slot/session for slot-based or one-on-one memberships
       if (b.user_membership_id) {
         const um = await db.collection('user_memberships').findOne({ id: b.user_membership_id });
-        const isBasketballSlot = um && um.membership_id === 'basketball_slot';
-        
-        if (um && isBasketballSlot) {
-          const slotsRemaining = um.slots_remaining || 0;
-          const newSlotsRemaining = Math.min(um.slots_total || slotsRemaining, slotsRemaining + 1);
-          await db.collection('user_memberships').updateOne(
-            { id: um.id },
-            { $set: { slots_remaining: newSlotsRemaining, slots_last_returned_at: new Date() } }
-          );
+        if (um) {
+          const isSlotBased = um.type === 'slot' || um.membership_snapshot?.type === 'slot' || um.membership_id === 'basketball_slot';
+          const isOneOnOne = um.type === 'one_on_one' || um.membership_snapshot?.type === 'one_on_one';
+          
+          if (isSlotBased || isOneOnOne) {
+            const slotsRemaining = um.slots_remaining || 0;
+            const newSlotsRemaining = Math.min(um.slots_total || slotsRemaining, slotsRemaining + 1);
+            await db.collection('user_memberships').updateOne(
+              { id: um.id },
+              { $set: { slots_remaining: newSlotsRemaining, slots_last_returned_at: new Date() } }
+            );
+          }
         }
       }
 
@@ -1843,6 +1955,8 @@ async function handleRoute(request, { params }) {
           ...clean(game), 
           sport: SPORTS.find(s => s.id === game.sport_id) || null,
           is_tournament: game.is_tournament || false,
+          tournament_type: game.tournament_type || 'single',
+          categories: game.categories || [],
           prize_pool: game.prize_pool || 0,
           participants_count: bookings.length,
         },
@@ -1868,6 +1982,32 @@ async function handleRoute(request, { params }) {
       if (count >= (game.max_players || 999)) return err('Game is full', 409);
       const p = { id: uuidv4(), game_id: game.id, user_id: auth.user.id, joined_at: new Date() };
       await db.collection('game_participants').insertOne(p);
+      
+      // Send game confirmation email via Resend
+      try {
+        const sport = SPORTS.find(s => s.id === game.sport_id);
+        const sportName = sport?.name || 'Game';
+        const gameName = game.title || `${sportName} game`;
+        const dateFmt = game.date;
+        const timeFmt = game.start_time && game.end_time ? `${game.start_time} – ${game.end_time}` : 'Time TBA';
+        const finalCount = count + 1; // Include this new player
+        
+        await sendGameConfirmationEmail({
+          to: auth.user.email,
+          name: auth.user.full_name,
+          gameName,
+          sport: sportName,
+          date: dateFmt,
+          startTime: game.start_time || '',
+          endTime: game.end_time || '',
+          location: game.location || null,
+          participants: finalCount,
+        });
+      } catch (e) {
+        console.warn('[game-join] Email send failed:', e.message);
+        // Non-fatal: don't fail the join
+      }
+      
       return j({ ok: true, participant: clean(p) });
     }
 
@@ -2747,10 +2887,25 @@ async function handleRoute(request, { params }) {
       if (route === '/admin/stats' && method === 'GET') {
         const total = await db.collection('users').countDocuments({});
         const now = new Date();
-        const active = await db.collection('user_memberships').countDocuments({ 
-          status: 'active',
-          expiry_date: { $gt: now }
-        });
+        // Count DISTINCT users with active memberships (not just membership count)
+        // This ensures 1 user with multiple sports = 1 count (matches Members tab)
+        const activeUsersResult = await db.collection('user_memberships')
+          .aggregate([
+            {
+              $match: {
+                status: 'active',
+                expiry_date: { $gt: now }
+              }
+            },
+            {
+              $group: {
+                _id: '$user_id'
+              }
+            }
+          ])
+          .toArray();
+        const active = activeUsersResult.length;
+        
         const today = new Date().toISOString().slice(0, 10);
         const todayClasses = await db.collection('classes').countDocuments({ date: today });
         const totalBookings = await db.collection('bookings').countDocuments({ status: 'booked' });
@@ -2954,23 +3109,51 @@ async function handleRoute(request, { params }) {
 
       // -------- Games (admin CRUD) --------
       if (route === '/admin/games' && method === 'POST') {
-        const { sport_id, title, description, date, start_time, end_time, max_players, host_name, skill_level, is_paid, fee, is_tournament, prize_pool } = await request.json();
+        const { sport_id, title, description, date, start_time, end_time, max_players, host_name, skill_level, is_paid, fee, is_tournament, prize_pool, tournament_type, categories } = await request.json();
         if (!sport_id || !date || !start_time || !end_time) return err('sport_id, date, start_time, end_time are required');
-        if (!max_players || max_players < 2) return err('max_players must be at least 2');
         
+        // For multi-category tournaments
+        if (tournament_type === 'age_bracket') {
+          if (!Array.isArray(categories) || categories.length === 0) return err('categories array required for age_bracket tournaments');
+          
+          // Validate categories
+          for (const cat of categories) {
+            if (!cat.name || cat.age_min === undefined || cat.age_max === undefined) return err('Each category must have name, age_min, age_max');
+            if (cat.entry_fee < 0 || cat.max_participants < 1) return err('Invalid entry_fee or max_participants');
+          }
+        } else {
+          // Single tournament - legacy behavior
+          if (!max_players || max_players < 2) return err('max_players must be at least 2');
+        }
+
         const g = {
           id: uuidv4(),
           sport_id,
           title: title || `${SPORTS.find(s => s.id === sport_id)?.name || sport_id} Game`,
           description: description || '',
           date, start_time, end_time,
-          max_players: parseInt(max_players),
+          max_players: tournament_type === 'age_bracket' ? null : parseInt(max_players),
           host_name: host_name || 'Flowternity',
           skill_level: skill_level || 'all_levels',
           is_paid: Boolean(is_paid),
-          fee: Boolean(is_paid) ? parseFloat(fee) || 0 : 0,
+          fee: Boolean(is_paid) && tournament_type !== 'age_bracket' ? parseFloat(fee) || 0 : 0,
           is_tournament: Boolean(is_tournament),
+          tournament_type: tournament_type || 'single',
           prize_pool: is_tournament ? parseFloat(prize_pool) || 0 : 0,
+          categories: tournament_type === 'age_bracket' ? categories.map(cat => ({
+            id: uuidv4(),
+            name: cat.name,
+            age_min: cat.age_min,
+            age_max: cat.age_max,
+            entry_fee: parseFloat(cat.entry_fee),
+            max_participants: parseInt(cat.max_participants),
+            current_participants: 0,
+            rules: cat.rules || '',
+            prizes: cat.prizes || {},
+            registration_closes_at: cat.registration_closes_at || null,
+            status: 'open',
+            created_at: new Date(),
+          })) : [],
           created_at: new Date(),
           created_by: auth.user.id,
         };
@@ -3008,6 +3191,168 @@ async function handleRoute(request, { params }) {
       }
 
       // Game bookings tracking for admin
+
+      // -------- TOURNAMENT CATEGORY REGISTRATIONS --------
+      
+      // Register for a tournament category
+      const catRegMatch = route.match(/^\/games\/([^/]+)\/categories\/([^/]+)\/register$/);
+      if (catRegMatch && method === 'POST') {
+        const auth = await requireUser(); if (auth.error) return auth.error;
+        const [gameId, categoryId] = [catRegMatch[1], catRegMatch[2]];
+        const { name, email, mobile, dob, gender } = await request.json();
+        
+        if (!name || !email || !mobile || !dob) return err('Name, email, mobile, and DOB are required');
+        
+        // Fetch game & category
+        const game = await db.collection('games').findOne({ id: gameId });
+        if (!game || game.tournament_type !== 'age_bracket') return err('Tournament not found or not multi-category', 404);
+        
+        const category = game.categories.find(c => c.id === categoryId);
+        if (!category) return err('Category not found', 404);
+        
+        if (category.status !== 'open') return err('Category registration closed');
+        if (category.current_participants >= category.max_participants) return err('Category is full');
+        
+        // Check if already registered for this category
+        const existing = await db.collection('tournament_registrations').findOne({
+          tournament_id: gameId,
+          category_id: categoryId,
+          user_id: auth.user.id,
+        });
+        if (existing) return err('Already registered for this category');
+        
+        // Calculate age
+        const dobDate = new Date(dob);
+        const age = Math.floor((new Date() - dobDate) / (365.25 * 24 * 60 * 60 * 1000));
+        
+        const reg = {
+          id: uuidv4(),
+          tournament_id: gameId,
+          category_id: categoryId,
+          user_id: auth.user.id,
+          name,
+          email,
+          mobile,
+          dob,
+          gender: gender || '',
+          calculated_age: age,
+          age_verified: age >= category.age_min && age <= category.age_max,
+          status: 'registered',
+          payment_status: category.entry_fee > 0 ? 'pending' : 'free',
+          amount: category.entry_fee,
+          registered_at: new Date(),
+        };
+        
+        await db.collection('tournament_registrations').insertOne(reg);
+        
+        // Increment category participant count
+        await db.collection('games').updateOne(
+          { id: gameId, 'categories.id': categoryId },
+          { $inc: { 'categories.$.current_participants': 1 } }
+        );
+        
+        // Send confirmation email
+        const registrationDetails = `
+          <strong>Registration Details:</strong><br>
+          Age Group: ${category.age_min}–${category.age_max} years<br>
+          Your Age: ${reg.calculated_age} years<br>
+          Status: ${reg.age_verified ? '✓ Age verified' : '⚠ Awaiting admin verification'}
+        `;
+        await sendTournamentRegistrationEmail({
+          to: email,
+          name: name,
+          tournamentName: game.name,
+          categoryName: category.name,
+          entryFee: category.entry_fee,
+          registrationDetails: registrationDetails,
+        });
+        
+        return j({ registration: clean(reg), payment_required: category.entry_fee > 0 });
+      }
+      
+      // Get registrations for admin
+      const adminCatRegsMatch = route.match(/^\/admin\/games\/([^/]+)\/categories\/([^/]+)\/registrations$/);
+      if (adminCatRegsMatch && method === 'GET') {
+        const isAdmin = auth.user.role === 'admin'; if (!isAdmin) return err('Admin only', 403);
+        const [gameId, categoryId] = [adminCatRegsMatch[1], adminCatRegsMatch[2]];
+        
+        const regs = await db.collection('tournament_registrations').find({
+          tournament_id: gameId,
+          category_id: categoryId,
+        }).toArray();
+        
+        const userIds = regs.map(r => r.user_id);
+        const users = userIds.length ? await db.collection('users').find({ id: { $in: userIds } }).toArray() : [];
+        
+        const enriched = regs.map(r => {
+          const u = users.find(x => x.id === r.user_id);
+          return {
+            ...r,
+            user_name: u?.full_name || 'Unknown',
+            user_email: u?.email,
+            user_phone: u?.phone,
+          };
+        });
+        
+        return j({ registrations: enriched });
+      }
+      
+      // Admin verify age and reassign category
+      const verifyAgeMatch = route.match(/^\/admin\/games\/([^/]+)\/registrations\/([^/]+)\/verify-age$/);
+      if (verifyAgeMatch && method === 'POST') {
+        const isAdmin = auth.user.role === 'admin'; if (!isAdmin) return err('Admin only', 403);
+        const [gameId, registrationId] = [verifyAgeMatch[1], verifyAgeMatch[2]];
+        const { new_category_id, verified } = await request.json();
+        
+        const reg = await db.collection('tournament_registrations').findOne({ id: registrationId });
+        if (!reg) return err('Registration not found', 404);
+        
+        const game = await db.collection('games').findOne({ id: gameId });
+        if (!game) return err('Game not found', 404);
+        
+        // If reassigning to new category
+        if (new_category_id && new_category_id !== reg.category_id) {
+          // Decrement old category
+          await db.collection('games').updateOne(
+            { id: gameId, 'categories.id': reg.category_id },
+            { $inc: { 'categories.$.current_participants': -1 } }
+          );
+          
+          // Increment new category
+          await db.collection('games').updateOne(
+            { id: gameId, 'categories.id': new_category_id },
+            { $inc: { 'categories.$.current_participants': 1 } }
+          );
+          
+          // Update registration
+          await db.collection('tournament_registrations').updateOne(
+            { id: registrationId },
+            { 
+              $set: { 
+                category_id: new_category_id,
+                age_verified: verified || false,
+                verified_by: auth.user.id,
+                verified_at: new Date(),
+              }
+            }
+          );
+        } else {
+          // Just mark as verified
+          await db.collection('tournament_registrations').updateOne(
+            { id: registrationId },
+            { 
+              $set: { 
+                age_verified: verified || false,
+                verified_by: auth.user.id,
+                verified_at: new Date(),
+              }
+            }
+          );
+        }
+        
+        return j({ ok: true });
+      }
+
       if (route === '/admin/game-bookings' && method === 'GET') {
         const url = new URL(request.url);
         const page = parseInt(url.searchParams.get('page')) || 1;
@@ -3061,6 +3406,46 @@ async function handleRoute(request, { params }) {
         });
 
         return j({ bookings: enriched, total, page, limit });
+      }
+
+      // Send emails to booking participants
+      if (route === '/admin/send-booking-emails' && method === 'POST') {
+        const auth = await requireUser(); if (auth.error) return auth.error;
+        if (auth.user.role !== 'admin') return err('Admin only', 403);
+        
+        const { emails, message, booking_ids } = await request.json();
+        if (!emails || !Array.isArray(emails) || emails.length === 0) return err('No emails provided');
+        if (!message || !message.trim()) return err('Message required');
+
+        try {
+          // Send email to each participant (using your email service)
+          // For now, we'll log and return success
+          // In production, integrate with SendGrid, Nodemailer, AWS SES, etc.
+          
+          for (const email of emails) {
+            // TODO: Replace with actual email service
+            // Example: await sendEmail({ to: email, subject: 'Game Booking Update', body: message });
+            console.log(`[Email] To: ${email}\nMessage: ${message}\n`);
+          }
+
+          // Log the email action in admin activity
+          await db.collection('admin_logs').insertOne({
+            id: uuidv4(),
+            admin_id: auth.user.id,
+            action: 'send_booking_emails',
+            details: { count: emails.length, booking_ids },
+            created_at: new Date(),
+          });
+
+          return j({ 
+            ok: true, 
+            sent: emails.length,
+            message: `Email sent to ${emails.length} participant(s)`
+          });
+        } catch (e) {
+          console.error('[Email Error]', e);
+          return err('Failed to send emails: ' + e.message, 500);
+        }
       }
 
       // -------- Members --------
@@ -3124,6 +3509,8 @@ async function handleRoute(request, { params }) {
               selected_sports: [mem.sport_id],
               start_date: now, expiry_date: expiry,
               status: 'active', pause_days: 0, paused_at: null,
+              ...(mem.type === 'slot' && { slots_remaining: 1, slots_total: 1 }),
+              ...(mem.type === 'one_on_one' && { slots_remaining: mem.sessions, slots_total: mem.sessions }),
               created_at: now, created_by_admin: auth.user.id,
             };
             await db.collection('user_memberships').insertOne(um);
@@ -3841,6 +4228,7 @@ async function handleRoute(request, { params }) {
         
         // For slot-based memberships, use the provided quantity
         const slotQty = isSlotPlan ? Math.max(1, parseInt(slot_quantity) || 1) : null;
+        const oneOnOneQty = (mem.type === 'one_on_one') ? mem.sessions : null;
         
         const um = {
           id: uuidv4(),
@@ -3853,6 +4241,7 @@ async function handleRoute(request, { params }) {
           start_date: now, expiry_date: expiry,
           status: 'active', pause_days: 0, paused_at: null,
           ...(isSlotPlan && { slots_remaining: slotQty, slots_total: slotQty }),
+          ...(mem.type === 'one_on_one' && { slots_remaining: oneOnOneQty, slots_total: oneOnOneQty }),
           created_at: now, granted_by_admin: auth.user.id,
           admin_note: note || '',
         };

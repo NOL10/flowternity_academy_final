@@ -519,7 +519,12 @@ function FeaturedCarousel({ games }) {
                       </div>
                       <div className="bg-slate-800 rounded-lg p-3">
                         <p className="text-xs text-slate-400 uppercase tracking-wider">Price</p>
-                        <p className="text-sm font-bold text-white mt-1">{game.is_paid ? `₹${game.fee}` : 'Free'}</p>
+                        <p className="text-sm font-bold text-white mt-1">
+                          {game.tournament_type === 'age_bracket' && game.categories?.length > 0
+                            ? `₹${Math.min(...game.categories.map(c => c.entry_fee)).toLocaleString('en-IN')}+`
+                            : game.is_paid ? `₹${game.fee}` : 'Free'
+                          }
+                        </p>
                       </div>
                     </div>
 
@@ -813,8 +818,11 @@ function PickupGameCard({ game, onJoin, onLeave, isBusy, isParent }) {
 
         {/* Price badge */}
         <div className="absolute top-4 right-4">
-          <Badge className={game.is_paid ? 'bg-amber-500/90 text-white font-black' : 'bg-green-500/90 text-white font-black'}>
-            {game.is_paid ? `₹${game.fee}` : 'Free'}
+          <Badge className={game.is_paid || game.tournament_type === 'age_bracket' ? 'bg-amber-500/90 text-white font-black' : 'bg-green-500/90 text-white font-black'}>
+            {game.tournament_type === 'age_bracket' && game.categories?.length > 0
+              ? `₹${Math.min(...game.categories.map(c => c.entry_fee)).toLocaleString('en-IN')}+`
+              : game.is_paid ? `₹${game.fee}` : 'Free'
+            }
           </Badge>
         </div>
       </div>

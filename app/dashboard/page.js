@@ -12,32 +12,31 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { useAuth } from '@/app/providers';
-import { SPORTS, MEMBERSHIPS, LEADERSHIP_METRICS } from '@/lib/flowternity/config';
-import { Calendar, Clock, User, Pause, PlayCircle, RefreshCw, CreditCard, Trophy, Sparkles, X, TrendingUp, CheckCircle2, XCircle } from 'lucide-react';
-import { LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
+import { SPORTS, MEMBERSHIPS, LEADERSHIP_METRICS, KIDS_LEVELS } from '@/lib/flowternity/config';
+import { Calendar, Clock, User, Pause, PlayCircle, RefreshCw, CreditCard, Trophy, Sparkles, X, TrendingUp, ChevronDown, ChevronUp, LogOut, Settings, Medal, Target, Zap, Download, Bell, AlertCircle } from 'lucide-react';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 export default function DashboardPage() {
   const router = useRouter();
   const { user, loading } = useAuth();
   const [data, setData] = useState(null);
-  const [pauseOpen, setPauseOpen] = useState(false);
-  const [pauseTarget, setPauseTarget] = useState(null); // which membership to pause
-  const [pauseDays, setPauseDays] = useState(30);
   const [loadingData, setLoadingData] = useState(true);
   const [children, setChildren] = useState([]);
   const [activeChild, setActiveChild] = useState(null);
+  const [activeSport, setActiveSport] = useState('basketball');
+  const [performanceData, setPerformanceData] = useState(null);
+  const [leadershipData, setLeadershipData] = useState(null);
+  const [expandedSections, setExpandedSections] = useState({
+    performance: true,
+    leadership: false,
+    activity: true, // Activity always open
+  });
+  const [dismissedAnnouncements, setDismissedAnnouncements] = useState([]);
 
-  const load = async () => {
-    setLoadingData(true);
-    const res = await fetch('/api/dashboard', { credentials: 'include' });
-    if (res.ok) setData(await res.json());
-    setLoadingData(false);
-  };
-
+  // Load children list on mount
   useEffect(() => {
     if (!loading && !user) router.push('/auth?mode=login&next=/dashboard');
     if (user) {
-      load();
       fetch('/api/children', { credentials: 'include' })
         .then(r => r.json())
         .then(d => {
@@ -48,70 +47,162 @@ export default function DashboardPage() {
     }
   }, [user, loading, router]);
 
-  const cancelBooking = async (id) => {
-    const res = await fetch(`/api/bookings/${id}/cancel`, { method: 'POST', credentials: 'include' });
-    if (res.ok) { toast.success('Booking cancelled'); load(); } else toast.error('Failed');
+  // Fetch dashboard data for active child
+  useEffect(() => {
+    if (!user) return;
+    setLoadingData(true);
+    const childId = activeChild?.id;
+    const queryParam = childId ? `?child_profile_id=${childId}` : '';
+    
+    // Fetch child-specific dashboard data
+    fetch(`/api/dashboard${queryParam}`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => {
+        setData(d);
+        setLoadingData(false);
+      })
+      .catch(() => {
+        setData(null);
+        setLoadingData(false);
+      });
+  }, [user, activeChild]);
+
+  // Fetch performance data when sport or active child changes
+  useEffect(() => {
+    if (!user) return;
+    const subject_id = activeChild?.id || user.id;
+    fetch(`/api/athletes/${subject_id}/performance?history=true`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => {
+        setPerformanceData(d);
+        if (!activeSport && d.sports?.length > 0) {
+          setActiveSport(d.sports[0].sport_id);
+        }
+      });
+
+    fetch(`/api/leadership-metrics?user_id=${subject_id}&sport_id=${activeSport}`, { credentials: 'include' })
+      .then(r => r.json())
+      .then(d => setLeadershipData(d))
+      .catch(() => setLeadershipData(null));
+  }, [user, activeChild, activeSport]);
+
+  // Export performance data
+  const exportPerformance = () => {
+    if (!performanceData) return;
+    const sport = performanceData.sports.find(s => s.sport_id === activeSport);
+    if (!sport) return;
+
+    const csvContent = [
+      ['Performance Report', activeSport.toUpperCase()],
+      ['Generated', new Date().toLocaleDateString('en-IN')],
+      [],
+      ['Metric', 'Score', 'Max'],
+      ...Object.entries(sport.scores || {}).map(([key, val]) => [key, val, 10]),
+      [],
+      ['Monthly Data'],
+      ['Month', 'Average Score'],
+      ...(performanceData.monthly_history?.[activeSport] || []).map(m => [m.month, (Object.values(m.metrics).reduce((a, b) => a + b, 0) / Object.keys(m.metrics).length).toFixed(1)]),
+    ].map(row => row.join(',')).join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `performance-${activeSport}-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+    toast.success('Performance data exported');
   };
 
-  const pauseMembership = async () => {
-    if (!pauseTarget) return;
-    const res = await fetch('/api/memberships/pause', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-      body: JSON.stringify({ days: pauseDays, membership_id: pauseTarget.id }),
-    });
-    const d = await res.json();
-    if (res.ok) { toast.success('Membership paused'); setPauseOpen(false); load(); } else toast.error(d.error);
-  };
-
-  const resume = async (mid) => {
-    const res = await fetch('/api/memberships/resume', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
-      body: JSON.stringify({ membership_id: mid }),
-    });
-    if (res.ok) { toast.success('Membership resumed'); load(); } else toast.error('Failed');
-  };
-
-  if (loading || loadingData) return (
-    <div className="min-h-screen bg-background"><SiteNav /><div className="container py-20"><div className="animate-pulse space-y-4"><div className="h-8 bg-secondary w-1/3 rounded" /><div className="h-40 bg-secondary rounded-2xl" /></div></div></div>
-  );
-
-  const activeMemberships = (data?.memberships || [])
-    .filter(m => (m.status === 'active' || m.status === 'paused') && new Date(m.expiry_date) > new Date())
-    .filter(m => !activeChild || !m.child_profile_id || m.child_profile_id === activeChild.id);
-
-  return (
-    <div className="min-h-screen bg-background pb-20 md:pb-0">
-      <SiteNav />
-      <div className="container px-4 py-6 md:py-14 max-w-7xl mx-auto">
-        {/* Mobile-first header */}
-        <div className="mb-6 md:mb-8">
-          <p className="text-xs md:text-sm uppercase tracking-widest text-muted-foreground">Dashboard</p>
-          <h1 className="font-display font-black text-3xl md:text-5xl mt-1 leading-tight">
-            Hello, {user?.full_name?.split(' ')[0]} 
-            <span className="inline-block ml-1"><Sparkles className="w-6 h-6 md:w-8 md:h-8 inline text-accent" /></span>
-          </h1>
-          {/* Mobile CTA */}
-          <div className="mt-4 md:hidden">
-            <Link href="/classes">
-              <Button className="w-full bg-primary text-primary-foreground hover:bg-primary/90 h-12 text-base font-semibold">
-                <Calendar className="w-5 h-5 mr-2" /> Book a Class
-              </Button>
-            </Link>
+  if (loading || loadingData) {
+    return (
+      <div className="min-h-screen bg-background">
+        <SiteNav />
+        <div className="container py-20">
+          <div className="animate-pulse space-y-8">
+            <div className="h-40 bg-secondary rounded-3xl" />
+            <div className="grid md:grid-cols-4 gap-4">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="h-24 bg-secondary rounded-2xl" />
+              ))}
+            </div>
           </div>
         </div>
+      </div>
+    );
+  }
 
-        {/* Athlete switcher — shown when parent has multiple athletes */}
+  const toggleSection = (section) => {
+    setExpandedSections(prev => ({ ...prev, [section]: !prev[section] }));
+  };
+
+  const current_perf = performanceData?.sports?.find(s => s.sport_id === activeSport);
+  const current_level = current_perf?.level || 1;
+  const level_info = KIDS_LEVELS.find(l => l.level === current_level);
+  
+  // Active memberships with proper validity
+  const activeMemberships = (data?.memberships || [])
+    .filter(m => m.status === 'active' && new Date(m.expiry_date) > new Date());
+
+  // Filter announcements and allow dismissal
+  const visibleAnnouncements = (data?.announcements || []).filter(a => !dismissedAnnouncements.includes(a.id));
+
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-background via-background to-secondary/5 pb-12">
+      <SiteNav />
+      <div className="container px-4 py-8 max-w-6xl mx-auto">
+        
+        {/* ===== STICKY HEADER ===== */}
+        <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4 animate-fade-in">
+          <div>
+            <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Welcome back</p>
+            <h1 className="font-display font-black text-4xl md:text-5xl">
+              Hey, {user?.full_name?.split(' ')[0]}! <span className="inline-block animate-bounce" style={{animationDelay: '0.2s'}}>👋</span>
+            </h1>
+            <p className="text-muted-foreground mt-2">Every session makes you stronger.</p>
+          </div>
+          <button 
+            onClick={() => fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).then(() => router.push('/auth'))}
+            className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-all duration-300 hover:scale-105"
+          >
+            <LogOut className="w-4 h-4" /> Logout
+          </button>
+        </div>
+
+        {/* ===== ANNOUNCEMENTS BANNER ===== */}
+        {visibleAnnouncements.length > 0 && (
+          <div className="mb-8 space-y-3 animate-slide-down">
+            {visibleAnnouncements.map(a => (
+              <Card key={a.id} className="p-4 md:p-5 rounded-2xl bg-gradient-to-r from-blue-50 to-blue-100/50 border-l-4 border-l-blue-500 flex items-start justify-between gap-4 shadow-sm hover:shadow-md transition-shadow">
+                <div className="flex items-start gap-3 flex-1">
+                  <Bell className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <h4 className="font-semibold text-blue-900">{a.title}</h4>
+                    <p className="text-sm text-blue-800 mt-1">{a.message}</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setDismissedAnnouncements([...dismissedAnnouncements, a.id])}
+                  className="flex-shrink-0 text-blue-400 hover:text-blue-600 transition"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {/* ===== SPORT SELECTOR ===== */}
         {children.length > 1 && (
-          <div className="flex flex-wrap gap-2 mb-6">
-            <span className="text-sm text-muted-foreground self-center mr-1">Viewing:</span>
+          <div className="mb-8 flex flex-wrap gap-2 animate-fade-in" style={{animationDelay: '0.1s'}}>
+            <span className="text-sm text-muted-foreground self-center">Athlete:</span>
             {children.map(c => (
               <button
                 key={c.id}
                 onClick={() => setActiveChild(c)}
-                className={`px-4 py-2 rounded-full text-sm font-semibold border transition ${
+                className={`px-4 py-2 rounded-full text-sm font-semibold transition-all duration-300 transform hover:scale-105 ${
                   activeChild?.id === c.id
-                    ? 'bg-primary text-primary-foreground border-primary'
-                    : 'border-border text-muted-foreground hover:border-primary hover:text-foreground'
+                    ? 'bg-primary text-primary-foreground shadow-lg'
+                    : 'border border-border hover:border-primary'
                 }`}
               >
                 {c.athlete_name || c.child_name}
@@ -120,723 +211,654 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* All active memberships */}
-        {activeMemberships.length === 0 ? (
-          <Card className="p-6 md:p-8 rounded-2xl md:rounded-3xl bg-accent border-0">
-            <h2 className="font-display font-black text-2xl md:text-3xl text-black">No active membership.</h2>
-            <p className="text-black/70 mt-2 text-sm md:text-base">Pick a plan to start booking classes.</p>
-            <Link href="/memberships"><Button className="mt-4 w-full md:w-auto bg-black text-white hover:bg-black/90 h-12 md:h-12">Choose Plan</Button></Link>
-          </Card>
-        ) : (
-          <div className={`grid gap-4 ${activeMemberships.length > 1 ? 'md:grid-cols-2' : ''}`}>
-            {activeMemberships.map(m => {
-              const sport = SPORTS.find(s => s.id === m.sport_id || s.id === m.membership_snapshot?.sport_id);
-              const daysLeft = Math.max(0, Math.ceil((new Date(m.expiry_date) - new Date()) / (1000 * 60 * 60 * 24)));
-              const totalDays = (m.membership_snapshot?.duration_months || 1) * 30;
-              const pct = Math.min(100, Math.max(0, ((totalDays - daysLeft) / totalDays) * 100));
-              const isExpiringSoon = daysLeft > 0 && daysLeft <= 7;
-              const livePlan = MEMBERSHIPS.find(p => p.id === m.membership_id);
-              const canPause = (m.membership_snapshot?.pause_days ?? livePlan?.pause_days ?? 0) > 0;
-              return (
-                <Card key={m.id} className="p-5 md:p-8 rounded-2xl md:rounded-3xl bg-primary text-primary-foreground border-0 relative overflow-hidden">
-                  <div className="absolute -top-20 -right-20 w-64 h-64 rounded-full bg-accent/20 blur-3xl" />
-                  {isExpiringSoon && (
-                    <div className="absolute top-3 right-3 md:top-4 md:right-4">
-                      <Badge className="bg-orange-500 text-white hover:bg-orange-600 animate-pulse text-xs">
-                        <Clock className="w-3 h-3 mr-1" /> {daysLeft}d left
-                      </Badge>
-                    </div>
-                  )}
-                  <div className="relative grid md:grid-cols-3 gap-4">
-                    <div className="md:col-span-2">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <Trophy className="w-4 h-4 md:w-5 md:h-5 text-accent" />
-                        <span className="text-xs md:text-sm uppercase tracking-widest text-white/60">{sport?.name || m.membership_snapshot?.name}</span>
-                        <Badge className={`${m.status === 'active' ? 'bg-accent text-black' : 'bg-white/20 text-white'} hover:bg-accent text-xs`}>{m.status}</Badge>
-                      </div>
-                      <h2 className="font-display font-black text-2xl md:text-4xl mt-2">
-                        {m.membership_snapshot?.type === 'slot' ? (
-                          <>Basketball Single Classes</>
-                        ) : (
-                          <>{m.membership_snapshot?.duration_months} {m.membership_snapshot?.duration_months === 1 ? 'Month' : 'Months'}</>
-                        )}
-                      </h2>
-                      {m.membership_snapshot?.type === 'slot' && (
-                        <p className="text-white/80 mt-2 text-sm md:text-base font-semibold">
-                          <span className="text-accent text-lg">{m.slots_remaining || 0}</span>
-                          <span className="text-white/60"> / {m.slots_total || 0} slots remaining</span>
-                        </p>
-                      )}
-                      <p className="text-white/60 mt-1 text-xs md:text-sm">Expires {new Date(m.expiry_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })}</p>
-                      <div className="mt-4">
-                        <div className="flex justify-between text-xs text-white/60 mb-1"><span>{daysLeft} days remaining</span><span>{Math.round(pct)}%</span></div>
-                        <div className="h-1.5 bg-white/10 rounded-full overflow-hidden"><div className={`h-full ${isExpiringSoon ? 'bg-orange-500' : 'bg-accent'}`} style={{ width: `${pct}%` }} /></div>
-                      </div>
-                    </div>
-                    <div className="flex flex-row md:flex-col gap-2">
-                      {m.status === 'active' && canPause && (
-                        <Button onClick={() => { setPauseTarget(m); setPauseOpen(true); }} variant="outline" className="flex-1 md:flex-none bg-white/5 border-white/20 text-white hover:bg-white/10 hover:text-white h-11 text-sm font-semibold">
-                          <Pause className="w-4 h-4 mr-1.5" /> Pause
-                        </Button>
-                      )}
-                      {m.status === 'paused' && (
-                        <Button onClick={() => resume(m.id)} className="flex-1 md:flex-none bg-accent text-black hover:bg-accent/90 h-11 text-sm font-semibold">
-                          <PlayCircle className="w-4 h-4 mr-1.5" /> Resume
-                        </Button>
-                      )}
-                      <Link href={`/memberships`} className="flex-1 md:flex-none">
-                        <Button variant="outline" className="w-full bg-white/5 border-white/20 text-white hover:bg-white/10 hover:text-white h-11 text-sm font-semibold">
-                          <RefreshCw className="w-4 h-4 mr-1.5" /> Renew
-                        </Button>
-                      </Link>
-                    </div>
+        {/* ===== HERO SECTION: ATHLETE PROGRESS ===== */}
+        <Card className="mb-8 p-8 md:p-12 rounded-3xl bg-gradient-to-br from-primary via-primary to-primary/90 text-primary-foreground border-0 relative overflow-hidden shadow-2xl animate-fade-in" style={{animationDelay: '0.2s'}}>
+          <div className="absolute -top-20 -right-20 w-80 h-80 rounded-full bg-accent/10 blur-3xl animate-pulse" />
+          <div className="absolute -bottom-20 -left-20 w-60 h-60 rounded-full bg-white/5 blur-3xl" />
+          
+          <div className="relative grid md:grid-cols-2 gap-8 items-center">
+            <div className="animate-slide-up">
+              <p className="text-primary-foreground/60 text-sm uppercase tracking-widest mb-2">Current Level</p>
+              <div className="flex items-baseline gap-4 mb-2">
+                <span className="font-display font-black text-7xl animate-pulse">{current_level}</span>
+                <span className="font-display font-bold text-3xl">{level_info?.name}</span>
+              </div>
+              <p className="text-primary-foreground/80 italic mb-6">&ldquo;{level_info?.quote}&rdquo;</p>
+              
+              {/* Level progress dots */}
+              <div className="flex gap-2 flex-wrap">
+                {KIDS_LEVELS.map((l, idx) => (
+                  <div
+                    key={l.level}
+                    className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-500 transform hover:scale-125 ${
+                      l.level < current_level
+                        ? 'bg-accent text-black'
+                        : l.level === current_level
+                        ? 'bg-white text-primary ring-2 ring-accent scale-110'
+                        : 'bg-white/20 text-white/60'
+                    }`}
+                    title={l.name}
+                    style={{transitionDelay: `${idx * 50}ms`}}
+                  >
+                    {l.level}
                   </div>
-                </Card>
-              );
-            })}
+                ))}
+              </div>
+
+            </div>
+
+            {/* Performance Score */}
+            {current_perf && (
+              <div className="flex flex-col items-center md:items-end justify-center animate-slide-up" style={{animationDelay: '0.1s'}}>
+                <p className="text-primary-foreground/60 text-sm uppercase tracking-widest mb-4">Performance Score</p>
+                <div className="font-display font-black text-7xl text-accent mb-2 animate-bounce">
+                  {(() => {
+                    const vals = Object.values(current_perf.scores || {});
+                    return vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : '—';
+                  })()}
+                </div>
+                <p className="text-primary-foreground/80 text-sm">/10</p>
+              </div>
+            )}
+          </div>
+        </Card>
+
+        {/* ===== QUICK STATS ROW ===== */}
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
+          <StatsCard icon={Medal} label="Current Level" value={current_level} color="blue" delay={0} />
+          <StatsCard 
+            icon={Zap} 
+            label="Overall Score"
+            value={current_perf ? ((Object.values(current_perf.scores || {}).reduce((a, b) => a + b, 0) / Object.keys(current_perf.scores || {}).length).toFixed(1)) : '—'}
+            color="yellow"
+            delay={1}
+          />
+          <StatsCard 
+            icon={Trophy} 
+            label="Assessments"
+            value={performanceData?.sports?.reduce((sum, s) => sum + Object.keys(s.scores || {}).length, 0) || 0}
+            color="green"
+            delay={2}
+          />
+        </div>
+
+        {/* ===== MINI SPORT CARDS ===== */}
+        {performanceData?.sports && performanceData.sports.length > 1 && (
+          <div className="mb-8 animate-fade-in" style={{animationDelay: '0.3s'}}>
+            <h3 className="font-display font-bold text-lg mb-4">Your Sports</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              {performanceData.sports.map((sport, idx) => {
+                const isActive = sport.sport_id === activeSport;
+                const score = Object.values(sport.scores || {}).length > 0 
+                  ? (Object.values(sport.scores).reduce((a, b) => a + b, 0) / Object.keys(sport.scores).length).toFixed(1)
+                  : 0;
+                const sessionsThisMonth = (performanceData.monthly_history?.[sport.sport_id] || []).length > 0 ? 
+                  Object.values(performanceData.monthly_history[sport.sport_id][performanceData.monthly_history[sport.sport_id].length - 1]?.metrics || {}).filter(v => v > 0).length : 0;
+
+                return (
+                  <button
+                    key={sport.sport_id}
+                    onClick={() => setActiveSport(sport.sport_id)}
+                    className={`p-4 rounded-2xl border-2 transition-all duration-300 transform hover:scale-105 animate-slide-up ${
+                      isActive
+                        ? 'bg-gradient-to-br from-primary to-primary/80 border-primary text-primary-foreground shadow-lg'
+                        : 'bg-gradient-to-br from-secondary/50 to-secondary/30 border-border hover:border-primary/50'
+                    }`}
+                    style={{animationDelay: `${idx * 50}ms`}}
+                  >
+                    <div className="text-left">
+                      <p className="text-xs uppercase tracking-widest opacity-70 mb-2">{sport.sport_name}</p>
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs">Level</span>
+                          <span className="font-bold">{sport.level}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs">Score</span>
+                          <span className="font-bold">{score}/10</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs">Sessions</span>
+                          <span className="font-bold">{sessionsThisMonth}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
 
-        {/* Jersey info if available */}
-        <div className="mt-6 md:mt-8">
-          <JerseySection user={user} onDataUpdate={load} />
+        {/* ===== MEMBERSHIP VALIDITY CARDS (WITH PROGRESS RINGS) ===== */}
+        {activeMemberships.length > 0 && (
+          <div className="mb-8 animate-fade-in">
+            <h3 className="font-display font-bold text-2xl mb-4">Active Memberships</h3>
+            <div className="grid md:grid-cols-3 gap-4">
+              {activeMemberships.map((m, idx) => {
+                const daysLeft = Math.max(0, Math.ceil((new Date(m.expiry_date) - new Date()) / (1000 * 60 * 60 * 24)));
+                const totalDays = (m.membership_snapshot?.duration_months || 1) * 30;
+                const pct = Math.min(100, Math.max(0, ((totalDays - daysLeft) / totalDays) * 100));
+                const isExpiringSoon = daysLeft > 0 && daysLeft <= 7;
+                const circumference = 2 * Math.PI * 45;
+                const offset = circumference - (pct / 100) * circumference;
+
+                return (
+                  <Card 
+                    key={m.id} 
+                    className="p-6 rounded-2xl bg-gradient-to-br from-primary/10 to-primary/5 border border-primary/20 hover:border-primary/40 transition-all duration-300 hover:shadow-lg hover:scale-105 transform md:col-span-3"
+                    style={{animationDelay: `${idx * 50}ms`}}
+                  >
+                    <div className="flex items-start justify-between mb-4">
+                      <div>
+                        <p className="text-xs uppercase tracking-widest text-muted-foreground">Membership</p>
+                        <h4 className="font-display font-bold text-lg mt-1">
+                          {m.membership_snapshot?.name}
+                          {m.membership_snapshot?.type === 'one_on_one' && m.membership_snapshot?.sessions && (
+                            <span className="text-sm font-normal text-muted-foreground"> · {m.membership_snapshot.sessions} sessions</span>
+                          )}
+                        </h4>
+                      </div>
+                      {isExpiringSoon && (
+                        <Badge className="bg-orange-500 text-white animate-pulse">
+                          <AlertCircle className="w-3 h-3 mr-1" /> {daysLeft}d
+                        </Badge>
+                      )}
+                      {!isExpiringSoon && <Badge className="bg-green-500 text-white">Active</Badge>}
+                    </div>
+
+                    <div className="flex items-center justify-between gap-4">
+                      {/* Progress Ring */}
+                      <div className="flex-shrink-0 flex items-center justify-center">
+                        <div className="relative w-24 h-24">
+                          <svg className="w-24 h-24 absolute inset-0" viewBox="0 0 100 100" style={{transform: 'rotateZ(-90deg)'}}>
+                            <circle cx="50" cy="50" r="45" fill="none" stroke="#e5e7eb" strokeWidth="3" />
+                            <circle
+                              cx="50"
+                              cy="50"
+                              r="45"
+                              fill="none"
+                              stroke={isExpiringSoon ? '#f97316' : '#3b82f6'}
+                              strokeWidth="3"
+                              strokeDasharray={circumference}
+                              strokeDashoffset={offset}
+                              className="transition-all duration-1000"
+                              strokeLinecap="round"
+                            />
+                          </svg>
+                          <div className="absolute inset-0 flex items-center justify-center">
+                            <span className="font-bold text-lg">{Math.round(pct)}%</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Details */}
+                      <div className="flex-1">
+                        <div className="mb-3">
+                          <div className="flex justify-between text-sm mb-1">
+                            <span className="text-muted-foreground">Expires</span>
+                            <span className="font-semibold">{new Date(m.expiry_date).toLocaleDateString('en-IN')}</span>
+                          </div>
+                          <div className="flex justify-between text-sm">
+                            <span className="text-muted-foreground">Days Left</span>
+                            <span className={`font-bold ${isExpiringSoon ? 'text-orange-600' : 'text-green-600'}`}>{daysLeft} days</span>
+                          </div>
+                        </div>
+
+                        {m.membership_snapshot?.type === 'slot' && m.slots_remaining && (
+                          <Badge variant="outline" className="text-xs">
+                            {m.slots_remaining}/{m.slots_total} slots
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* No Active Membership Card */}
+        {activeMemberships.length === 0 && (
+          <div className="mb-8 p-8 bg-gradient-to-br from-orange-50 to-orange-100/50 rounded-3xl border-2 border-orange-300 animate-fade-in">
+            <div className="flex items-center gap-4">
+              <AlertCircle className="w-8 h-8 text-orange-600 flex-shrink-0" />
+              <div className="flex-1">
+                <h3 className="font-display font-bold text-lg text-orange-900">No Active Membership</h3>
+                <p className="text-sm text-orange-800 mt-1">Join us today to start your athletic journey and unlock exclusive benefits.</p>
+              </div>
+              <Link href="/memberships">
+                <Button className="bg-orange-600 hover:bg-orange-700 text-white flex-shrink-0">Browse Memberships</Button>
+              </Link>
+            </div>
+          </div>
+        )}
+
+        {/* ===== WEEKLY STATS ===== */}
+        <div className="mb-8 grid md:grid-cols-2 gap-4 animate-fade-in" style={{animationDelay: '0.1s'}}>
+          {/* Weekly Sessions */}
+          <Card className="p-6 rounded-2xl bg-gradient-to-br from-blue-50 to-blue-100/30 border border-blue-200 hover:shadow-lg transition-all hover:scale-105 transform">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <p className="text-xs uppercase tracking-widest text-blue-600 font-semibold">This Week</p>
+                <h3 className="font-display font-bold text-3xl text-blue-900 mt-1">{(data?.upcoming_classes || []).filter(c => {
+                  const classDate = new Date(c.class.date);
+                  const today = new Date();
+                  const weekStart = new Date(today.setDate(today.getDate() - today.getDay()));
+                  const weekEnd = new Date(weekStart);
+                  weekEnd.setDate(weekEnd.getDate() + 7);
+                  return classDate >= weekStart && classDate < weekEnd;
+                }).length}</h3>
+              </div>
+              <div className="w-12 h-12 rounded-xl bg-blue-200/50 flex items-center justify-center">
+                <Calendar className="w-6 h-6 text-blue-600" />
+              </div>
+            </div>
+            <p className="text-sm text-blue-700">Classes scheduled</p>
+          </Card>
+
+          {/* Weekly Average Score */}
+          <Card className="p-6 rounded-2xl bg-gradient-to-br from-green-50 to-green-100/30 border border-green-200 hover:shadow-lg transition-all hover:scale-105 transform">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <p className="text-xs uppercase tracking-widest text-green-600 font-semibold">Performance</p>
+                <h3 className="font-display font-bold text-3xl text-green-900 mt-1">{current_perf ? ((Object.values(current_perf.scores || {}).reduce((a, b) => a + b, 0) / Object.keys(current_perf.scores || {}).length).toFixed(1)) : '—'}</h3>
+              </div>
+              <div className="w-12 h-12 rounded-xl bg-green-200/50 flex items-center justify-center">
+                <Zap className="w-6 h-6 text-green-600" />
+              </div>
+            </div>
+            <p className="text-sm text-green-700">Average score /10</p>
+          </Card>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-4 md:gap-6 mt-6 md:mt-8">
-          {/* Upcoming classes */}
-          <div className="md:col-span-2">
-            <div className="flex items-center justify-between mb-3 md:mb-4">
-              <h3 className="font-display font-bold text-xl md:text-2xl">Upcoming Classes</h3>
-              <Link href="/classes" className="text-xs md:text-sm text-primary underline">Browse all</Link>
+        {/* ===== PERFORMANCE SECTION ===== */}
+        <Card className="mb-8 rounded-3xl overflow-hidden border-0 shadow-lg hover:shadow-xl transition-shadow animate-fade-in" style={{animationDelay: '0.3s'}}>
+          <div
+            onClick={() => toggleSection('performance')}
+            className="p-6 md:p-8 bg-gradient-to-r from-blue-50 to-transparent cursor-pointer hover:from-blue-100 transition-all duration-300 flex items-center justify-between group"
+          >
+            <div className="flex items-center gap-3">
+              <TrendingUp className="w-6 h-6 text-blue-600 group-hover:scale-110 transition-transform" />
+              <h2 className="font-display font-bold text-2xl">Your Performance</h2>
             </div>
-            {data?.upcoming_classes?.length ? (
-              <div className="space-y-3">
-                {data.upcoming_classes.map(uc => (
-                  <Card key={uc.booking_id} className="p-4 md:p-5 rounded-2xl flex items-center gap-3 md:gap-4">
-                    <div className="w-12 h-12 md:w-14 md:h-14 rounded-xl bg-secondary flex flex-col items-center justify-center flex-shrink-0">
-                      <span className="text-[10px] md:text-xs text-muted-foreground uppercase">{new Date(uc.class.date).toLocaleDateString('en-IN', { month: 'short' })}</span>
-                      <span className="font-display font-black text-lg md:text-xl">{new Date(uc.class.date).getDate()}</span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-semibold text-sm md:text-base">{uc.sport_name}</div>
-                      <div className="text-xs md:text-sm text-muted-foreground flex flex-col md:flex-row md:items-center gap-1 md:gap-3 mt-1">
-                        <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{uc.class.start_time} – {uc.class.end_time}</span>
-                        <span className="flex items-center gap-1"><User className="w-3 h-3" />{uc.class.coach_name}</span>
-                      </div>
-                    </div>
-                    <Button size="sm" variant="ghost" onClick={() => cancelBooking(uc.booking_id)} className="h-10 w-10 md:h-9 md:w-9 p-0 flex-shrink-0">
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </Card>
-                ))}
-              </div>
-            ) : (
-              <Card className="p-6 md:p-8 rounded-2xl text-center border-dashed">
-                <Calendar className="w-10 h-10 mx-auto text-muted-foreground" />
-                <p className="mt-3 text-sm md:text-base text-muted-foreground">No upcoming classes.</p>
-                <Link href="/classes"><Button className="mt-4 w-full md:w-auto bg-primary text-primary-foreground hover:bg-primary/90 h-11">Book Your First Class</Button></Link>
-              </Card>
-            )}
+            <div className={`transition-transform duration-300 ${expandedSections.performance ? 'rotate-180' : ''}`}>
+              <ChevronUp className="w-5 h-5" />
+            </div>
           </div>
 
-          {/* Right column */}
-          <div className="space-y-4 md:space-y-6">
-            <div>
-              <h3 className="font-display font-bold text-xl md:text-2xl mb-3 md:mb-4">Recent Payments</h3>
-              {data?.payments?.length ? (
-                <Card className="rounded-2xl divide-y">
-                  {data.payments.map(p => (
-                    <div key={p.id} className="p-3 md:p-4 flex items-center gap-3">
-                      <div className="w-9 h-9 md:w-10 md:h-10 rounded-lg bg-secondary flex items-center justify-center flex-shrink-0"><CreditCard className="w-4 h-4" /></div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-xs md:text-sm font-medium truncate">{p.ref}</div>
-                        <div className="text-[10px] md:text-xs text-muted-foreground">{new Date(p.created_at).toLocaleDateString('en-IN')}</div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-sm md:text-base font-semibold">₹{p.amount.toLocaleString('en-IN')}</div>
-                        <Badge variant="secondary" className="text-[10px] md:text-xs">{p.status}</Badge>
+          {expandedSections.performance && (
+            <div className="p-6 md:p-8 border-t animate-fade-in">
+              {/* Sport tabs */}
+              {performanceData?.sports && performanceData.sports.length > 1 && (
+                <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+                  {performanceData.sports.map(sp => (
+                    <button
+                      key={sp.sport_id}
+                      onClick={() => setActiveSport(sp.sport_id)}
+                      className={`px-4 py-2 rounded-full text-sm font-medium whitespace-nowrap transition-all duration-300 transform hover:scale-105 ${
+                        activeSport === sp.sport_id
+                          ? 'bg-primary text-primary-foreground shadow-lg'
+                          : 'bg-secondary hover:bg-secondary/80'
+                      }`}
+                    >
+                      {sp.sport_name}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Export button */}
+              {current_perf && (
+                <div className="mb-6">
+                  <Button 
+                    onClick={exportPerformance}
+                    className="flex items-center gap-2 bg-primary/10 text-primary hover:bg-primary/20 border border-primary/30"
+                    variant="outline"
+                  >
+                    <Download className="w-4 h-4" /> Export Performance Data
+                  </Button>
+                </div>
+              )}
+
+              {current_perf && (
+                <>
+                  {/* Strength & Focus Cards */}
+                  <div className="grid md:grid-cols-2 gap-6 mb-8">
+                    {/* Top Strengths */}
+                    <div className="bg-gradient-to-br from-green-50 to-transparent p-6 rounded-2xl border border-green-200 hover:shadow-lg transition-all duration-300 transform hover:scale-102">
+                      <h4 className="font-semibold text-lg mb-4 flex items-center gap-2 animate-fade-in">
+                        <span className="text-2xl">🎯</span> Your Strengths
+                      </h4>
+                      <div className="space-y-3">
+                        {(current_perf.metrics_catalog || [])
+                          .sort((a, b) => (current_perf.scores?.[b.key] || 0) - (current_perf.scores?.[a.key] || 0))
+                          .slice(0, 3)
+                          .map((m, idx) => {
+                            const v = current_perf.scores?.[m.key];
+                            if (v === undefined) return null;
+                            return (
+                              <div key={m.key} className="animate-slide-up" style={{animationDelay: `${idx * 100}ms`}}>
+                                <div className="flex justify-between text-sm mb-1">
+                                  <span>{m.label}</span>
+                                  <span className="font-bold">{v}/10</span>
+                                </div>
+                                <div className="h-2 bg-green-200 rounded-full overflow-hidden">
+                                  <div className="h-full bg-green-500 transition-all duration-1000" style={{ width: `${v * 10}%` }} />
+                                </div>
+                              </div>
+                            );
+                          })}
                       </div>
                     </div>
+
+                    {/* Focus Area */}
+                    <div className="bg-gradient-to-br from-orange-50 to-transparent p-6 rounded-2xl border border-orange-200 hover:shadow-lg transition-all duration-300 transform hover:scale-102">
+                      <h4 className="font-semibold text-lg mb-4 flex items-center gap-2 animate-fade-in" style={{animationDelay: '0.1s'}}>
+                        <span className="text-2xl">🎪</span> Let's Improve
+                      </h4>
+                      <div className="space-y-3">
+                        {(current_perf.metrics_catalog || [])
+                          .sort((a, b) => (current_perf.scores?.[a.key] || 0) - (current_perf.scores?.[b.key] || 0))
+                          .slice(0, 3)
+                          .map((m, idx) => {
+                            const v = current_perf.scores?.[m.key];
+                            if (v === undefined) return null;
+                            return (
+                              <div key={m.key} className="animate-slide-up" style={{animationDelay: `${idx * 100}ms`}}>
+                                <div className="flex justify-between text-sm mb-1">
+                                  <span>{m.label}</span>
+                                  <span className="font-bold">{v}/10</span>
+                                </div>
+                                <div className="h-2 bg-orange-200 rounded-full overflow-hidden">
+                                  <div className="h-full bg-orange-500 transition-all duration-1000" style={{ width: `${v * 10}%` }} />
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Monthly trend chart */}
+                  {performanceData?.monthly_history?.[activeSport] && (
+                    <PerformanceTrendChart monthlyData={performanceData.monthly_history[activeSport]} />
+                  )}
+                </>
+              )}
+            </div>
+          )}
+        </Card>
+
+        {/* ===== LEADERSHIP SECTION ===== */}
+        <Card className="mb-8 rounded-3xl overflow-hidden border-0 shadow-lg hover:shadow-xl transition-shadow animate-fade-in" style={{animationDelay: '0.4s'}}>
+          <div
+            onClick={() => toggleSection('leadership')}
+            className="p-6 md:p-8 bg-gradient-to-r from-purple-50 to-transparent cursor-pointer hover:from-purple-100 transition-all duration-300 flex items-center justify-between group"
+          >
+            <div className="flex items-center gap-3">
+              <Trophy className="w-6 h-6 text-purple-600 group-hover:scale-110 transition-transform" />
+              <h2 className="font-display font-bold text-2xl">Leadership Profile</h2>
+            </div>
+            <div className={`transition-transform duration-300 ${expandedSections.leadership ? 'rotate-180' : ''}`}>
+              <ChevronUp className="w-5 h-5" />
+            </div>
+          </div>
+
+          {expandedSections.leadership && (
+            <div className="p-6 md:p-8 border-t animate-fade-in">
+              {!leadershipData || !leadershipData.metrics || leadershipData.metrics.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Trophy className="w-12 h-12 mx-auto opacity-20 mb-3" />
+                  <p>Your coach hasn't recorded leadership metrics yet.</p>
+                  <p className="text-sm mt-1">Complete more sessions to get your first evaluation.</p>
+                </div>
+              ) : (
+                <div className="grid md:grid-cols-2 gap-4">
+                  {LEADERSHIP_METRICS.map((category, idx) => {
+                    const metric = leadershipData.metrics.find(m => m.metric_id === category.id);
+                    const score = metric?.score || 0;
+                    return (
+                      <LeadershipCard
+                        key={category.id}
+                        emoji={category.emoji}
+                        color={category.color}
+                        name={category.name}
+                        score={score}
+                        description={category.description}
+                        delay={idx}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </Card>
+
+        {/* ===== ACTIVITY SECTION (COLLAPSIBLE) ===== */}
+        <Card className="rounded-3xl overflow-hidden border-0 shadow-lg hover:shadow-xl transition-shadow animate-fade-in" style={{animationDelay: '0.5s'}}>
+          <div
+            onClick={() => toggleSection('activity')}
+            className="p-6 md:p-8 bg-gradient-to-r from-indigo-50 to-transparent cursor-pointer hover:from-indigo-100 transition-all duration-300 flex items-center justify-between group"
+          >
+            <div className="flex items-center gap-3">
+              <Calendar className="w-6 h-6 text-indigo-600 group-hover:scale-110 transition-transform" />
+              <h2 className="font-display font-bold text-2xl">Activity & Schedule</h2>
+            </div>
+            <div className={`transition-transform duration-300 ${expandedSections.activity ? 'rotate-180' : ''}`}>
+              <ChevronUp className="w-5 h-5" />
+            </div>
+          </div>
+
+          {expandedSections.activity && (
+          <div className="p-6 md:p-8 border-t space-y-8 animate-fade-in">
+            {/* Upcoming Classes */}
+            <div>
+              <h4 className="font-semibold text-lg mb-4 flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-indigo-600" /> Upcoming Classes
+              </h4>
+              {data?.upcoming_classes && data.upcoming_classes.length > 0 ? (
+                <div className="space-y-3">
+                  {data.upcoming_classes.map((uc, idx) => (
+                    <div 
+                      key={uc.booking_id} 
+                      className="flex items-center gap-4 p-4 bg-gradient-to-r from-indigo-50 to-transparent rounded-2xl border border-indigo-100 hover:border-indigo-300 transition-all duration-300 hover:shadow-md transform hover:scale-102 animate-slide-up"
+                      style={{animationDelay: `${idx * 50}ms`}}
+                    >
+                      <div className="text-center flex-shrink-0 bg-indigo-100 rounded-xl p-3">
+                        <div className="text-xs text-indigo-600 font-semibold">{new Date(uc.class.date).toLocaleDateString('en-IN', { month: 'short' })}</div>
+                        <div className="font-display font-black text-2xl text-indigo-700">{new Date(uc.class.date).getDate()}</div>
+                      </div>
+                      <div className="flex-1">
+                        <div className="font-semibold text-indigo-900">{uc.sport_name}</div>
+                        <div className="text-sm text-indigo-700 flex flex-col md:flex-row md:items-center gap-1 md:gap-3 mt-1">
+                          <span className="flex items-center gap-1"><Clock className="w-3 h-3" />{uc.class.start_time}–{uc.class.end_time}</span>
+                          <span className="flex items-center gap-1"><User className="w-3 h-3" />{uc.class.coach_name}</span>
+                        </div>
+                      </div>
+                      <Button 
+                        size="sm" 
+                        variant="ghost" 
+                        className="flex-shrink-0 hover:bg-red-100 hover:text-red-600 transition-all" 
+                        onClick={() => {
+                          fetch(`/api/bookings/${uc.booking_id}/cancel`, { method: 'POST', credentials: 'include' })
+                            .then(() => {
+                              // Refetch dashboard data
+                              const childId = activeChild?.id;
+                              const queryParam = childId ? `?child_profile_id=${childId}` : '';
+                              return fetch(`/api/dashboard${queryParam}`, { credentials: 'include' }).then(r => r.json()).then(setData);
+                            })
+                            .then(() => toast.success('Class cancelled'))
+                            .catch((e) => toast.error(e.message || 'Failed to cancel'));
+                        }}
+                      >
+                        <X className="w-4 h-4" />
+                      </Button>
+                    </div>
                   ))}
-                </Card>
-              ) : <Card className="p-4 text-sm text-muted-foreground rounded-2xl">No payments yet.</Card>}
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground bg-secondary/50 rounded-2xl">
+                  <Calendar className="w-10 h-10 mx-auto opacity-20 mb-2" />
+                  <p>No upcoming classes.</p>
+                  <Link href="/classes">
+                    <Button className="mt-4 bg-primary text-primary-foreground hover:bg-primary/90">Book a Class</Button>
+                  </Link>
+                </div>
+              )}
             </div>
 
-            {data?.announcements?.length > 0 && (
-              <div>
-                <h3 className="font-display font-bold text-xl md:text-2xl mb-3 md:mb-4">Announcements</h3>
-                <div className="space-y-3">
-                  {data.announcements.map(a => (
-                    <Card key={a.id} className="p-3 md:p-4 rounded-2xl border-l-4 border-l-accent">
-                      <div className="font-semibold">{a.title}</div>
-                      <p className="text-sm text-muted-foreground mt-1">{a.message}</p>
-                    </Card>
+            {/* Recent Payments */}
+            {data?.payments && data.payments.length > 0 && (
+              <div className="border-t pt-8">
+                <h4 className="font-semibold text-lg mb-4 flex items-center gap-2">
+                  <CreditCard className="w-5 h-5 text-green-600" /> Recent Payments
+                </h4>
+                <div className="space-y-2">
+                  {data.payments.slice(0, 5).map((p, idx) => (
+                    <div 
+                      key={p.id} 
+                      className="flex items-center justify-between p-3 bg-green-50/50 rounded-xl border border-green-100 hover:bg-green-100 transition-colors animate-slide-up"
+                      style={{animationDelay: `${idx * 50}ms`}}
+                    >
+                      <div className="flex items-center gap-3 flex-1">
+                        <div className="w-8 h-8 rounded-lg bg-green-200 flex items-center justify-center flex-shrink-0">
+                          <CreditCard className="w-4 h-4 text-green-700" />
+                        </div>
+                        <div className="text-sm">
+                          <div className="font-medium text-green-900">{p.ref}</div>
+                          <div className="text-xs text-green-700">{new Date(p.created_at).toLocaleDateString('en-IN')}</div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-bold text-green-900">₹{p.amount.toLocaleString('en-IN')}</div>
+                        <Badge className="text-[10px] bg-green-200 text-green-900 hover:bg-green-300">{p.status}</Badge>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
             )}
           </div>
-        </div>
-
-        {/* Performance panel */}
-        <PerformancePanel user={user} activeChild={activeChild} />
-
-        {/* Leadership panel */}
-        <LeadershipPanel user={user} activeChild={activeChild} />
-
-        {/* Attendance panel */}
-        <AttendancePanel activeChild={activeChild} />
+          )}
+        </Card>
       </div>
 
-      <Dialog open={pauseOpen} onOpenChange={setPauseOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Pause membership</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">Your expiry will be extended by the paused duration. Max 30 days, one pause per membership.</p>
-          <div>
-            <Label>Pause duration (days, max 30)</Label>
-            <Input type="number" min="1" max="30" value={pauseDays} onChange={e => setPauseDays(e.target.value)} className="mt-1 h-12" />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPauseOpen(false)}>Cancel</Button>
-            <Button onClick={pauseMembership} className="bg-primary text-primary-foreground hover:bg-primary/90">Pause</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Custom CSS for animations */}
+      <style>{`
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+        @keyframes slideDown {
+          from { opacity: 0; transform: translateY(-10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes slideUp {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in { animation: fadeIn 0.5s ease-out forwards; opacity: 0; }
+        .animate-slide-down { animation: slideDown 0.5s ease-out forwards; }
+        .animate-slide-up { animation: slideUp 0.5s ease-out forwards; opacity: 0; }
+        .hover\:scale-102:hover { transform: scale(1.02); }
+      `}</style>
     </div>
   );
 }
 
-// ============================
-// Performance panel (view-only)
-// ============================
-function PerformancePanel({ user, activeChild }) {
-  const [selected, setSelected] = useState(null);
-  const [data, setData] = useState(null);
-  const [monthlyHistory, setMonthlyHistory] = useState(null);
-  const [activeSport, setActiveSport] = useState(null);
+// ===== COMPONENTS =====
 
-  useEffect(() => {
-    if (!user) return;
-    if (activeChild) {
-      const subject = { id: activeChild.id, label: activeChild.athlete_name || activeChild.child_name || user.full_name, type: 'athlete' };
-      loadPerf(subject);
-    } else {
-      // No child profiles — show user's own data
-      loadPerf({ id: user.id, label: user.full_name, type: 'user' });
-    }
-  }, [user, activeChild]);
+function StatsCard({ icon: Icon, label, value, color }) {
+  const bgColor = {
+    blue: 'from-blue-50 to-blue-100/50',
+    yellow: 'from-yellow-50 to-yellow-100/50',
+    green: 'from-green-50 to-green-100/50',
+    purple: 'from-purple-50 to-purple-100/50',
+  }[color];
 
-  const loadPerf = async (s) => {
-    setSelected(s);
-    setData(null);
-    setMonthlyHistory(null);
-    
-    const r = await fetch(`/api/athletes/${s.id}/performance?history=true`, { credentials: 'include' });
-    if (!r.ok) { setData({ sports: [] }); return; }
-    const d = await r.json();
-    setData(d);
-    setMonthlyHistory(d.monthly_history || {});
-    setActiveSport(d.sports?.[0]?.sport_id || null);
-  };
-
-  if (!user) return null;
-
-  const current = data?.sports?.find(s => s.sport_id === activeSport);
-  const currentMonthlyData = monthlyHistory ? monthlyHistory[activeSport] : null;
+  const iconColor = {
+    blue: 'text-blue-600',
+    yellow: 'text-yellow-600',
+    green: 'text-green-600',
+    purple: 'text-purple-600',
+  }[color];
 
   return (
-    <div className="mt-10">
-      <div className="flex items-center gap-2 mb-4">
-        <TrendingUp className="w-5 h-5 text-accent" />
-        <h3 className="font-display font-bold text-2xl">Performance</h3>
+    <Card className={`p-4 md:p-6 rounded-2xl bg-gradient-to-br ${bgColor} border-0 text-center`}>
+      <div className={`${iconColor} w-6 h-6 mx-auto mb-3`}>
+        <Icon className="w-full h-full" />
       </div>
-
-      {!data ? (
-        <div className="h-32 bg-secondary animate-pulse rounded-2xl" />
-      ) : data.sports?.length === 0 ? (
-        <Card className="p-8 rounded-2xl border-dashed text-center">
-          <TrendingUp className="w-10 h-10 mx-auto text-muted-foreground" />
-          <p className="mt-3 text-muted-foreground">No performance data yet.</p>
-          <p className="text-xs text-muted-foreground mt-1">Your coach will start scoring after your first few sessions.</p>
-        </Card>
-      ) : (
-        <>
-          {/* Sport tabs */}
-          <div className="flex items-center gap-1 border-b overflow-x-auto mb-4">
-            {data.sports.map(sp => (
-              <button key={sp.sport_id} onClick={() => setActiveSport(sp.sport_id)}
-                className={`px-4 py-2.5 text-sm font-medium border-b-2 transition whitespace-nowrap ${activeSport === sp.sport_id ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
-                {sp.sport_name}
-              </button>
-            ))}
-          </div>
-
-          {current && (
-            <div className="space-y-6">
-              <div className="grid md:grid-cols-3 gap-6">
-                {current.level && (
-                  <Card className="p-6 rounded-2xl bg-gradient-to-br from-accent/20 to-transparent border-accent/30 md:col-span-1">
-                    <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Current level · {current.sport_name}</p>
-                    <div className="flex items-baseline gap-3">
-                      <span className="font-display font-black text-4xl">L{current.level || 1}</span>
-                      <span className="font-display font-bold text-xl">{current.level_info?.name || 'SPARK'}</span>
-                    </div>
-                    <p className="text-sm italic text-muted-foreground mt-2">&ldquo;{current.level_info?.quote || 'Every champion starts with a spark.'}&rdquo;</p>
-                    <div className="mt-4 flex flex-wrap gap-1">
-                      {(data.levels_catalog || []).map(l => {
-                        const at = (current.level || 1) >= l.level;
-                        return (
-                          <div key={l.level} title={`L${l.level} ${l.name}`}
-                            className={`w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold ${at ? 'bg-accent text-black' : 'bg-secondary text-muted-foreground'}`}>
-                            {l.level}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </Card>
-                )}
-
-                <Card className={`p-6 rounded-2xl ${current.level ? 'md:col-span-2' : 'md:col-span-3'}`}>
-                  <div className="flex items-baseline justify-between mb-4">
-                    <div>
-                      <h4 className="font-semibold text-lg">{current.sport_name} · Metrics</h4>
-                      <p className="text-xs text-muted-foreground">Scored by your coach · 0–10 scale.</p>
-                    </div>
-                    {Object.keys(current.scores || {}).length > 0 && (
-                      <div className="text-right">
-                        <div className="text-xs text-muted-foreground uppercase tracking-widest">Avg</div>
-                        <div className="font-display font-black text-2xl">
-                          {(() => {
-                            const vals = Object.values(current.scores || {});
-                            return vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : '—';
-                          })()}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  {Object.keys(current.scores || {}).length === 0 ? (
-                    <div className="py-8 text-center text-sm text-muted-foreground">Your coach hasn&apos;t recorded metrics yet.</div>
-                  ) : (
-                    <div className="grid sm:grid-cols-2 gap-3">
-                      {(current.metrics_catalog || []).map(m => {
-                        const v = current.scores?.[m.key];
-                        if (v === undefined) return null;
-                        return (
-                          <div key={m.key} className="flex items-center gap-3">
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm truncate">{m.label}</div>
-                              <div className="h-1.5 bg-secondary rounded-full overflow-hidden mt-1.5">
-                                <div className={`h-full ${v >= 7 ? 'bg-primary' : v >= 4 ? 'bg-yellow-400' : 'bg-red-400'}`} style={{ width: `${v * 10}%` }} />
-                              </div>
-                            </div>
-                            <div className="font-mono font-semibold w-12 text-right">{v}<span className="text-muted-foreground text-xs">/10</span></div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </Card>
-              </div>
-
-              {/* Monthly trend chart */}
-              {currentMonthlyData && currentMonthlyData.length > 0 && (
-                <PerformanceTrendChart 
-                  monthlyData={currentMonthlyData}
-                  metrics={current.metrics_catalog || []}
-                />
-              )}
-            </div>
-          )}
-        </>
-      )}
-    </div>
+      <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">{label}</p>
+      <p className="font-display font-black text-3xl md:text-4xl">{value}</p>
+    </Card>
   );
 }
 
-// Monthly performance trend component - Overall Graph Only
-function PerformanceTrendChart({ monthlyData, metrics, selectedMetric, onMetricSelect }) {
+function LeadershipCard({ emoji, color, name, score, description }) {
+  return (
+    <Card className={`p-5 md:p-6 rounded-2xl border-0 ${color.includes('blue') ? 'bg-blue-50 border border-blue-200' : color.includes('red') ? 'bg-red-50 border border-red-200' : color.includes('orange') ? 'bg-orange-50 border border-orange-200' : color.includes('green') ? 'bg-green-50 border border-green-200' : color.includes('purple') ? 'bg-purple-50 border border-purple-200' : color.includes('yellow') ? 'bg-yellow-50 border border-yellow-200' : 'bg-pink-50 border border-pink-200'}`}>
+      <div className="flex items-start gap-3 mb-3">
+        <span className="text-3xl">{emoji}</span>
+        <div className="flex-1">
+          <h4 className="font-semibold text-sm">{name}</h4>
+          <div className="flex items-center gap-2 mt-1">
+            <div className="flex-1 h-2 bg-black/10 rounded-full overflow-hidden">
+              <div className="h-full bg-black/30" style={{ width: `${(score / 10) * 100}%` }} />
+            </div>
+            <span className="font-bold text-sm">{score}/10</span>
+          </div>
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground">{description}</p>
+    </Card>
+  );
+}
+
+function PerformanceTrendChart({ monthlyData }) {
   const chartData = monthlyData.map(m => ({
     month: m.month,
-    avg: m.metrics && Object.keys(m.metrics).length > 0 
-      ? Object.values(m.metrics).reduce((a, b) => a + b, 0) / Object.keys(m.metrics).length 
+    avg: m.metrics && Object.keys(m.metrics).length > 0
+      ? Object.values(m.metrics).reduce((a, b) => a + b, 0) / Object.keys(m.metrics).length
       : 0,
-    count: m.recordCount,
   }));
 
-  const trend = chartData.length > 1 
-    ? ((chartData[chartData.length - 1].avg - chartData[0].avg) / chartData[0].avg * 100).toFixed(1)
-    : 0;
-
-  const isPositive = trend >= 0;
-  const currentScore = chartData.length > 0 ? chartData[chartData.length - 1].avg : 0;
-  const lowestScore = Math.min(...chartData.map(d => d.avg));
-  const highestScore = Math.max(...chartData.map(d => d.avg));
+  const current = chartData[chartData.length - 1]?.avg || 0;
+  const highest = Math.max(...chartData.map(d => d.avg));
+  const lowest = Math.min(...chartData.map(d => d.avg));
 
   return (
-    <Card className="p-6 md:p-8 rounded-3xl border border-border bg-gradient-to-br from-background via-background to-secondary/5 shadow-lg">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 mb-8">
-        <div>
-          <h4 className="font-display font-bold text-2xl md:text-3xl mb-1">Performance Progress</h4>
-          <p className="text-sm text-muted-foreground">Month-on-month average scores over the last 12 months</p>
-        </div>
-        
-        {/* Stats Box */}
-        <div className="flex gap-6">
-          <div className="flex flex-col items-center md:items-end">
-            <span className="text-xs uppercase tracking-widest text-muted-foreground font-semibold mb-1">Current</span>
-            <span className="font-display font-black text-3xl">{currentScore.toFixed(1)}</span>
-            <span className="text-xs text-muted-foreground">/10</span>
-          </div>
-          
-          <div className={`flex flex-col items-center md:items-end p-3 rounded-2xl ${isPositive ? 'bg-green-500/10 border border-green-500/30' : 'bg-red-500/10 border border-red-500/30'}`}>
-            <span className="text-xs uppercase tracking-widest text-muted-foreground font-semibold mb-1">Trend</span>
-            <span className={`font-display font-black text-3xl flex items-center gap-1 ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
-              {isPositive ? '↑' : '↓'} {Math.abs(trend)}%
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Chart */}
-      <div className="w-full h-72 md:h-96 -mx-2 md:-mx-4">
+    <Card className="p-6 md:p-8 rounded-2xl bg-gradient-to-br from-blue-50 to-transparent border-0">
+      <h4 className="font-semibold text-lg mb-4">Performance Trend</h4>
+      <div className="h-64 -mx-4 md:-mx-8 px-4 md:px-8">
         <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={chartData} margin={{ top: 10, right: 40, left: 0, bottom: 40 }}>
-            <defs>
-              <linearGradient id="colorGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3}/>
-                <stop offset="95%" stopColor="#3b82f6" stopOpacity={0}/>
-              </linearGradient>
-            </defs>
+          <LineChart data={chartData}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
-            <XAxis 
-              dataKey="month" 
-              stroke="#9ca3af"
-              style={{ fontSize: '12px' }}
-              tick={{ fill: '#6b7280' }}
-            />
-            <YAxis 
-              domain={[0, 10]} 
-              stroke="#9ca3af"
-              style={{ fontSize: '12px' }}
-              tick={{ fill: '#6b7280' }}
-            />
-            <Tooltip 
-              formatter={(value) => [`${value.toFixed(1)}/10`, 'Avg Score']}
-              labelFormatter={(label) => `${label}`}
-              contentStyle={{ 
-                borderRadius: '12px', 
-                border: '1px solid #e5e7eb',
-                backgroundColor: '#ffffff',
-                boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)'
-              }}
-              wrapperStyle={{ outline: 'none' }}
-            />
-            <Line 
-              type="monotone" 
-              dataKey="avg" 
-              stroke="#3b82f6" 
-              strokeWidth={3}
-              dot={{ fill: '#3b82f6', r: 5, strokeWidth: 2, stroke: '#ffffff' }} 
-              activeDot={{ r: 7, strokeWidth: 2, stroke: '#ffffff' }}
-              isAnimationActive={true}
-            />
+            <XAxis dataKey="month" stroke="#9ca3af" style={{ fontSize: '12px' }} />
+            <YAxis domain={[0, 10]} stroke="#9ca3af" style={{ fontSize: '12px' }} />
+            <Tooltip formatter={(v) => v.toFixed(1)} labelFormatter={l => l} />
+            <Line type="monotone" dataKey="avg" stroke="#3b82f6" strokeWidth={3} dot={{ fill: '#3b82f6', r: 4 }} />
           </LineChart>
         </ResponsiveContainer>
       </div>
-
-      {/* Stats Footer */}
-      <div className="mt-8 grid grid-cols-3 gap-4">
-        <div className="text-center p-3 rounded-2xl bg-secondary/50">
-          <p className="text-xs uppercase tracking-widest text-muted-foreground font-semibold mb-1">Highest</p>
-          <p className="font-display font-black text-2xl">{highestScore.toFixed(1)}</p>
+      <div className="grid grid-cols-3 gap-3 mt-6">
+        <div className="text-center p-3 bg-white rounded-xl">
+          <p className="text-xs text-muted-foreground mb-1">Current</p>
+          <p className="font-bold">{current.toFixed(1)}/10</p>
         </div>
-        <div className="text-center p-3 rounded-2xl bg-secondary/50">
-          <p className="text-xs uppercase tracking-widest text-muted-foreground font-semibold mb-1">Data Points</p>
-          <p className="font-display font-black text-2xl">{chartData.length}</p>
+        <div className="text-center p-3 bg-white rounded-xl">
+          <p className="text-xs text-muted-foreground mb-1">Highest</p>
+          <p className="font-bold">{highest.toFixed(1)}/10</p>
         </div>
-        <div className="text-center p-3 rounded-2xl bg-secondary/50">
-          <p className="text-xs uppercase tracking-widest text-muted-foreground font-semibold mb-1">Lowest</p>
-          <p className="font-display font-black text-2xl">{lowestScore.toFixed(1)}</p>
+        <div className="text-center p-3 bg-white rounded-xl">
+          <p className="text-xs text-muted-foreground mb-1">Lowest</p>
+          <p className="font-bold">{lowest.toFixed(1)}/10</p>
         </div>
       </div>
     </Card>
   );
 }
 
-// ============================
-// Jersey Section
-// ============================
-function JerseySection({ user }) {
-  const [jerseys, setJerseys] = useState([]);
-  const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (!user) return;
-    loadJerseys();
-  }, [user]);
-
-  const loadJerseys = async () => {
-    setLoading(true);
-    const res = await fetch('/api/jerseys', { credentials: 'include' });
-    if (res.ok) {
-      const d = await res.json();
-      setJerseys(d.jerseys || []);
-    }
-    setLoading(false);
-  };
-
-  if (loading || jerseys.length === 0) return null;
-
-  return (
-    <div>
-      <h3 className="font-display font-bold text-xl md:text-2xl mb-3 md:mb-4">Jersey Details</h3>
-      <div className="grid md:grid-cols-2 gap-4">
-        {jerseys.map(j => (
-          <Card key={j.id} className="p-4 md:p-6 rounded-2xl">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <div className="font-semibold text-lg">{j.name}</div>
-                <div className="text-xs text-muted-foreground mt-1">Jersey #{j.number}</div>
-              </div>
-              <Badge variant="outline" className="text-accent border-accent">{j.size}</Badge>
-            </div>
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <span className="text-muted-foreground text-xs">Height</span>
-                <div className="font-semibold mt-1">{j.height} cm</div>
-              </div>
-              <div>
-                <span className="text-muted-foreground text-xs">Weight</span>
-                <div className="font-semibold mt-1">{j.weight} kg</div>
-              </div>
-            </div>
-            <div className="text-xs text-muted-foreground mt-3">
-              Created {new Date(j.created_at).toLocaleDateString('en-IN')}
-            </div>
-          </Card>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function LeadershipPanel({ user, activeChild }) {
-  const [metrics, setMetrics] = useState(null);
-  const [records, setRecords] = useState([]);
-  const [sport, setSport] = useState('basketball');
-  const [athleteId, setAthleteId] = useState(null);
-
-  useEffect(() => {
-    if (!user) return;
-    setAthleteId(activeChild ? activeChild.id : user.id);
-  }, [user, activeChild]);
-
-  useEffect(() => {
-    if (!athleteId) return;
-    fetch(`/api/leadership-metrics?user_id=${athleteId}&sport_id=${sport}`, { credentials: 'include' })
-      .then(r => r.ok ? r.json() : null)
-      .then(d => {
-        if (d) {
-          setMetrics(d.metrics || []);
-          setRecords(d.all_records || []);
-        }
-      });
-  }, [athleteId, sport]);
-
-  const scored = metrics?.filter(m => m.average > 0) || [];
-  if (!metrics || scored.length === 0) return null;
-
-  const overall = scored.reduce((sum, m) => sum + m.average, 0) / scored.length;
-
-  // Get the most recent note across all records
-  const latestRecord = records.length > 0 ? records[0] : null;
-
-  return (
-    <div className="mt-8">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <p className="text-xs uppercase tracking-widest text-muted-foreground">Leadership Board</p>
-          <h2 className="font-display font-black text-2xl md:text-3xl mt-0.5">Your Leadership Score</h2>
-        </div>
-        <div className="text-right">
-          <p className="text-4xl font-black text-accent">{overall.toFixed(1)}</p>
-          <p className="text-xs text-muted-foreground">/10 overall</p>
-        </div>
-      </div>
-
-      {/* Coach note banner — show latest note if it exists */}
-      {latestRecord?.notes && (
-        <Card className="p-4 rounded-2xl mb-4 bg-accent/10 border-accent/20">
-          <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Coach's Note</p>
-          <p className="text-sm font-medium">"{latestRecord.notes}"</p>
-          <p className="text-xs text-muted-foreground mt-1">
-            {new Date(latestRecord.recorded_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-          </p>
-        </Card>
-      )}
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-        {scored.map(m => {
-          // Latest note for this specific metric
-          const latestForMetric = records.find(r => r.metric_id === m.id);
-          return (
-            <Card key={m.id} className="p-4 rounded-2xl border-primary/10">
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-2xl">{m.emoji}</span>
-                <p className="text-xs font-semibold text-muted-foreground leading-tight">{m.name}</p>
-              </div>
-              <p className="text-3xl font-black">{m.average}<span className="text-base text-muted-foreground font-normal">/10</span></p>
-              <div className="mt-2 h-1.5 bg-secondary rounded-full overflow-hidden">
-                <div className={`h-full ${m.color} rounded-full`} style={{ width: `${m.average * 10}%` }} />
-              </div>
-              
-              {/* Measures/Description */}
-              {m.description && (
-                <div className="mt-3 pt-3 border-t border-primary/10">
-                  <p className="text-[11px] uppercase tracking-widest text-muted-foreground font-semibold mb-1.5">Measured by:</p>
-                  <p className="text-xs text-muted-foreground leading-relaxed">{m.description}</p>
-                </div>
-              )}
-              
-              {latestForMetric?.notes && (
-                <div className="mt-3 p-2 rounded-lg bg-accent/5 border border-accent/20">
-                  <p className="text-xs italic text-muted-foreground">"{latestForMetric.notes}"</p>
-                </div>
-              )}
-            </Card>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-// ============================
-// Attendance Panel
-// ============================
-function AttendancePanel({ activeChild }) {
-  const [data, setData] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    setLoading(true);
-    setData(null);
-    const url = activeChild
-      ? `/api/dashboard/attendance?child_id=${activeChild.id}`
-      : '/api/dashboard/attendance';
-    fetch(url, { credentials: 'include' })
-      .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d) setData(d); })
-      .finally(() => setLoading(false));
-  }, [activeChild]);
-
-  if (loading) return null;
-  if (!data || data.total === 0) return null;
-
-  const rateColor = data.rate >= 75 ? 'text-green-600' : data.rate >= 50 ? 'text-yellow-500' : 'text-red-500';
-  const rateBarColor = data.rate >= 75 ? 'bg-green-500' : data.rate >= 50 ? 'bg-yellow-400' : 'bg-red-400';
-
-  return (
-    <div className="mt-10">
-      <div className="flex items-center gap-2 mb-4">
-        <CheckCircle2 className="w-5 h-5 text-accent" />
-        <h3 className="font-display font-bold text-2xl">Attendance</h3>
-      </div>
-
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-        <Card className="p-4 rounded-2xl text-center">
-          <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Rate</p>
-          <p className={`font-display font-black text-3xl ${rateColor}`}>{data.rate}%</p>
-          <div className="mt-2 h-1.5 bg-secondary rounded-full overflow-hidden">
-            <div className={`h-full rounded-full ${rateBarColor}`} style={{ width: `${data.rate}%` }} />
-          </div>
-        </Card>
-        <Card className="p-4 rounded-2xl text-center">
-          <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Total Classes</p>
-          <p className="font-display font-black text-3xl">{data.total}</p>
-        </Card>
-        <Card className="p-4 rounded-2xl text-center">
-          <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Present</p>
-          <p className="font-display font-black text-3xl text-green-600">{data.present}</p>
-        </Card>
-        <Card className="p-4 rounded-2xl text-center">
-          <p className="text-xs uppercase tracking-widest text-muted-foreground mb-1">Absent</p>
-          <p className="font-display font-black text-3xl text-red-500">{data.absent}</p>
-        </Card>
-      </div>
-
-      <div className="grid md:grid-cols-2 gap-6">
-        {/* Monthly chart */}
-        {data.monthly && data.monthly.length > 0 && (
-          <Card className="p-6 rounded-2xl">
-            <h4 className="font-semibold mb-4">Monthly Attendance (Last 6 Months)</h4>
-            <ResponsiveContainer width="100%" height={220}>
-              <BarChart data={data.monthly} barCategoryGap="30%">
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" vertical={false} />
-                <XAxis dataKey="month" style={{ fontSize: '11px' }} />
-                <YAxis style={{ fontSize: '11px' }} />
-                <Tooltip
-                  formatter={(v, name) => [v, name === 'present' ? 'Present' : 'Absent']}
-                  contentStyle={{ borderRadius: '12px', border: '1px solid #e5e7eb' }}
-                />
-                <Bar dataKey="present" fill="#22c55e" radius={[6, 6, 0, 0]} name="present" />
-                <Bar dataKey="absent" fill="#f87171" radius={[6, 6, 0, 0]} name="absent" />
-              </BarChart>
-            </ResponsiveContainer>
-          </Card>
-        )}
-
-        {/* By sport + recent */}
-        <div className="space-y-4">
-          {/* By sport */}
-          {data.bySport && data.bySport.length > 0 && (
-            <Card className="p-5 rounded-2xl">
-              <h4 className="font-semibold mb-3">By Sport</h4>
-              <div className="space-y-3">
-                {data.bySport.map((s, i) => (
-                  <div key={i}>
-                    <div className="flex items-center justify-between text-sm mb-1">
-                      <span className="font-medium">{s.sport}</span>
-                      <span className={`font-bold ${s.rate >= 75 ? 'text-green-600' : s.rate >= 50 ? 'text-yellow-500' : 'text-red-500'}`}>{s.rate}%</span>
-                    </div>
-                    <div className="h-2 bg-secondary rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full ${s.rate >= 75 ? 'bg-green-500' : s.rate >= 50 ? 'bg-yellow-400' : 'bg-red-400'}`}
-                        style={{ width: `${s.rate}%` }}
-                      />
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">{s.present} present · {s.absent} absent</p>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
-
-          {/* Recent attended */}
-          {data.recentAttended && data.recentAttended.length > 0 && (
-            <Card className="p-5 rounded-2xl">
-              <h4 className="font-semibold mb-3">Recent Classes Attended</h4>
-              <div className="space-y-2">
-                {data.recentAttended.map((c, i) => (
-                  <div key={i} className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-green-500/10 flex items-center justify-center flex-shrink-0">
-                      <CheckCircle2 className="w-4 h-4 text-green-600" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">{c.sport_name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {new Date(c.date).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })} · {c.start_time}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}

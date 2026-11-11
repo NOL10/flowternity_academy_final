@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { v4 as uuidv4 } from 'uuid';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -12,6 +13,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { toast } from 'sonner';
 import { useAuth } from '@/app/providers';
 import { SPORTS, MEMBERSHIPS as MEMBERSHIPS_LOCAL, LEADERSHIP_METRICS, METRIC_SCORES } from '@/lib/flowternity/config';
@@ -738,16 +740,94 @@ function GamesSection() {
   const [games, setGames] = useState([]);
   const [open, setOpen] = useState(false);
   const [mode, setMode] = useState('single');
-  const emptyForm = { sport_id: 'basketball', title: '', description: '', date: '', start_time: '', end_time: '', max_players: 10, host_name: 'Flowternity', skill_level: 'all_levels', is_paid: false, fee: 0, is_tournament: false, prize_pool: 0 };
+  const emptyForm = { sport_id: 'basketball', title: '', description: '', date: '', start_time: '', end_time: '', max_players: 10, host_name: 'Flowternity', skill_level: 'all_levels', is_paid: false, fee: 0, is_tournament: false, prize_pool: 0, tournament_type: 'single', categories: [] };
   const [form, setForm] = useState(emptyForm);
   const emptyBulk = { sport_id: 'basketball', title: '', description: '', host_name: 'Flowternity', skill_level: 'all_levels', max_players: 10, start_date: '', end_date: '', weekdays: [5, 6], slots: [{ start_time: '18:00', end_time: '19:30' }], is_paid: false, fee: 0, is_tournament: false, prize_pool: 0 };
   const [bulk, setBulk] = useState(emptyBulk);
   const [saving, setSaving] = useState(false);
+  const [presetOpen, setPresetOpen] = useState(false);
+  const [selectedPreset, setSelectedPreset] = useState(null);
   const WEEKDAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  
+  // Tournament presets with multi-category templates
+  const TOURNAMENT_PRESETS = {
+    '3x3-basketball': {
+      name: '3X3 Basketball Tournament',
+      sport_id: 'basketball',
+      categories: [
+        { name: 'U13', age_min: 0, age_max: 12, entry_fee: 500, max_participants: 32, rules: 'Under 13 competition. Standard 3v3 rules apply.', prizes: { '1st': { type: 'cash', value: 2000 }, '2nd': { type: 'cash', value: 1000 }, '3rd': { type: 'cash', value: 500 } } },
+        { name: 'U15', age_min: 13, age_max: 14, entry_fee: 600, max_participants: 32, rules: 'Under 15 competition. Standard 3v3 rules apply.', prizes: { '1st': { type: 'cash', value: 2500 }, '2nd': { type: 'cash', value: 1500 }, '3rd': { type: 'cash', value: 750 } } },
+        { name: 'U17', age_min: 15, age_max: 16, entry_fee: 700, max_participants: 32, rules: 'Under 17 competition. Standard 3v3 rules apply.', prizes: { '1st': { type: 'cash', value: 3000 }, '2nd': { type: 'cash', value: 2000 }, '3rd': { type: 'cash', value: 1000 } } },
+        { name: 'Open', age_min: 17, age_max: 35, entry_fee: 800, max_participants: 64, rules: 'Open category for all ages 17+. Standard 3v3 rules apply.', prizes: { '1st': { type: 'cash', value: 5000 }, '2nd': { type: 'cash', value: 3000 }, '3rd': { type: 'cash', value: 1500 } } },
+        { name: 'Legends', age_min: 36, age_max: 150, entry_fee: 500, max_participants: 32, rules: '36+ category. Standard 3v3 rules apply.', prizes: { '1st': { type: 'cash', value: 2500 }, '2nd': { type: 'cash', value: 1500 }, '3rd': { type: 'cash', value: 750 } } },
+      ]
+    }
+  };
+
+  const applyPreset = (presetKey) => {
+    const preset = TOURNAMENT_PRESETS[presetKey];
+    if (preset) {
+      setForm(f => ({
+        ...f,
+        sport_id: preset.sport_id,
+        tournament_type: 'age_bracket',
+        is_tournament: true,
+        is_paid: true,
+        categories: preset.categories.map(cat => ({
+          id: uuidv4(),
+          ...cat,
+        })),
+      }));
+      setSelectedPreset(presetKey);
+      setPresetOpen(false);
+    }
+  };
   const toggleWeekday = (d) => setBulk(b => ({ ...b, weekdays: b.weekdays.includes(d) ? b.weekdays.filter(x => x !== d) : [...b.weekdays, d].sort() }));
   const addSlot = () => setBulk(b => ({ ...b, slots: [...b.slots, { start_time: '', end_time: '' }] }));
   const removeSlot = (i) => setBulk(b => ({ ...b, slots: b.slots.filter((_, idx) => idx !== i) }));
   const updateSlot = (i, k, v) => setBulk(b => ({ ...b, slots: b.slots.map((s, idx) => idx === i ? { ...s, [k]: v } : s) }));
+  
+  // Category management helpers
+  const addCategory = () => {
+    setForm(f => ({
+      ...f,
+      categories: [...f.categories, {
+        id: uuidv4(),
+        name: '',
+        age_min: 0,
+        age_max: 18,
+        entry_fee: 500,
+        max_participants: 32,
+        rules: '',
+        prizes: { 
+          '1st': { type: 'cash', value: 1000 }, 
+          '2nd': { type: 'cash', value: 500 }, 
+          '3rd': { type: 'cash', value: 250 } 
+        },
+      }]
+    }));
+  };
+  
+  const removeCategory = (idx) => {
+    setForm(f => ({
+      ...f,
+      categories: f.categories.filter((_, i) => i !== idx)
+    }));
+  };
+  
+  const updateCategory = (idx, key, val) => {
+    setForm(f => ({
+      ...f,
+      categories: f.categories.map((cat, i) => i === idx ? { ...cat, [key]: val } : cat)
+    }));
+  };
+  
+  const updateCategoryPrize = (idx, place, type, val) => {
+    setForm(f => ({
+      ...f,
+      categories: f.categories.map((cat, i) => i === idx ? { ...cat, prizes: { ...cat.prizes, [place]: { type, value: val } } } : cat)
+    }));
+  };
   const bulkPreview = useMemo(() => {
     if (!bulk.start_date || !bulk.end_date) return 0;
     const s = new Date(bulk.start_date), e = new Date(bulk.end_date);
@@ -767,14 +847,27 @@ function GamesSection() {
   const create = async (e, keepOpen) => {
     e.preventDefault();
     setSaving(true);
+    
+    // Validate multi-category tournaments
+    if (form.tournament_type === 'age_bracket') {
+      if (!form.categories || form.categories.length === 0) {
+        toast.error('Add at least one category'); setSaving(false); return;
+      }
+      for (const cat of form.categories) {
+        if (!cat.name.trim()) { toast.error('All categories must have a name'); setSaving(false); return; }
+        if (cat.age_min > cat.age_max) { toast.error(`Invalid age range for ${cat.name}`); setSaving(false); return; }
+        if (cat.entry_fee < 0 || cat.max_participants < 1) { toast.error(`Invalid fees or capacity for ${cat.name}`); setSaving(false); return; }
+      }
+    }
+    
     const res = await fetch('/api/admin/games', { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(form) });
     const d = await res.json();
     setSaving(false);
     if (!res.ok) { toast.error(d.error || 'Failed'); return; }
     toast.success('Game scheduled');
     load();
-    if (keepOpen) setForm(f => ({ ...f, title: '', description: '', date: '', start_time: '', end_time: '' }));
-    else { setForm(emptyForm); setOpen(false); }
+    if (keepOpen) setForm(f => ({ ...f, title: '', description: '', date: '', start_time: '', end_time: '', categories: form.tournament_type === 'age_bracket' ? form.categories : [] }));
+    else { setForm(emptyForm); setOpen(false); setSelectedPreset(null); }
   };
 
   const remove = async (id) => {
@@ -876,7 +969,34 @@ function GamesSection() {
           </div>
 
           {mode === 'single' ? (
-            <form onSubmit={(e) => create(e, false)} className="space-y-3">
+            <form onSubmit={(e) => create(e, false)} className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+              {/* Tournament Type Selector */}
+              <div className="space-y-2">
+                <Label className="text-slate-300 text-xs uppercase tracking-widest">Game Type</Label>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setForm({ ...form, tournament_type: 'single', categories: [] })} className={`flex-1 px-3 py-2 rounded-md border text-xs font-semibold transition ${form.tournament_type === 'single' ? 'bg-lime-400 text-slate-900 border-lime-400' : 'border-slate-700 text-slate-400 hover:text-slate-100'}`}>
+                    Regular Game
+                  </button>
+                  <button type="button" onClick={() => setForm({ ...form, tournament_type: 'age_bracket', is_tournament: true, is_paid: true })} className={`flex-1 px-3 py-2 rounded-md border text-xs font-semibold transition ${form.tournament_type === 'age_bracket' ? 'bg-lime-400 text-slate-900 border-lime-400' : 'border-slate-700 text-slate-400 hover:text-slate-100'}`}>
+                    Multi-Category Tournament
+                  </button>
+                </div>
+              </div>
+
+              {/* Preset Templates for Multi-Category */}
+              {form.tournament_type === 'age_bracket' && (
+                <div>
+                  <Label className="text-slate-300 text-xs uppercase tracking-widest">Quick Templates</Label>
+                  <div className="flex gap-2 mt-2">
+                    {Object.entries(TOURNAMENT_PRESETS).map(([key, preset]) => (
+                      <button type="button" key={key} onClick={() => applyPreset(key)} className="flex-1 px-2 py-2 rounded-md bg-slate-800 border border-lime-400/30 text-xs font-semibold text-lime-400 hover:bg-slate-700 transition">
+                        {preset.name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <Label className="text-slate-300 text-xs uppercase tracking-widest">Sport</Label>
@@ -885,82 +1005,52 @@ function GamesSection() {
                     <SelectContent>{SPORTS.filter(s => s.status === 'active').map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
                   </Select>
                 </div>
-                <div>
-                  <Label className="text-slate-300 text-xs uppercase tracking-widest">Skill level</Label>
-                  <Select value={form.skill_level} onValueChange={v => setForm({ ...form, skill_level: v })}>
-                    <SelectTrigger className="h-11 mt-1"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all_levels">All levels</SelectItem>
-                      <SelectItem value="beginner">Beginner</SelectItem>
-                      <SelectItem value="intermediate">Intermediate</SelectItem>
-                      <SelectItem value="advanced">Advanced</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                {form.tournament_type === 'single' && (
+                  <div>
+                    <Label className="text-slate-300 text-xs uppercase tracking-widest">Skill level</Label>
+                    <Select value={form.skill_level} onValueChange={v => setForm({ ...form, skill_level: v })}>
+                      <SelectTrigger className="h-11 mt-1"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all_levels">All levels</SelectItem>
+                        <SelectItem value="beginner">Beginner</SelectItem>
+                        <SelectItem value="intermediate">Intermediate</SelectItem>
+                        <SelectItem value="advanced">Advanced</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
+
+              {/* Title & Description */}
               <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Title <span className="text-slate-500 normal-case">(optional)</span></Label><Input className="h-11 mt-1" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })} placeholder="Friday Night Hoops" /></div>
               <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Description</Label><Textarea rows={2} value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} placeholder="Casual 5v5" /></div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2 flex items-center gap-3 p-3 rounded-lg bg-slate-800/50 border border-slate-800">
-                  <input type="checkbox" id="is_paid" checked={form.is_paid} onChange={e => setForm({ ...form, is_paid: e.target.checked })} className="w-4 h-4 rounded cursor-pointer" />
-                  <Label htmlFor="is_paid" className="text-slate-300 text-xs uppercase tracking-widest cursor-pointer flex-1">Paid Game</Label>
-                  {form.is_paid && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-slate-400 text-xs">Fee:</span>
-                      <Input 
-                        type="number" 
-                        min="0" 
-                        step="0.01" 
-                        className="h-8 w-20 bg-slate-800 text-white border-slate-700 hover:border-slate-600 focus:border-lime-400 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
-                        style={{ MozAppearance: 'textfield' }}
-                        value={form.fee === 0 ? '' : form.fee} 
-                        onChange={e => setForm({ ...form, fee: e.target.value ? parseFloat(e.target.value) : 0 })} 
-                        onFocus={e => e.target.select()}
-                        placeholder="0.00" 
-                      />
-                      <span className="text-slate-400 text-xs">₹</span>
-                    </div>
-                  )}
+
+              {/* Paid Game Option (only for single games) */}
+              {form.tournament_type === 'single' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2 flex items-center gap-3 p-3 rounded-lg bg-slate-800/50 border border-slate-800">
+                    <input type="checkbox" id="is_paid" checked={form.is_paid} onChange={e => setForm({ ...form, is_paid: e.target.checked })} className="w-4 h-4 rounded cursor-pointer" />
+                    <Label htmlFor="is_paid" className="text-slate-300 text-xs uppercase tracking-widest cursor-pointer flex-1">Paid Game</Label>
+                    {form.is_paid && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-slate-400 text-xs">Fee:</span>
+                        <Input 
+                          type="number" 
+                          min="0" 
+                          step="50" 
+                          className="h-8 w-20 bg-slate-800 text-white border-slate-700 hover:border-slate-600 focus:border-lime-400 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
+                          style={{ MozAppearance: 'textfield' }}
+                          value={form.fee === 0 ? '' : form.fee} 
+                          onChange={e => setForm({ ...form, fee: e.target.value ? parseFloat(e.target.value) : 0 })} 
+                          onFocus={e => e.target.select()}
+                          placeholder="0" 
+                        />
+                        <span className="text-slate-400 text-xs">₹</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <div className="col-span-2 flex items-center gap-3 p-3 rounded-lg bg-slate-800/50 border border-slate-800">
-                  <input type="checkbox" id="is_tournament" checked={form.is_tournament || false} onChange={e => setForm({ ...form, is_tournament: e.target.checked, is_paid: e.target.checked })} className="w-4 h-4 rounded cursor-pointer" />
-                  <Label htmlFor="is_tournament" className="text-slate-300 text-xs uppercase tracking-widest cursor-pointer flex-1">Tournament</Label>
-                  {form.is_tournament && (
-                    <div className="flex items-center gap-2">
-                      <span className="text-slate-400 text-xs">Entry Fee:</span>
-                      <Input 
-                        type="number" 
-                        min="0" 
-                        step="0.01" 
-                        className="h-8 w-20 bg-slate-800 text-white border-slate-700 hover:border-slate-600 focus:border-lime-400 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
-                        style={{ MozAppearance: 'textfield' }}
-                        value={form.fee === 0 ? '' : form.fee} 
-                        onChange={e => setForm({ ...form, fee: e.target.value ? parseFloat(e.target.value) : 0 })} 
-                        onFocus={e => e.target.select()}
-                        placeholder="500" 
-                      />
-                      <span className="text-slate-400 text-xs">₹</span>
-                    </div>
-                  )}
-                  {form.is_tournament && (
-                    <div className="flex items-center gap-2 ml-4">
-                      <span className="text-slate-400 text-xs">Prize Pool:</span>
-                      <Input 
-                        type="number" 
-                        min="0" 
-                        step="0.01" 
-                        className="h-8 w-24 bg-slate-800 text-white border-slate-700 hover:border-slate-600 focus:border-lime-400 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" 
-                        style={{ MozAppearance: 'textfield' }}
-                        value={form.prize_pool === 0 ? '' : form.prize_pool} 
-                        onChange={e => setForm({ ...form, prize_pool: e.target.value ? parseFloat(e.target.value) : 0 })} 
-                        onFocus={e => e.target.select()}
-                        placeholder="5000" 
-                      />
-                      <span className="text-slate-400 text-xs">₹</span>
-                    </div>
-                  )}
-                </div>
-              </div>
+              )}
               <div className="grid grid-cols-2 gap-3">
                 <div className="col-span-2"><QuickDateInput label="Date" required value={form.date} onChange={v => setForm({ ...form, date: v })} /></div>
                 <div>
@@ -971,9 +1061,109 @@ function GamesSection() {
                   <Label className="text-slate-300 text-xs uppercase tracking-widest mb-1 block">End</Label>
                   <TimeSelect value={form.end_time} onChange={v => setForm({ ...form, end_time: v })} placeholder="End time" />
                 </div>
-                <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Max players</Label><Input type="number" min="2" required className="h-11 mt-1 bg-slate-800 text-white border-slate-700 hover:border-slate-600 focus:border-lime-400 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" style={{ MozAppearance: 'textfield' }} value={form.max_players} onChange={e => setForm({ ...form, max_players: e.target.value ? parseInt(e.target.value) : '' })} onFocus={e => { e.target.value = ''; setForm({ ...form, max_players: '' }); }} placeholder="10" /></div>
-                <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Host</Label><Input className="h-11 mt-1" value={form.host_name} onChange={e => setForm({ ...form, host_name: e.target.value })} /></div>
+                {form.tournament_type === 'single' && (
+                  <>
+                    <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Max players</Label><Input type="number" min="2" required className="h-11 mt-1 bg-slate-800 text-white border-slate-700 hover:border-slate-600 focus:border-lime-400" style={{ MozAppearance: 'textfield' }} value={form.max_players} onChange={e => setForm({ ...form, max_players: e.target.value ? parseInt(e.target.value) : '' })} placeholder="10" /></div>
+                    <div><Label className="text-slate-300 text-xs uppercase tracking-widest">Host</Label><Input className="h-11 mt-1" value={form.host_name} onChange={e => setForm({ ...form, host_name: e.target.value })} /></div>
+                  </>
+                )}
               </div>
+
+              {/* Categories for Multi-Category Tournaments */}
+              {form.tournament_type === 'age_bracket' && (
+                <div className="space-y-3 p-3 rounded-lg bg-slate-800/30 border border-slate-800">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-slate-300 text-xs uppercase tracking-widest">Tournament Categories ({form.categories.length})</Label>
+                    <button type="button" onClick={addCategory} className="text-xs text-lime-400 hover:text-lime-300 flex items-center gap-1"><Plus className="w-3 h-3" /> Add</button>
+                  </div>
+                  
+                  {form.categories.length === 0 ? (
+                    <p className="text-xs text-slate-500 py-2">No categories yet. Apply a preset above or add categories manually.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {form.categories.map((cat, idx) => (
+                        <div key={idx} className="space-y-2 p-3 rounded-lg bg-slate-900 border border-slate-800">
+                          <div className="flex items-center justify-between mb-2">
+                            <Input placeholder="Category name (e.g., U13)" value={cat.name} onChange={e => updateCategory(idx, 'name', e.target.value)} className="flex-1 h-9 text-sm bg-slate-800 text-white border-slate-700" />
+                            <button type="button" onClick={() => removeCategory(idx)} className="ml-2 p-1.5 rounded hover:bg-red-500/10 text-slate-500 hover:text-red-400"><Trash2 className="w-4 h-4" /></button>
+                          </div>
+                          
+                          <div className="grid grid-cols-4 gap-2">
+                            <div>
+                              <span className="text-[10px] text-slate-500">Age Min</span>
+                              <Input type="number" value={cat.age_min} onChange={e => updateCategory(idx, 'age_min', parseInt(e.target.value) || 0)} className="h-8 text-xs bg-slate-800 text-white border-slate-700 mt-1" />
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-slate-500">Age Max</span>
+                              <Input type="number" value={cat.age_max} onChange={e => updateCategory(idx, 'age_max', parseInt(e.target.value) || 100)} className="h-8 text-xs bg-slate-800 text-white border-slate-700 mt-1" />
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-slate-500">Entry Fee (₹)</span>
+                              <Input type="number" step="50" value={cat.entry_fee} onChange={e => updateCategory(idx, 'entry_fee', parseFloat(e.target.value) || 0)} className="h-8 text-xs bg-slate-800 text-white border-slate-700 mt-1" />
+                            </div>
+                            <div>
+                              <span className="text-[10px] text-slate-500">Max Players</span>
+                              <Input type="number" value={cat.max_participants} onChange={e => updateCategory(idx, 'max_participants', parseInt(e.target.value) || 1)} className="h-8 text-xs bg-slate-800 text-white border-slate-700 mt-1" />
+                            </div>
+                          </div>
+                          
+                          <div>
+                            <span className="text-[10px] text-slate-500 block mb-1">Rules</span>
+                            <Textarea rows={2} placeholder="e.g., Standard 3v3 rules apply" value={cat.rules} onChange={e => updateCategory(idx, 'rules', e.target.value)} className="text-xs bg-slate-800 text-white border-slate-700" />
+                          </div>
+                          
+                          <div className="grid grid-cols-3 gap-2">
+                            {['1st', '2nd', '3rd'].map(place => {
+                              const prize = cat.prizes[place] || { type: 'cash', value: 0 };
+                              const prizeType = typeof prize === 'object' ? prize.type : 'cash';
+                              const prizeValue = typeof prize === 'object' ? prize.value : prize;
+                              
+                              return (
+                                <div key={place}>
+                                  <span className="text-[10px] text-slate-500 block mb-1">{place} Prize</span>
+                                  <div className="space-y-1">
+                                    <Select value={prizeType} onValueChange={v => updateCategoryPrize(idx, place, v, prizeValue)}>
+                                      <SelectTrigger className="h-8 text-xs bg-slate-800 text-white border-slate-700">
+                                        <SelectValue />
+                                      </SelectTrigger>
+                                      <SelectContent className="bg-slate-800 border-slate-700">
+                                        <SelectItem value="cash">Cash (₹)</SelectItem>
+                                        <SelectItem value="medal">Medal</SelectItem>
+                                        <SelectItem value="trophy">Trophy</SelectItem>
+                                        <SelectItem value="certificate">Certificate</SelectItem>
+                                        <SelectItem value="custom">Custom</SelectItem>
+                                      </SelectContent>
+                                    </Select>
+                                    {prizeType === 'cash' ? (
+                                      <Input 
+                                        type="number" 
+                                        step="100" 
+                                        value={prizeValue || 0} 
+                                        onChange={e => updateCategoryPrize(idx, place, prizeType, parseFloat(e.target.value) || 0)} 
+                                        className="h-8 text-xs bg-slate-800 text-white border-slate-700 mt-1" 
+                                        placeholder="0"
+                                      />
+                                    ) : (
+                                      <Input 
+                                        type="text" 
+                                        value={prizeValue || ''} 
+                                        onChange={e => updateCategoryPrize(idx, place, prizeType, e.target.value)} 
+                                        className="h-8 text-xs bg-slate-800 text-white border-slate-700 mt-1" 
+                                        placeholder={prizeType === 'custom' ? 'e.g., Gold Medal + $500' : prizeType}
+                                      />
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <DialogFooter className="pt-3 flex-col-reverse sm:flex-row gap-2">
                 <Button type="button" variant="outline" onClick={() => setOpen(false)} className="border-slate-700 bg-transparent hover:bg-slate-800 text-slate-300">Cancel</Button>
                 <Button type="button" disabled={saving} onClick={(e) => create(e, true)} variant="outline" className="border-slate-700 bg-transparent hover:bg-slate-800 text-slate-100">{saving ? '...' : 'Save & add another'}</Button>
@@ -1129,10 +1319,22 @@ function GameBookingsSection() {
   const [total, setTotal] = useState(0);
   const [limit] = useState(50);
   const [loading, setLoading] = useState(true);
+  const [filterGame, setFilterGame] = useState('');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [selectedBookings, setSelectedBookings] = useState([]);
+  const [sendingEmail, setSendingEmail] = useState(false);
+  const [emailMessage, setEmailMessage] = useState('');
+  const [showEmailModal, setShowEmailModal] = useState(false);
 
   const load = async (p = 1) => {
     setLoading(true);
-    const res = await fetch(`/api/admin/game-bookings?page=${p}&limit=${limit}`, { credentials: 'include' });
+    const params = new URLSearchParams();
+    if (filterGame) params.append('game_id', filterGame);
+    if (filterStatus !== 'all') params.append('status', filterStatus);
+    params.append('page', p.toString());
+    params.append('limit', limit.toString());
+    
+    const res = await fetch(`/api/admin/game-bookings?${params.toString()}`, { credentials: 'include' });
     if (res.ok) {
       const d = await res.json();
       setBookings(d.bookings || []);
@@ -1142,10 +1344,82 @@ function GameBookingsSection() {
     setLoading(false);
   };
 
-  useEffect(() => { load(1); }, []);
+  useEffect(() => { 
+    setPage(1); 
+    setSelectedBookings([]);
+  }, [filterGame, filterStatus]);
+  
+  useEffect(() => { load(page); }, [page, filterGame, filterStatus]);
 
   const goToPage = (p) => {
     if (p > 0 && p <= Math.ceil(total / limit)) load(p);
+  };
+
+  const downloadCSV = () => {
+    if (bookings.length === 0) { toast.error('No bookings to export'); return; }
+    
+    const headers = ['Date', 'Game', 'Sport', 'Player Name', 'Email', 'Phone', 'Status', 'Amount', 'Booking Date'];
+    const rows = bookings.map(b => [
+      new Date(b.game_date).toLocaleDateString('en-IN'),
+      b.game_title,
+      b.sport_name,
+      b.user_name || b.guest_name || 'N/A',
+      b.user_email || b.guest_email || 'N/A',
+      b.user_phone || b.guest_phone || 'N/A',
+      b.status,
+      b.is_paid ? `₹${b.amount_paid?.toFixed(2) || '0.00'}` : 'Free',
+      new Date(b.booking_date).toLocaleDateString('en-IN'),
+    ]);
+    
+    const csv = [headers, ...rows].map(row => row.map(cell => `"${cell}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `game-bookings-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    window.URL.revokeObjectURL(url);
+    toast.success('Downloaded bookings');
+  };
+
+  const sendEmailToSelected = async () => {
+    if (selectedBookings.length === 0) { toast.error('Select bookings to email'); return; }
+    if (!emailMessage.trim()) { toast.error('Enter a message'); return; }
+
+    setSendingEmail(true);
+    const bookingsToEmail = bookings.filter(b => selectedBookings.includes(b.id));
+    const emails = bookingsToEmail.map(b => b.user_email || b.guest_email).filter(Boolean);
+
+    try {
+      const res = await fetch('/api/admin/send-booking-emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          emails,
+          message: emailMessage,
+          booking_ids: selectedBookings,
+        }),
+      });
+
+      const d = await res.json();
+      if (!res.ok) { toast.error(d.error || 'Failed to send emails'); return; }
+      toast.success(`Sent emails to ${emails.length} participant(s)`);
+      setShowEmailModal(false);
+      setEmailMessage('');
+      setSelectedBookings([]);
+    } catch (e) {
+      toast.error('Error sending emails');
+    }
+    setSendingEmail(false);
+  };
+
+  const toggleSelectBooking = (id) => {
+    setSelectedBookings(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const toggleSelectAll = () => {
+    setSelectedBookings(selectedBookings.length === bookings.length ? [] : bookings.map(b => b.id));
   };
 
   const totalPages = Math.ceil(total / limit);
@@ -1154,8 +1428,34 @@ function GameBookingsSection() {
     <>
       <SectionHeader
         title="Game Bookings"
-        description={`${total} game bookings · tracking player participation and payments`}
+        description={`${total} game bookings · manage registrations and payments`}
+        action={
+          <div className="flex items-center gap-2">
+            {selectedBookings.length > 0 && (
+              <Button onClick={() => setShowEmailModal(true)} variant="outline" className="border-blue-500/30 bg-blue-500/10 text-blue-300 hover:bg-blue-500/20">
+                ✉️ Email {selectedBookings.length}
+              </Button>
+            )}
+            <Button onClick={downloadCSV} variant="outline" className="border-lime-400/30 bg-lime-400/10 text-lime-400 hover:bg-lime-400/20">
+              <Download className="w-4 h-4 mr-1.5" /> Export CSV
+            </Button>
+          </div>
+        }
       />
+
+      {/* Filters */}
+      <div className="flex flex-col md:flex-row gap-3 mb-4">
+        <Select value={filterStatus} onValueChange={setFilterStatus}>
+          <SelectTrigger className="h-10 w-full md:w-48">
+            <SelectValue placeholder="Filter by status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All statuses</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="cancelled">Cancelled</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
 
       {loading ? (
         <div className="space-y-3">
@@ -1166,50 +1466,58 @@ function GameBookingsSection() {
       ) : (
         <>
           <Card className="rounded-lg bg-slate-900 border-slate-800 overflow-hidden">
-            <div className="hidden md:grid grid-cols-12 gap-3 px-4 py-2.5 text-[10px] uppercase tracking-widest text-slate-500 border-b border-slate-800">
+            <div className="hidden md:grid grid-cols-13 gap-3 px-4 py-2.5 text-[10px] uppercase tracking-widest text-slate-500 border-b border-slate-800">
+              <div className="col-span-1"><Checkbox checked={selectedBookings.length === bookings.length && bookings.length > 0} onCheckedChange={toggleSelectAll} /></div>
               <div className="col-span-2">Date</div>
               <div className="col-span-3">Game</div>
-              <div className="col-span-2">Sport</div>
               <div className="col-span-2">Player</div>
-              <div className="col-span-2">Status</div>
+              <div className="col-span-2">Contact</div>
+              <div className="col-span-1">Status</div>
               <div className="col-span-1 text-right">Amount</div>
+              <div className="col-span-1 text-right">Actions</div>
             </div>
             {bookings.map(b => (
-              <div key={b.id} className="grid grid-cols-12 gap-3 px-4 py-3 items-center border-b border-slate-800 last:border-0 hover:bg-slate-800/40">
-                <div className="col-span-4 md:col-span-2">
+              <div key={b.id} className={`grid grid-cols-13 gap-3 px-4 py-3 items-center border-b border-slate-800 last:border-0 hover:bg-slate-800/40 ${selectedBookings.includes(b.id) ? 'bg-lime-400/5' : ''}`}>
+                <div className="col-span-1"><Checkbox checked={selectedBookings.includes(b.id)} onCheckedChange={() => toggleSelectBooking(b.id)} /></div>
+                <div className="col-span-2">
                   <div className="text-sm font-mono text-slate-300">
                     {new Date(b.game_date).toLocaleDateString('en-IN', { month: 'short', day: 'numeric' })}
                   </div>
                   <div className="text-xs text-slate-500">{b.game_time}</div>
                 </div>
-                <div className="col-span-8 md:col-span-3 min-w-0">
+                <div className="col-span-3 min-w-0">
                   <div className="font-medium text-slate-100 truncate">{b.game_title}</div>
-                  <div className="text-xs text-slate-500">{b.sport_name}</div>
+                  <div className="text-xs text-slate-500 truncate">{b.sport_name}</div>
                 </div>
-                <div className="col-span-6 md:col-span-2 text-sm text-slate-400">{b.sport_name}</div>
-                <div className="col-span-6 md:col-span-2 min-w-0">
-                  {b.user_name ? (
-                    <>
-                      <div className="text-sm text-slate-100 truncate">{b.user_name}</div>
-                      <div className="text-xs text-slate-500 truncate">{b.user_email}</div>
-                    </>
-                  ) : (
-                    <>
-                      <div className="text-sm text-slate-100 truncate">{b.guest_name}</div>
-                      <div className="text-xs text-slate-500 truncate">{b.guest_email}</div>
-                      <div className="text-xs text-slate-600">{b.guest_phone}</div>
-                    </>
-                  )}
+                <div className="col-span-2 min-w-0">
+                  <div className="text-sm text-slate-100 truncate">{b.user_name || b.guest_name || 'N/A'}</div>
                 </div>
-                <div className="col-span-4 md:col-span-2">
+                <div className="col-span-2 min-w-0 text-xs">
+                  <div className="text-slate-400 truncate">{b.user_email || b.guest_email || 'N/A'}</div>
+                  <div className="text-slate-500 truncate">{b.user_phone || b.guest_phone || 'N/A'}</div>
+                </div>
+                <div className="col-span-1">
                   <Badge className={b.status === 'active' ? 'bg-green-500/20 text-green-300 border-green-500/30' : 'bg-slate-700 text-slate-300'}>
                     {b.status}
                   </Badge>
                 </div>
-                <div className="col-span-8 md:col-span-1 text-right">
-                  <span className="font-mono font-semibold text-slate-100">
+                <div className="col-span-1 text-right">
+                  <span className="font-mono font-semibold text-slate-100 text-sm">
                     {b.is_paid ? `₹${b.amount_paid?.toFixed(2) || '0.00'}` : 'Free'}
                   </span>
+                </div>
+                <div className="col-span-1 text-right">
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={() => {
+                      setSelectedBookings([b.id]);
+                      setShowEmailModal(true);
+                    }}
+                    className="text-blue-400 hover:bg-blue-500/10 h-8 px-2"
+                  >
+                    Email
+                  </Button>
                 </div>
               </div>
             ))}
@@ -1217,7 +1525,7 @@ function GameBookingsSection() {
 
           {/* Pagination */}
           <div className="flex items-center justify-between mt-6">
-            <div className="text-sm text-muted-foreground">
+            <div className="text-sm text-slate-400">
               Showing {(page - 1) * limit + 1} to {Math.min(page * limit, total)} of {total}
             </div>
             <div className="flex items-center gap-2">
@@ -1228,19 +1536,23 @@ function GameBookingsSection() {
               >
                 ←
               </button>
-              {Array.from({ length: totalPages }, (_, i) => i + 1).map(p => (
-                <button
-                  key={p}
-                  onClick={() => goToPage(p)}
-                  className={`px-3 py-2 rounded-lg border font-mono text-sm ${
-                    page === p
-                      ? 'bg-lime-400 text-slate-900 border-lime-400'
-                      : 'border-slate-700 text-slate-400 hover:text-slate-100'
-                  }`}
-                >
-                  {p}
-                </button>
-              ))}
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                const pageNum = Math.max(1, page - 2) + i;
+                if (pageNum > totalPages) return null;
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => goToPage(pageNum)}
+                    className={`px-3 py-2 rounded-lg border font-mono text-sm ${
+                      page === pageNum
+                        ? 'bg-lime-400 text-slate-900 border-lime-400'
+                        : 'border-slate-700 text-slate-400 hover:text-slate-100'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
               <button
                 onClick={() => goToPage(page + 1)}
                 disabled={page === totalPages}
@@ -1252,6 +1564,48 @@ function GameBookingsSection() {
           </div>
         </>
       )}
+
+      {/* Email Modal */}
+      <Dialog open={showEmailModal} onOpenChange={setShowEmailModal}>
+        <DialogContent className="max-w-lg bg-slate-900 border-slate-800 text-slate-100">
+          <DialogHeader>
+            <DialogTitle>Send Email to Participants</DialogTitle>
+            <DialogDescription className="text-slate-400">
+              Sending to {selectedBookings.length} participant{selectedBookings.length !== 1 ? 's' : ''}
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div>
+              <Label className="text-slate-300 text-xs uppercase tracking-widest mb-2 block">Message</Label>
+              <Textarea
+                rows={6}
+                value={emailMessage}
+                onChange={(e) => setEmailMessage(e.target.value)}
+                placeholder="Enter your message here..."
+                className="bg-slate-800 border-slate-700 text-white"
+              />
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowEmailModal(false)}
+              className="border-slate-700 bg-transparent hover:bg-slate-800 text-slate-300"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={sendEmailToSelected}
+              disabled={sendingEmail || !emailMessage.trim()}
+              className="bg-blue-600 text-white hover:bg-blue-700"
+            >
+              {sendingEmail ? 'Sending...' : 'Send Email'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
@@ -1651,7 +2005,7 @@ function MembersSection() {
                     <SelectContent>
                       <SelectItem value="none">No membership</SelectItem>
                       {MEMBERSHIPS_LOCAL.map(m => (
-                        <SelectItem key={m.id} value={m.id}>{m.name} · {m.duration_months}M · ₹{m.price.toLocaleString('en-IN')}</SelectItem>
+                        <SelectItem key={m.id} value={m.id}>{m.name} {m.type === 'one_on_one' ? `· ${m.sessions} sessions · ₹${m.price.toLocaleString('en-IN')}` : `· ${m.duration_months}M · ₹${m.price.toLocaleString('en-IN')}`}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -1718,8 +2072,11 @@ function MembersSection() {
                     <div key={m.id} className="p-3 rounded-lg bg-slate-950 border border-slate-800">
                       <div className="flex justify-between items-start gap-3">
                         <div className="min-w-0">
-                          <div className="text-sm font-medium text-slate-100 truncate">{m.membership_snapshot?.name} · {m.membership_snapshot?.duration_months}M</div>
+                          <div className="text-sm font-medium text-slate-100 truncate">
+                            {m.membership_snapshot?.name} {m.membership_snapshot?.type === 'one_on_one' ? `· ${m.membership_snapshot?.sessions} sessions` : `· ${m.membership_snapshot?.duration_months}M`}
+                          </div>
                           <div className="text-xs text-slate-500">Expires {new Date(m.expiry_date).toLocaleDateString('en-IN')}</div>
+                          {m.slots_remaining !== undefined && <div className="text-[10px] text-slate-500 mt-0.5">{m.slots_remaining}/{m.slots_total} slots remaining</div>}
                           {m.extensions?.length > 0 && <div className="text-[10px] text-slate-500 mt-0.5">+{m.extensions.reduce((s, e) => s + e.days, 0)} days added by admin</div>}
                         </div>
                         <div className={`px-2 py-0.5 rounded text-xs font-semibold whitespace-nowrap ${m.status === 'active' ? 'bg-lime-400/20 text-lime-400' : m.status === 'paused' ? 'bg-amber-400/20 text-amber-400' : 'bg-slate-800 text-slate-400'}`}>{m.status}</div>
@@ -1811,7 +2168,7 @@ function MembersSection() {
                   <SelectTrigger className="h-11 mt-1"><SelectValue placeholder="Pick a plan" /></SelectTrigger>
                   <SelectContent>
                     {MEMBERSHIPS_LOCAL.map(m => (
-                      <SelectItem key={m.id} value={m.id}>{m.name} · {m.duration_months}M · ₹{m.price.toLocaleString('en-IN')}</SelectItem>
+                      <SelectItem key={m.id} value={m.id}>{m.name} {m.type === 'one_on_one' ? `· ${m.sessions} sessions · ₹${m.price.toLocaleString('en-IN')}` : `· ${m.duration_months}M · ₹${m.price.toLocaleString('en-IN')}`}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -1933,6 +2290,8 @@ function MembersSection() {
 // ===================== ATTENDANCE =====================
 function AttendanceSection() {
   const [classes, setClasses] = useState([]);
+  const [selectedDate, setSelectedDate] = useState(null); // Calendar selection
+  const [classesForDate, setClassesForDate] = useState([]); // Classes on selected date
   const [selectedClass, setSelectedClass] = useState('');
   const [roster, setRoster] = useState([]);
   const [dirty, setDirty] = useState({});
@@ -1953,8 +2312,27 @@ function AttendanceSection() {
       .finally(() => setStatsLoading(false));
   }, []);
 
+  // When date is selected, filter available classes for that date
   useEffect(() => {
-    if (!selectedClass) return;
+    if (!selectedDate) {
+      setClassesForDate([]);
+      setSelectedClass('');
+      return;
+    }
+    
+    const dateStr = selectedDate.toISOString().split('T')[0];
+    const filtered = classes.filter(c => c.date === dateStr);
+    setClassesForDate(filtered);
+    setSelectedClass(''); // Reset class selection when date changes
+  }, [selectedDate, classes]);
+
+  // Load roster when class is selected
+  useEffect(() => {
+    if (!selectedClass) {
+      setRoster([]);
+      setDirty({});
+      return;
+    }
     fetch(`/api/admin/classes/${selectedClass}/roster`, { credentials: 'include' }).then(r => r.json()).then(d => { setRoster(d.roster || []); setDirty({}); });
   }, [selectedClass]);
 
@@ -2156,17 +2534,71 @@ function AttendanceSection() {
       {/* Mark Attendance Section */}
       <div>
         <h3 className="font-display font-bold text-lg mb-4">Mark Attendance</h3>
-        <div className="max-w-md mb-6">
-          <Label className="text-slate-300 text-xs uppercase tracking-widest mb-1 block">Select class</Label>
-          <Select value={selectedClass} onValueChange={v => { setSelectedClass(v); setRosterSearch(''); }}>
-            <SelectTrigger className="h-11"><SelectValue placeholder="Pick a class to mark attendance" /></SelectTrigger>
-            <SelectContent>
-              {classes.map(c => {
-                const sport = SPORTS.find(s => s.id === c.sport_id);
-                return <SelectItem key={c.id} value={c.id}>{sport?.name} · {c.date} · {c.start_time}–{c.end_time}</SelectItem>;
-              })}
-            </SelectContent>
-          </Select>
+        
+        {/* Calendar + Class Selection */}
+        <div className="grid md:grid-cols-3 gap-6 mb-6">
+          {/* Calendar */}
+          <div>
+            <Label className="text-slate-300 text-xs uppercase tracking-widest mb-3 block">Select date</Label>
+            <Card className="p-4 bg-slate-900 border-slate-800">
+              <CalendarComponent
+                mode="single"
+                selected={selectedDate}
+                onSelect={setSelectedDate}
+                disabled={(date) => {
+                  // Disable dates with no classes
+                  const dateStr = date.toISOString().split('T')[0];
+                  return !classes.some(c => c.date === dateStr);
+                }}
+                className="[&_.rdp-months]:!w-full [&_.rdp-month]:!w-full [&_.rdp-head_cell]:!w-9 [&_.rdp-cell]:!w-9 [&_.rdp-day]:!w-9"
+              />
+            </Card>
+          </div>
+
+          {/* Classes on Selected Date */}
+          <div className="md:col-span-2">
+            <Label className="text-slate-300 text-xs uppercase tracking-widest mb-3 block">Classes on {selectedDate ? selectedDate.toLocaleDateString('en-IN', { weekday: 'short', month: 'short', day: 'numeric' }) : 'selected date'}</Label>
+            {!selectedDate ? (
+              <Card className="p-6 bg-slate-900 border-slate-800 text-center">
+                <p className="text-slate-500 text-sm">Pick a date to see available classes</p>
+              </Card>
+            ) : classesForDate.length === 0 ? (
+              <Card className="p-6 bg-slate-900 border-slate-800 text-center">
+                <p className="text-slate-500 text-sm">No classes scheduled for this date</p>
+              </Card>
+            ) : (
+              <div className="space-y-2">
+                {classesForDate.map(c => {
+                  const sport = SPORTS.find(s => s.id === c.sport_id);
+                  const isSelected = selectedClass === c.id;
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => setSelectedClass(c.id)}
+                      className={`w-full p-4 rounded-lg border-2 transition-all text-left ${
+                        isSelected
+                          ? 'bg-lime-400/10 border-lime-400 shadow-lg'
+                          : 'bg-slate-800 border-slate-700 hover:border-slate-600'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1">
+                          <div className={`font-semibold ${isSelected ? 'text-lime-400' : 'text-slate-100'}`}>{sport?.name}</div>
+                          <div className="text-sm text-slate-400">{c.start_time} – {c.end_time}</div>
+                          <div className="text-xs text-slate-500 mt-1">Coach: {c.coach_name}</div>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-xs text-slate-400">Capacity</div>
+                          <div className={`text-lg font-bold ${isSelected ? 'text-lime-400' : 'text-slate-100'}`}>{c.capacity}</div>
+                        </div>
+                        {isSelected && <CheckCircle2 className="w-5 h-5 text-lime-400 flex-shrink-0" />}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
 
         {selectedClass && (
@@ -3310,6 +3742,60 @@ function PerformanceSection() {
     }
   };
 
+  // Download leaderboard as CSV
+  const downloadLeaderboardCSV = () => {
+    if (dashboardData.length === 0) {
+      toast.error('No data to download');
+      return;
+    }
+
+    // CSV headers
+    const headers = ['Rank', 'Athlete Name', 'Parent', 'Sport', 'Performance Score', 'Leadership Score', 'Combined Score', 'Status'];
+    
+    // CSV rows
+    const rows = dashboardData.map((row, i) => [
+      i + 1,
+      row.name,
+      row.parent_name,
+      SPORTS.find(s => s.id === dashboardSport)?.name || dashboardSport,
+      row.performance?.toFixed(2) || '—',
+      row.leadership?.toFixed(2) || '—',
+      row.combined?.toFixed(2) || '—',
+      row.is_active_member ? 'Active' : 'Inactive'
+    ]);
+
+    // Create CSV string
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => 
+        row.map(cell => 
+          typeof cell === 'string' && cell.includes(',') 
+            ? `"${cell}"` 
+            : cell
+        ).join(',')
+      )
+    ].join('\n');
+
+    // Create blob and download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    const sportName = SPORTS.find(s => s.id === dashboardSport)?.name || 'leaderboard';
+    const tagName = dashboardTagFilter ? `_${dashboardTagFilter}` : '';
+    const timestamp = new Date().toISOString().slice(0, 10);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', `flowternity_leaderboard_${sportName}${tagName}_${timestamp}.csv`);
+    link.style.visibility = 'hidden';
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    toast.success(`Downloaded ${dashboardData.length} athletes`);
+  };
+
   return (
     <>
       <SectionHeader
@@ -3346,6 +3832,14 @@ function PerformanceSection() {
                     >{s.name}</button>
                   ))}
                   <button onClick={() => loadDashboard()} className="text-xs text-slate-500 hover:text-lime-400 transition">↻ Refresh</button>
+                  <button 
+                    onClick={downloadLeaderboardCSV}
+                    disabled={dashboardData.length === 0}
+                    className="text-xs text-slate-500 hover:text-lime-400 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                    title="Download as CSV"
+                  >
+                    📥 Download
+                  </button>
                 </div>
                 {/* Tag filter buttons - wrap on mobile */}
                 <div className="flex flex-wrap items-center gap-2">
