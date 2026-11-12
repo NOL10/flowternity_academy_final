@@ -108,22 +108,28 @@ async function activateOrderMembership(db, { razorpay_order_id, razorpay_payment
   const isSlotPlan = mem.type === 'slot';
   const slotQty = (isSlotPlan ? (meta.slot_quantity || 1) : null);
   
-  // Check for expired membership in the same sport to chain the start date
-  let chainStartDate = now;
-  const existingMembership = await db.collection('user_memberships').findOne({
+  // Determine start date based on existing membership status
+  let chainStartDate = now; // Default: start immediately
+  
+  // Check for ACTIVE membership in the same sport to chain the start date
+  const activeMembership = await db.collection('user_memberships').findOne({
     user_id: user.id,
     child_profile_id: meta.child_profile_id || null,
     sport_id: mem.sport_id,
-    status: 'expired'
+    status: 'active'
   });
   
-  // If expired membership exists, start new membership the day after it expires
-  if (existingMembership && existingMembership.expiry_date) {
-    chainStartDate = new Date(existingMembership.expiry_date);
+  // Scenario 1: If ACTIVE membership exists, chain from its expiry date
+  if (activeMembership && activeMembership.expiry_date) {
+    // New membership starts the day after active membership expires
+    chainStartDate = new Date(activeMembership.expiry_date);
     chainStartDate.setDate(chainStartDate.getDate() + 1); // Start day after expiry
   }
+  // Scenario 2: If no active membership, check for expired
+  // If expired membership exists, it doesn't affect start date (start immediately)
+  // Scenario 3: If no membership exists, start immediately from now
   
-  // Calculate expiry based on start date (not today)
+  // Calculate expiry based on start date
   const expiry = new Date(chainStartDate);
   if (isSlotPlan) {
     expiry.setDate(expiry.getDate() + 15);
@@ -1336,7 +1342,27 @@ async function handleRoute(request, { params }) {
 
       const now = new Date();
       const isSlotPlan = mem.type === 'slot';
-      const expiry = new Date(now);
+      
+      // Determine start date based on existing membership status
+      let chainStartDate = now; // Default: start immediately
+      
+      // Check for ACTIVE membership in the same sport to chain the start date
+      const activeMembership = await db.collection('user_memberships').findOne({
+        user_id: auth.user.id,
+        child_profile_id,
+        sport_id: mem.sport_id,
+        status: 'active'
+      });
+      
+      // If ACTIVE membership exists, chain from its expiry date
+      if (activeMembership && activeMembership.expiry_date) {
+        // New membership starts the day after active membership expires
+        chainStartDate = new Date(activeMembership.expiry_date);
+        chainStartDate.setDate(chainStartDate.getDate() + 1); // Start day after expiry
+      }
+      
+      // Calculate expiry based on start date
+      const expiry = new Date(chainStartDate);
       if (isSlotPlan) {
         expiry.setDate(expiry.getDate() + 15);
       } else {
@@ -1351,7 +1377,7 @@ async function handleRoute(request, { params }) {
         membership_snapshot: mem,
         sport_id: mem.sport_id,
         selected_sports: [mem.sport_id],
-        start_date: now,
+        start_date: chainStartDate,
         expiry_date: expiry,
         status: 'active',
         pause_days: 0,
