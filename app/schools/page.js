@@ -531,23 +531,44 @@ function EnquiryFormSection() {
     e.preventDefault();
     setLoading(true);
     
-    // Simulated submission - integrate with actual API endpoint
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setSubmitted(true);
-      setFormData({
-        schoolName: '',
-        contactPerson: '',
-        designation: '',
-        phone: '',
-        email: '',
-        city: '',
-        studentCount: '',
-        sportsInterest: [],
-        servicesInterest: [],
-        requirements: ''
+      const res = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formData.contactPerson,
+          schoolName: formData.schoolName,
+          contactPerson: formData.contactPerson,
+          email: formData.email,
+          phone: formData.phone,
+          gradeLevels: formData.studentCount,
+          sportsInterest: formData.sportsInterest.join(', '),
+          message: formData.requirements,
+          formType: 'schools'
+        }),
       });
-      setTimeout(() => setSubmitted(false), 3000);
+      
+      if (res.ok) {
+        setSubmitted(true);
+        setFormData({
+          schoolName: '',
+          contactPerson: '',
+          designation: '',
+          phone: '',
+          email: '',
+          city: '',
+          studentCount: '',
+          sportsInterest: [],
+          servicesInterest: [],
+          requirements: ''
+        });
+        setTimeout(() => setSubmitted(false), 3000);
+      } else {
+        alert('Failed to submit. Please try again.');
+      }
+    } catch (error) {
+      console.error(error);
+      alert('An error occurred. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -964,7 +985,7 @@ function FinalCTASection() {
           className="text-center max-w-2xl mx-auto"
         >
           <h2 className="text-4xl md:text-5xl lg:text-6xl font-black mb-6 leading-tight">
-            Let\'s Build a Stronger Sporting <span className="text-accent">Culture</span>
+            Let's Build a Stronger Sporting <span className="text-accent">Culture</span>
           </h2>
           <p className="text-lg text-white/70 mb-10">
             Start a conversation about bringing meaningful sports experiences to your school.

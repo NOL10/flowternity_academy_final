@@ -11,8 +11,38 @@ import { toast } from 'sonner';
 import { MapPin, Phone, Mail, Clock } from 'lucide-react';
 
 export default function ContactPage() {
-  const [form, setForm] = useState({ name: '', email: '', message: '' });
-  const submit = (e) => { e.preventDefault(); toast.success('Message sent! We\'ll reply within 24 hours.'); setForm({ name: '', email: '', message: '' }); };
+  const [form, setForm] = useState({ name: '', email: '', phone: '', subject: '', message: '' });
+  const [loading, setLoading] = useState(false);
+  
+  const submit = async (e) => { 
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const res = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: form.name,
+          email: form.email,
+          phone: form.phone,
+          subject: form.subject || 'General Enquiry',
+          message: form.message,
+          formType: 'contact'
+        }),
+      });
+      if (res.ok) {
+        toast.success('Message sent! We\'ll reply within 24 hours.');
+        setForm({ name: '', email: '', phone: '', subject: '', message: '' });
+      } else {
+        toast.error('Failed to send message. Please try again.');
+      }
+    } catch (error) {
+      toast.error('An error occurred. Please try again.');
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background">
@@ -45,8 +75,10 @@ export default function ContactPage() {
             <form onSubmit={submit} className="space-y-4">
               <div><Label>Name</Label><Input required className="h-12 mt-1" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} /></div>
               <div><Label>Email</Label><Input type="email" required className="h-12 mt-1" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></div>
+              <div><Label>Phone</Label><Input type="tel" className="h-12 mt-1" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} /></div>
+              <div><Label>Subject</Label><Input className="h-12 mt-1" value={form.subject} onChange={e => setForm({ ...form, subject: e.target.value })} placeholder="What is this about?" /></div>
               <div><Label>Message</Label><Textarea required rows={5} className="mt-1" value={form.message} onChange={e => setForm({ ...form, message: e.target.value })} /></div>
-              <Button type="submit" className="w-full h-12 bg-primary text-primary-foreground hover:bg-primary/90">Send Message</Button>
+              <Button type="submit" disabled={loading} className="w-full h-12 bg-primary text-primary-foreground hover:bg-primary/90">{loading ? 'Sending...' : 'Send Message'}</Button>
             </form>
           </Card>
         </div>

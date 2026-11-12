@@ -282,6 +282,9 @@ function App() {
                     </div>
 
                     <div className="mt-5 space-y-2">
+                      <Link href="/personal-coaching">
+                        <Button className="mb-4 w-full bg-purple-500 text-white hover:bg-purple-600 h-11 font-semibold ">Learn More <ArrowRight className="w-4 h-4 ml-2" /></Button>
+                      </Link>
                       <Link href="/contact">
                         <Button className="mb-4 w-full bg-purple-500 text-white hover:bg-purple-600 h-11 font-semibold ">Contact Us to Enquire</Button>
                       </Link>

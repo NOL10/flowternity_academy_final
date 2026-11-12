@@ -36,6 +36,11 @@ function MembershipsInner() {
           <p className="text-muted-foreground text-lg mt-4 max-w-xl">
             Each membership is for one sport. Hold multiple memberships to train in multiple sports.
           </p>
+          <Link href="/personal-coaching">
+            <Button variant="outline" className="mt-6 border-muted-foreground text-muted-foreground hover:bg-secondary">
+              Interested in one-on-one coaching? <ArrowRight className="w-4 h-4 ml-2" />
+            </Button>
+          </Link>
         </div>
 
         {/* Basketball Section */}
@@ -164,7 +169,7 @@ function MembershipsInner() {
           <div className="mb-16">
             <div className="mb-6">
               <h3 className="text-sm uppercase tracking-widest font-bold text-muted-foreground mb-2">One-on-One Personal Coaching</h3>
-              <p className="text-xs text-muted-foreground">Expert trainers, customized training plans</p>
+              <p className="text-xs text-muted-foreground">Elite trainers, customized training plans</p>
             </div>
             <div className="flex justify-left">
               <Card className="p-6 md:p-8 rounded-3xl border-2 border-purple-500/30 w-full md:w-1/3 relative">
@@ -180,12 +185,12 @@ function MembershipsInner() {
                   </div>
                 </div>
 
-                <div className="text-sm text-muted-foreground mb-4">Customized training with professional trainers</div>
+                <div className="text-sm text-muted-foreground mb-4">Tailored. Intensive. Results-driven.</div>
 
                 <ul className="mt-4 space-y-2 text-sm mb-6">
-                  <li className="flex items-start gap-2"><span className="text-purple-500">●</span> One-on-one sessions</li>
-                  <li className="flex items-start gap-2"><span className="text-purple-500">●</span> Custom training plan</li>
-                  <li className="flex items-start gap-2"><span className="text-purple-500">●</span> Expert trainer assignment</li>
+                  <li className="flex items-start gap-2"><span className="text-purple-500">●</span> Personalized training programmes</li>
+                  <li className="flex items-start gap-2"><span className="text-purple-500">●</span> Performance tracking & assessments</li>
+                  <li className="flex items-start gap-2"><span className="text-purple-500">●</span> Elite trainer assignment</li>
                 </ul>
 
                 <div className="space-y-1">
@@ -194,11 +199,18 @@ function MembershipsInner() {
                     <span className="text-muted-foreground text-base">/session</span>
                   </div>
                   <div className="text-sm text-muted-foreground font-medium">
-                    Starting price
+                    Starting from
                   </div>
                 </div>
 
                 <div className="space-y-2 mt-6">
+                  <Link href="/personal-coaching">
+                    <Button
+                      className="mb-4 w-full h-12 text-base font-semibold bg-purple-500 text-white hover:bg-purple-600"
+                    >
+                      Learn More <ArrowRight className="w-4 h-4 ml-2" />
+                    </Button>
+                  </Link>
                   <Link href="/contact">
                     <Button
                       className="mb-4 w-full h-12 text-base font-semibold bg-purple-500 text-white hover:bg-purple-600"

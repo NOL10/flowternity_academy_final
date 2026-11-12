@@ -511,21 +511,44 @@ function EnquiryFormSection() {
     setLoading(true);
     
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setSubmitted(true);
-      setFormData({
-        companyName: '',
-        contactPerson: '',
-        designation: '',
-        phone: '',
-        email: '',
-        city: '',
-        employeeCount: '',
-        programmeInterest: '',
-        eventDate: '',
-        requirements: ''
+      const res = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: formData.contactPerson,
+          companyName: formData.companyName,
+          contactPerson: formData.contactPerson,
+          email: formData.email,
+          phone: formData.phone,
+          employeeCount: formData.employeeCount,
+          eventType: formData.programmeInterest,
+          date: formData.eventDate,
+          message: formData.requirements,
+          formType: 'corporate'
+        }),
       });
-      setTimeout(() => setSubmitted(false), 3000);
+      
+      if (res.ok) {
+        setSubmitted(true);
+        setFormData({
+          companyName: '',
+          contactPerson: '',
+          designation: '',
+          phone: '',
+          email: '',
+          city: '',
+          employeeCount: '',
+          programmeInterest: '',
+          eventDate: '',
+          requirements: ''
+        });
+        setTimeout(() => setSubmitted(false), 3000);
+      } else {
+        alert('Failed to submit. Please try again.');
+      }
+    } catch (error) {
+      console.error(error);
+      alert('An error occurred. Please try again.');
     } finally {
       setLoading(false);
     }

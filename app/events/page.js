@@ -190,8 +190,11 @@ export default function EventsPage() {
           name: form.name,
           email: form.email,
           phone: form.phone,
-          subject: `Event Enquiry: ${form.eventType}`,
-          message: `Type: ${form.eventType}\nAttendees: ${form.attendees}\nDate: ${form.date}\n\n${form.details}`,
+          eventType: form.eventType,
+          attendees: form.attendees,
+          date: form.date,
+          details: form.details,
+          formType: 'events'
         }),
       });
       if (res.ok) {
@@ -200,9 +203,12 @@ export default function EventsPage() {
         setTimeout(() => setFormStatus('idle'), 6000);
       } else {
         setFormStatus('error');
+        setTimeout(() => setFormStatus('idle'), 4000);
       }
-    } catch {
+    } catch (err) {
+      console.error(err);
       setFormStatus('error');
+      setTimeout(() => setFormStatus('idle'), 4000);
     }
   };
 
