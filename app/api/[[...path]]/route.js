@@ -2658,7 +2658,7 @@ async function handleRoute(request, { params }) {
       await sendTournamentRegistrationEmail({
         to: email,
         name: name,
-        tournamentName: game.name,
+        tournamentName: game.name || game.title || gameId,
         categoryName: category.name,
         entryFee: category.entry_fee,
         registrationDetails: registrationDetails,
