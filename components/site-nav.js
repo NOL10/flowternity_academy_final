@@ -20,6 +20,7 @@ export default function SiteNav({ dark = false }) {
     { href: '/corporate', label: 'Corporate' },
     { href: '/coaches', label: 'Coaches' },
     { href: '/games', label: 'Games' },
+    { href: '/events', label: 'Events' },
     { href: '/about', label: 'About' },
     { href: '/contact', label: 'Contact' },
   ];
