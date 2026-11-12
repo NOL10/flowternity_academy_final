@@ -67,7 +67,7 @@ export default function DashboardPage() {
       });
   }, [user, activeChild]);
 
-  // Fetch performance data when sport or active child changes
+    // Fetch performance data when sport or active child changes
   useEffect(() => {
     if (!user) return;
     const subject_id = activeChild?.id || user.id;
@@ -80,9 +80,24 @@ export default function DashboardPage() {
         }
       });
 
+    // Leadership: pass the correct user_id — if activeChild exists, the metrics
+    // were saved with selected.id (child profile ID) as user_id by the admin panel.
     fetch(`/api/leadership-metrics?user_id=${subject_id}&sport_id=${activeSport}`, { credentials: 'include' })
       .then(r => r.json())
-      .then(d => setLeadershipData(d))
+      .then(d => {
+        // API returns metrics array with { id, average, scores, ... }
+        // Normalise to { metric_id, score } shape the UI expects
+        if (d.metrics) {
+          const normalised = d.metrics.map(m => ({
+            ...m,
+            metric_id: m.metric_id || m.id,  // grouped by LEADERSHIP_METRICS.id
+            score: m.average ?? m.score ?? 0, // use average as the display score
+          }));
+          setLeadershipData({ ...d, metrics: normalised });
+        } else {
+          setLeadershipData(null);
+        }
+      })
       .catch(() => setLeadershipData(null));
   }, [user, activeChild, activeSport]);
 
@@ -138,6 +153,18 @@ export default function DashboardPage() {
   const current_perf = performanceData?.sports?.find(s => s.sport_id === activeSport);
   const current_level = current_perf?.level || 1;
   const level_info = KIDS_LEVELS.find(l => l.level === current_level);
+
+  // Combined score = average of performance avg + leadership avg (only scored metrics)
+  const combinedScore = (() => {
+    const perfVals = Object.values(current_perf?.scores || {});
+    const perfAvg = perfVals.length > 0 ? perfVals.reduce((a, b) => a + b, 0) / perfVals.length : 0;
+    const leadMetrics = (leadershipData?.metrics || []).filter(m => m.score > 0);
+    const leadAvg = leadMetrics.length > 0 ? leadMetrics.reduce((s, m) => s + m.score, 0) / leadMetrics.length : 0;
+    if (perfAvg > 0 && leadAvg > 0) return ((perfAvg + leadAvg) / 2).toFixed(1);
+    if (perfAvg > 0) return perfAvg.toFixed(1);
+    if (leadAvg > 0) return leadAvg.toFixed(1);
+    return null;
+  })();
   
   // Active memberships with proper validity
   const activeMemberships = (data?.memberships || [])
@@ -225,6 +252,21 @@ export default function DashboardPage() {
               </div>
               <p className="text-primary-foreground/80 italic mb-6">&ldquo;{level_info?.quote}&rdquo;</p>
               
+              {/* Athlete Tag Badge */}
+              {activeChild?.athlete_tag && (
+                <div className="mb-4">
+                  <Badge className={`px-3 py-1.5 text-sm font-bold ${
+                    activeChild.athlete_tag === 'juniors' ? 'bg-blue-500 text-white' :
+                    activeChild.athlete_tag === 'intermediates' ? 'bg-purple-500 text-white' :
+                    'bg-amber-500 text-white'
+                  }`}>
+                    {activeChild.athlete_tag === 'juniors' ? '🔵 Juniors' :
+                     activeChild.athlete_tag === 'intermediates' ? '🟣 Intermediates' :
+                     '🟠 Seniors'}
+                  </Badge>
+                </div>
+              )}
+              
               {/* Level progress dots */}
               <div className="flex gap-2 flex-wrap">
                 {KIDS_LEVELS.map((l, idx) => (
@@ -250,12 +292,9 @@ export default function DashboardPage() {
             {/* Performance Score */}
             {current_perf && (
               <div className="flex flex-col items-center md:items-end justify-center animate-slide-up" style={{animationDelay: '0.1s'}}>
-                <p className="text-primary-foreground/60 text-sm uppercase tracking-widest mb-4">Performance Score</p>
+                <p className="text-primary-foreground/60 text-sm uppercase tracking-widest mb-4">Overall Score</p>
                 <div className="font-display font-black text-7xl text-accent mb-2 animate-bounce">
-                  {(() => {
-                    const vals = Object.values(current_perf.scores || {});
-                    return vals.length ? (vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : '—';
-                  })()}
+                  {combinedScore ?? '—'}
                 </div>
                 <p className="text-primary-foreground/80 text-sm">/10</p>
               </div>
@@ -269,7 +308,7 @@ export default function DashboardPage() {
           <StatsCard 
             icon={Zap} 
             label="Overall Score"
-            value={current_perf ? ((Object.values(current_perf.scores || {}).reduce((a, b) => a + b, 0) / Object.keys(current_perf.scores || {}).length).toFixed(1)) : '—'}
+            value={combinedScore ?? '—'}
             color="yellow"
             delay={1}
           />
@@ -330,7 +369,52 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* ===== MEMBERSHIP VALIDITY CARDS (WITH PROGRESS RINGS) ===== */}
+        {/* ===== COMBINED PERFORMANCE & LEADERSHIP SCORE ===== */}
+        {current_perf && leadershipData && (
+          (() => {
+            const perfVals = Object.values(current_perf.scores || {});
+            const perfScore = perfVals.length > 0 ? perfVals.reduce((a, b) => a + b, 0) / perfVals.length : 0;
+            const leadMetrics = (leadershipData?.metrics || []).filter(m => m.score > 0);
+            const leadScore = leadMetrics.length > 0
+              ? leadMetrics.reduce((sum, m) => sum + m.score, 0) / leadMetrics.length
+              : 0;
+            const combined = perfScore > 0 && leadScore > 0 ? (perfScore + leadScore) / 2
+              : perfScore > 0 ? perfScore
+              : leadScore > 0 ? leadScore
+              : 0;
+            if (perfScore === 0 && leadScore === 0) return null;
+            return (
+              <Card className="mb-8 p-6 md:p-8 rounded-3xl bg-gradient-to-r from-indigo-50 to-transparent border border-indigo-200 animate-fade-in">
+                <h3 className="font-display font-bold text-2xl mb-4 flex items-center gap-2">
+                  <Target className="w-6 h-6 text-indigo-600" /> Overall Score
+                </h3>
+                <div className="grid md:grid-cols-3 gap-6">
+                  <div className="p-4 rounded-xl bg-white border border-indigo-100">
+                    <p className="text-xs text-muted-foreground uppercase tracking-widest mb-2">Performance Avg</p>
+                    <p className="font-display font-black text-4xl text-indigo-600 mb-1">
+                      {perfScore > 0 ? perfScore.toFixed(1) : '—'}
+                    </p>
+                    <p className="text-sm text-muted-foreground">/10</p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-white border border-indigo-100">
+                    <p className="text-xs text-muted-foreground uppercase tracking-widest mb-2">Leadership Avg</p>
+                    <p className="font-display font-black text-4xl text-purple-600 mb-1">
+                      {leadScore > 0 ? leadScore.toFixed(1) : '—'}
+                    </p>
+                    <p className="text-sm text-muted-foreground">/10</p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-gradient-to-br from-indigo-100 to-purple-100 border border-indigo-200">
+                    <p className="text-xs text-muted-foreground uppercase tracking-widest mb-2">Combined Score</p>
+                    <p className="font-display font-black text-4xl text-indigo-700 mb-1">
+                      {combined > 0 ? combined.toFixed(1) : '—'}
+                    </p>
+                    <p className="text-sm text-muted-foreground">/10</p>
+                  </div>
+                </div>
+              </Card>
+            );
+          })()
+        )}
         {activeMemberships.length > 0 && (
           <div className="mb-8 animate-fade-in">
             <h3 className="font-display font-bold text-2xl mb-4">Active Memberships</h3>
@@ -354,9 +438,6 @@ export default function DashboardPage() {
                         <p className="text-xs uppercase tracking-widest text-muted-foreground">Membership</p>
                         <h4 className="font-display font-bold text-lg mt-1">
                           {m.membership_snapshot?.name}
-                          {m.membership_snapshot?.type === 'one_on_one' && m.membership_snapshot?.sessions && (
-                            <span className="text-sm font-normal text-muted-foreground"> · {m.membership_snapshot.sessions} sessions</span>
-                          )}
                         </h4>
                       </div>
                       {isExpiringSoon && (
@@ -463,13 +544,13 @@ export default function DashboardPage() {
             <div className="flex items-start justify-between mb-4">
               <div>
                 <p className="text-xs uppercase tracking-widest text-green-600 font-semibold">Performance</p>
-                <h3 className="font-display font-bold text-3xl text-green-900 mt-1">{current_perf ? ((Object.values(current_perf.scores || {}).reduce((a, b) => a + b, 0) / Object.keys(current_perf.scores || {}).length).toFixed(1)) : '—'}</h3>
+                <h3 className="font-display font-bold text-3xl text-green-900 mt-1">{combinedScore ?? '—'}</h3>
               </div>
               <div className="w-12 h-12 rounded-xl bg-green-200/50 flex items-center justify-center">
                 <Zap className="w-6 h-6 text-green-600" />
               </div>
             </div>
-            <p className="text-sm text-green-700">Average score /10</p>
+  
           </Card>
         </div>
 
@@ -526,53 +607,24 @@ export default function DashboardPage() {
                 <>
                   {/* Strength & Focus Cards */}
                   <div className="grid md:grid-cols-2 gap-6 mb-8">
-                    {/* Top Strengths */}
-                    <div className="bg-gradient-to-br from-green-50 to-transparent p-6 rounded-2xl border border-green-200 hover:shadow-lg transition-all duration-300 transform hover:scale-102">
+                    {/* All Performance Metrics */}
+                    <div className="md:col-span-2 bg-gradient-to-br from-blue-50 to-transparent p-6 rounded-2xl border border-blue-200 hover:shadow-lg transition-all duration-300 transform hover:scale-102">
                       <h4 className="font-semibold text-lg mb-4 flex items-center gap-2 animate-fade-in">
-                        <span className="text-2xl">🎯</span> Your Strengths
+                        <span className="text-2xl">📊</span> All Performance Metrics
                       </h4>
-                      <div className="space-y-3">
+                      <div className="grid sm:grid-cols-2 gap-4">
                         {(current_perf.metrics_catalog || [])
-                          .sort((a, b) => (current_perf.scores?.[b.key] || 0) - (current_perf.scores?.[a.key] || 0))
-                          .slice(0, 3)
                           .map((m, idx) => {
                             const v = current_perf.scores?.[m.key];
                             if (v === undefined) return null;
                             return (
-                              <div key={m.key} className="animate-slide-up" style={{animationDelay: `${idx * 100}ms`}}>
+                              <div key={m.key} className="animate-slide-up" style={{animationDelay: `${idx * 50}ms`}}>
                                 <div className="flex justify-between text-sm mb-1">
-                                  <span>{m.label}</span>
-                                  <span className="font-bold">{v}/10</span>
+                                  <span className="font-medium">{m.label}</span>
+                                  <span className="font-bold text-blue-600">{v}/10</span>
                                 </div>
-                                <div className="h-2 bg-green-200 rounded-full overflow-hidden">
-                                  <div className="h-full bg-green-500 transition-all duration-1000" style={{ width: `${v * 10}%` }} />
-                                </div>
-                              </div>
-                            );
-                          })}
-                      </div>
-                    </div>
-
-                    {/* Focus Area */}
-                    <div className="bg-gradient-to-br from-orange-50 to-transparent p-6 rounded-2xl border border-orange-200 hover:shadow-lg transition-all duration-300 transform hover:scale-102">
-                      <h4 className="font-semibold text-lg mb-4 flex items-center gap-2 animate-fade-in" style={{animationDelay: '0.1s'}}>
-                        <span className="text-2xl">🎪</span> Let's Improve
-                      </h4>
-                      <div className="space-y-3">
-                        {(current_perf.metrics_catalog || [])
-                          .sort((a, b) => (current_perf.scores?.[a.key] || 0) - (current_perf.scores?.[b.key] || 0))
-                          .slice(0, 3)
-                          .map((m, idx) => {
-                            const v = current_perf.scores?.[m.key];
-                            if (v === undefined) return null;
-                            return (
-                              <div key={m.key} className="animate-slide-up" style={{animationDelay: `${idx * 100}ms`}}>
-                                <div className="flex justify-between text-sm mb-1">
-                                  <span>{m.label}</span>
-                                  <span className="font-bold">{v}/10</span>
-                                </div>
-                                <div className="h-2 bg-orange-200 rounded-full overflow-hidden">
-                                  <div className="h-full bg-orange-500 transition-all duration-1000" style={{ width: `${v * 10}%` }} />
+                                <div className="h-2 bg-blue-200 rounded-full overflow-hidden">
+                                  <div className="h-full bg-blue-500 transition-all duration-1000" style={{ width: `${v * 10}%` }} />
                                 </div>
                               </div>
                             );
@@ -608,17 +660,21 @@ export default function DashboardPage() {
 
           {expandedSections.leadership && (
             <div className="p-6 md:p-8 border-t animate-fade-in">
-              {!leadershipData || !leadershipData.metrics || leadershipData.metrics.length === 0 ? (
+              {/* Only show empty state if there are truly no scored metrics (all averages = 0) */}
+              {!leadershipData || !leadershipData.metrics || leadershipData.metrics.every(m => !m.score || m.score === 0) ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <Trophy className="w-12 h-12 mx-auto opacity-20 mb-3" />
-                  <p>Your coach hasn't recorded leadership metrics yet.</p>
+                  <p>Your coach hasn&apos;t recorded leadership metrics yet.</p>
                   <p className="text-sm mt-1">Complete more sessions to get your first evaluation.</p>
                 </div>
               ) : (
-                <div className="grid md:grid-cols-2 gap-4">
+                <div className="grid md:grid-cols-3 gap-4">
                   {LEADERSHIP_METRICS.map((category, idx) => {
-                    const metric = leadershipData.metrics.find(m => m.metric_id === category.id);
-                    const score = metric?.score || 0;
+                    // API returns metric with id = category.id, and score = average
+                    const metric = leadershipData.metrics.find(
+                      m => m.metric_id === category.id || m.id === category.id
+                    );
+                    const score = metric?.score ?? 0;
                     return (
                       <LeadershipCard
                         key={category.id}

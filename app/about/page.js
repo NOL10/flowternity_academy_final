@@ -1,6 +1,5 @@
 'use client';
 
-import Image from 'next/image';
 import SiteNav from '@/components/site-nav';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -25,10 +24,21 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* Big image */}
-      <section className="relative aspect-[21/9] w-full overflow-hidden">
-        <Image src="https://images.unsplash.com/photo-1509027572446-af8401acfdc3?auto=format&fit=crop&q=80&w=2000" alt="Facility" fill className="object-cover" />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent" />
+      {/* Big video */}
+      <section className="relative aspect-[21/9] w-full overflow-hidden bg-gradient-to-br from-black to-slate-900 mx-4 md:mx-0 ">
+        <video 
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          className="w-full h-full object-cover"
+          style={{ display: 'block' }}
+        >
+          <source src="/facility-hero.mp4" type="video/mp4" />
+          Your browser does not support the video tag.
+        </video>
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent pointer-events-none" />
       </section>
 
       {/* Values */}
@@ -60,8 +70,8 @@ export default function AboutPage() {
       </section>
 
       {/* Facility Location & Details */}
-      <section className="container py-16 md:py-24">
-        <div className="max-w-5xl">
+      <section className="container py-22 md:py-24">
+        <div className="max-w">
           <p className="text-sm uppercase tracking-widest text-muted-foreground mb-3">Visit us</p>
           <h2 className="font-display font-black text-4xl md:text-5xl mb-12">Our Facility</h2>
           
@@ -130,21 +140,21 @@ export default function AboutPage() {
           {/* Facility Features */}
           <div>
             <h3 className="font-display font-bold text-2xl mb-6">What we offer</h3>
-            <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-4">
+            <div className="grid sm:grid-cols-2 gap-6">
               {[
-                { icon: Trophy, title: 'Basketball Courts', desc: '2 international-standard courts' },
-                { icon: Wind, title: 'Pickleball', desc: 'Dedicated outdoor courts' },
-                { icon: Zap, title: 'Calisthenics', desc: 'Full outdoor training area' },
-                { icon: Target, title: 'Karate', desc: 'Dedicated indoor space' },
-                { icon: Wifi, title: 'Skateboarding', desc: 'Professional grade facility' },
-                { icon: Droplet, title: 'Amenities', desc: 'Changing rooms, lockers, parking' },
+                { icon: Trophy, title: 'Basketball Courts', desc: '2 international-standard courts with professional-grade flooring, lighting, and climate control. Perfect for competitive training and tournaments.' },
+                { icon: Wind, title: 'Pickleball', desc: 'Dedicated outdoor courts with all-weather surfaces. Ideal for players of all levels, from beginners to competitive athletes.' },
+                { icon: Zap, title: 'Calisthenics', desc: 'Full outdoor training area with bars, rings, and bodyweight stations. Complete setup for functional fitness and strength training.' },
+                { icon: Target, title: 'Karate', desc: 'Dedicated indoor space with matted floors and proper ventilation. Safe environment for kata, kumite, and skill development.' },
+                { icon: Wifi, title: 'Skateboarding', desc: 'Professional-grade facility with ramps, rails, and obstacles. Designed for street, park, and vert skating of all skill levels.' },
+                { icon: Droplet, title: 'Amenities', desc: 'Complete facilities including changing rooms, secure lockers, ample parking, water stations, and recovery zones.' },
               ].map((feature, i) => (
-                <Card key={i} className="p-4 rounded-xl border-border">
-                  <div className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center mb-3">
-                    <feature.icon className="w-4 h-4 text-accent" />
+                <Card key={i} className="p-6 rounded-2xl border-border hover:shadow-md transition-shadow">
+                  <div className="w-12 h-12 rounded-xl bg-accent/20 flex items-center justify-center mb-4">
+                    <feature.icon className="w-6 h-6 text-accent" />
                   </div>
-                  <h4 className="font-semibold">{feature.title}</h4>
-                  <p className="text-sm text-muted-foreground mt-1">{feature.desc}</p>
+                  <h4 className="font-display font-bold text-lg mb-2">{feature.title}</h4>
+                  <p className="text-sm text-muted-foreground leading-relaxed">{feature.desc}</p>
                 </Card>
               ))}
             </div>

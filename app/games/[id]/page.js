@@ -69,10 +69,6 @@ export default function GameDetailPage() {
 
   // Handle registration flow
   const handleRegisterClick = (category) => {
-    if (!user) {
-      router.push('/auth?mode=login&next=/games');
-      return;
-    }
     setSelectedCategory(category);
     setRegistrationStep(1);
     setShowRegistrationModal(true);
@@ -94,12 +90,15 @@ export default function GameDetailPage() {
       }
     }
     if (registrationStep === 2) {
+      // Step 2: Confirm category (no additional validation needed)
+    }
+    if (registrationStep === 3) {
       if (!registrationData.dob) {
         toast.error('Please enter your date of birth');
         return;
       }
     }
-    if (registrationStep === 3) {
+    if (registrationStep === 4) {
       if (!registrationData.gender) {
         toast.error('Please select your gender');
         return;
@@ -113,7 +112,7 @@ export default function GameDetailPage() {
   };
 
   const handleRegisterSubmit = async () => {
-    if (!user || !selectedCategory) return;
+    if (!selectedCategory) return;
     
     setRegistering(true);
     try {
@@ -138,8 +137,8 @@ export default function GameDetailPage() {
       setRegistrationData({ name: '', email: '', mobile: '', dob: '', gender: '' });
       
       if (data.payment_required) {
-        // TODO: Redirect to payment/checkout
-        toast.info('Redirecting to payment...');
+        toast.success('Redirecting to payment...');
+        router.push(`/checkout?type=tournament&registration_id=${data.registration.id}&amount=${selectedCategory.entry_fee}&tournament=${gameId}&category=${selectedCategory.id}`);
       }
     } catch (e) {
       toast.error(e.message);

@@ -255,40 +255,42 @@ function App() {
               </div>
             </div>
 
-            {/* One-on-One Training */}
+            {/* One-on-One Class */}
             <div className="mb-16">
-              <p className="text-white/50 text-sm uppercase tracking-widest mb-6 text-center">Basketball · One-on-One Training</p>
-              <div className="grid md:grid-cols-3 gap-4 mb-10">
-                {basketballPlans.filter(p => p.type === 'one_on_one').map(p => {
-                  const pricePerSession = Math.round(p.price / p.sessions);
-                  return (
-                    <div key={p.id} className="bg-gradient-to-br from-purple-500/10 to-purple-600/5 border border-purple-500/30 rounded-2xl p-6 flex flex-col">
-                      <Badge className="w-fit bg-purple-500 text-white text-xs mb-3">PERSONAL COACHING</Badge>
-                      
-                      <div className="text-xs uppercase tracking-widest text-purple-300 font-bold mb-1">One-on-One</div>
-                      <div className="font-display font-black text-xl mb-1">{p.sessions} Sessions</div>
-                      <div className="text-xs text-white/50 mb-3">Personal coaching with expert trainers</div>
+              <p className="text-white/50 text-sm uppercase tracking-widest mb-6 text-center">Basketball · One-on-One Personal Coaching</p>
+              <div className="flex justify-center">
+                <div className="w-full md:w-3/3">
+                  <div className="bg-gradient-to-br from-purple-500/10 to-purple-600/5 border border-purple-500/30 rounded-2xl p-6 flex flex-col">
+                    <Badge className="w-fit bg-purple-500 text-white text-xs mb-3">PERSONAL COACHING</Badge>
+                    
+                    <div className="text-xs uppercase tracking-widest text-purple-300 font-bold mb-1">One-on-One Class</div>
+                    <div className="font-display font-black text-xl mb-1">Expert Personal Coaching</div>
+                    <div className="text-xs text-white/50 mb-3">Customized training with professional trainers</div>
 
-                      <ul className="space-y-1.5 mb-4 text-sm">
-                        <li className="flex items-center gap-2 text-white/70"><span className="text-purple-400">●</span> {p.sessions} coaching sessions</li>
-                        <li className="flex items-center gap-2 text-white/70"><span className="text-purple-400">●</span> Custom training plan</li>
-                        <li className="flex items-center gap-2 text-white/70"><span className="text-purple-400">●</span> Expert trainer assigned</li>
-                      </ul>
+                    <ul className="space-y-1.5 mb-4 text-sm">
+                      <li className="flex items-center gap-2 text-white/70"><span className="text-purple-400">●</span> One-on-one sessions</li>
+                      <li className="flex items-center gap-2 text-white/70"><span className="text-purple-400">●</span> Custom training plan</li>
+                      <li className="flex items-center gap-2 text-white/70"><span className="text-purple-400">●</span> Expert trainer assigned</li>
+                    </ul>
 
-                      <div className="mt-auto">
-                        <div className="flex items-baseline gap-1 mb-1">
-                          <span className="font-display font-black text-4xl md:text-5xl">₹{pricePerSession.toLocaleString('en-IN')}</span>
-                          <span className="text-white/40 text-sm">/session</span>
-                        </div>
-                        <div className="text-white/40 text-xs">₹{p.price.toLocaleString('en-IN')} total</div>
+                    <div className="mt-auto">
+                      <div className="flex items-baseline gap-1 mb-1">
+                        <span className="font-display font-black text-4xl md:text-5xl">₹{(1200).toLocaleString('en-IN')}</span>
+                        <span className="text-white/40 text-sm">/session</span>
                       </div>
-
-                      <Link href={`/checkout?plan=${p.id}`}>
-                        <Button className="w-full mt-5 bg-purple-500 text-white hover:bg-purple-600 h-11 font-semibold">Get Started</Button>
-                      </Link>
+                      <div className="text-white/40 text-xs">Starting price</div>
                     </div>
-                  );
-                })}
+
+                    <div className="mt-5 space-y-2">
+                      <Link href="/contact">
+                        <Button className="mb-4 w-full bg-purple-500 text-white hover:bg-purple-600 h-11 font-semibold ">Contact Us to Enquire</Button>
+                      </Link>
+                      <a href="https://wa.me/919110427144" target="_blank" rel="noopener noreferrer">
+                        <Button className="w-full bg-green-600 text-white hover:bg-green-700 h-11 font-semibold">Message on WhatsApp</Button>
+                      </a>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -446,6 +448,72 @@ function App() {
                 />
               </a>
             </motion.div>
+          </div>
+        </div>
+      </section>
+
+      {/* TESTIMONIALS */}
+      <section className="py-24 md:py-32">
+        <div className="container">
+          <div className="text-center mb-16">
+            <p className="text-sm uppercase tracking-widest text-muted-foreground mb-3">Success Stories</p>
+            <h2 className="font-display font-black text-5xl md:text-7xl tracking-tight">Hear from our athletes.</h2>
+            <p className="text-muted-foreground mt-4 max-w-xl mx-auto">Real stories from members training at Flowternity.</p>
+          </div>
+
+          <div className="grid md:grid-cols-2 gap-6 max-w-5xl mx-auto">
+            {/* Testimonial 1 */}
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }} 
+              whileInView={{ opacity: 1, y: 0 }} 
+              viewport={{ once: true }} 
+              transition={{ delay: 0 }}
+              className="rounded-2xl overflow-hidden border border-border shadow-lg hover:shadow-xl transition-shadow"
+            >
+              <div className="relative aspect-video bg-black">
+                <iframe
+                  width="100%"
+                  height="100%"
+                  src="https://www.youtube.com/embed/wj0NMluS8K8?rel=0&modestbranding=1"
+                  title="Flowternity Testimonial 1"
+                  frameBorder="0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  className="absolute inset-0 w-full h-full"
+                />
+              </div>
+            </motion.div>
+
+            {/* Testimonial 2 */}
+            <motion.div 
+              initial={{ opacity: 0, y: 20 }} 
+              whileInView={{ opacity: 1, y: 0 }} 
+              viewport={{ once: true }} 
+              transition={{ delay: 0.1 }}
+              className="rounded-2xl overflow-hidden border border-border shadow-lg hover:shadow-xl transition-shadow"
+            >
+              <div className="relative aspect-video bg-black">
+                <iframe
+                  width="100%"
+                  height="100%"
+                  src="https://www.youtube.com/embed/sTtI8G2gCPA?rel=0&modestbranding=1"
+                  title="Flowternity Testimonial 2"
+                  frameBorder="0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  className="absolute inset-0 w-full h-full"
+                />
+              </div>
+            </motion.div>
+          </div>
+
+          <div className="text-center mt-12">
+            <p className="text-muted-foreground mb-4">Join hundreds of athletes training with purpose</p>
+            <Link href="/memberships">
+              <Button size="lg" className="bg-accent text-black hover:bg-accent/90">
+                Start Your Journey <ArrowRight className="w-5 h-5 ml-2" />
+              </Button>
+            </Link>
           </div>
         </div>
       </section>

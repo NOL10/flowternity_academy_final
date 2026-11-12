@@ -33,9 +33,20 @@ function CheckoutInner() {
   const params = useSearchParams();
   const router = useRouter();
   const { user, loading, refresh } = useAuth();
+  
+  // Handle both membership and tournament checkout
+  const checkoutType = params.get('type') || 'membership'; // 'membership' or 'tournament'
   const planId = params.get('plan');
+  const registrationId = params.get('registration_id');
+  const tournamentId = params.get('tournament');
+  const categoryId = params.get('category');
+  const amount = params.get('amount');
+  
   const plan = MEMBERSHIPS.find(m => m.id === planId);
   const sport = SPORTS.find(s => s.id === plan?.sport_id);
+  
+  const [tournamentReg, setTournamentReg] = useState(null);
+  const [tournamentLoading, setTournamentLoading] = useState(checkoutType === 'tournament');
 
   const [processing, setProcessing] = useState(false);
   const [existingProfile, setExistingProfile] = useState(null); // athlete profile already on account
@@ -81,10 +92,30 @@ function CheckoutInner() {
         });
     }
   }, [user]);
-  
-  // Calculate enrollment fee per-athlete (each athlete pays when joining basketball for the first time)
+
+  // Fetch tournament registration if type=tournament
   useEffect(() => {
-    if (!plan) return;
+    if (checkoutType === 'tournament' && registrationId) {
+      fetch(`/api/games/${tournamentId}/registrations/${registrationId}`, { credentials: 'include' })
+        .then(r => r.json())
+        .then(d => {
+          if (d.registration) {
+            setTournamentReg(d.registration);
+          } else {
+            toast.error('Tournament registration not found');
+            router.push('/games');
+          }
+        })
+        .catch(e => {
+          toast.error('Failed to load tournament details');
+          console.error(e);
+        })
+        .finally(() => setTournamentLoading(false));
+    }
+  }, [checkoutType, registrationId, tournamentId]);
+
+  useEffect(() => {
+    if (!plan || checkoutType !== 'membership') return;
     
     const isBasketball = plan.sport_id === 'basketball';
     const chargesEnrollmentFee = plan.duration_months === 1 || plan.duration_months === 6;
@@ -139,12 +170,39 @@ function CheckoutInner() {
   }, [plan, slotQuantity, enrollmentFee]);
 
   if (!plan || !sport) {
+    // For tournaments, plan and sport are not needed
+    if (checkoutType !== 'tournament') {
+      return (
+        <div className="min-h-screen bg-background">
+          <SiteNav />
+          <div className="container py-20 text-center">
+            <h1 className="font-display font-black text-3xl">Plan not found</h1>
+            <Link href="/memberships" className="mt-4 inline-block underline">Back to memberships</Link>
+          </div>
+        </div>
+      );
+    }
+  }
+
+  if (checkoutType === 'tournament' && tournamentLoading) {
     return (
       <div className="min-h-screen bg-background">
         <SiteNav />
         <div className="container py-20 text-center">
-          <h1 className="font-display font-black text-3xl">Plan not found</h1>
-          <Link href="/memberships" className="mt-4 inline-block underline">Back to memberships</Link>
+          <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
+          <p>Loading tournament registration...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (checkoutType === 'tournament' && !tournamentReg) {
+    return (
+      <div className="min-h-screen bg-background">
+        <SiteNav />
+        <div className="container py-20 text-center">
+          <h1 className="font-display font-black text-3xl">Registration not found</h1>
+          <Link href="/games" className="mt-4 inline-block underline">Back to tournaments</Link>
         </div>
       </div>
     );
@@ -232,6 +290,98 @@ function CheckoutInner() {
   };
 
   const pay = async () => {
+    // Tournament checkout
+    if (checkoutType === 'tournament' && tournamentReg) {
+      setProcessing(true);
+      try {
+        const rzpAvailable = await loadRazorpay();
+        
+        if (!rzpAvailable || !window.Razorpay) {
+          // Mock tournament payment
+          const mres = await fetch(`/api/games/${tournamentId}/categories/${categoryId}/verify-payment`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({
+              registration_id: registrationId,
+              razorpay_order_id: 'mock_order',
+              razorpay_payment_id: 'mock_pay',
+              razorpay_signature: 'mock_sig',
+            }),
+          });
+          const mdata = await mres.json();
+          if (!mres.ok) throw new Error(mdata.error || 'Payment failed');
+          toast.success('Tournament payment successful!');
+          router.push('/dashboard?tournament_registered=1');
+          return;
+        }
+
+        // Create Razorpay order for tournament
+        const ores = await fetch(`/api/games/${tournamentId}/categories/${categoryId}/create-order`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            registration_id: registrationId,
+            amount: parseInt(amount),
+          }),
+        });
+        const orderData = await ores.json();
+        if (!ores.ok) throw new Error(orderData.error || 'Failed to create order');
+
+        const options = {
+          key: orderData.key_id,
+          amount: orderData.amount,
+          currency: orderData.currency,
+          name: 'Flowternity',
+          description: `Tournament Entry`,
+          order_id: orderData.order_id,
+          prefill: {
+            name: tournamentReg.name || '',
+            email: tournamentReg.email || '',
+            contact: tournamentReg.mobile || '',
+          },
+          theme: { color: '#000000' },
+          handler: async function (response) {
+            try {
+              const vres = await fetch(`/api/games/${tournamentId}/categories/${categoryId}/verify-payment`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                body: JSON.stringify({
+                  registration_id: registrationId,
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_signature: response.razorpay_signature,
+                }),
+              });
+              const vdata = await vres.json();
+              if (!vres.ok) throw new Error(vdata.error || 'Verification failed');
+              toast.success('Tournament payment successful! Your entry is confirmed.');
+              router.push('/dashboard?tournament_registered=1');
+            } catch (e) {
+              toast.error(e.message || 'Verification failed');
+              setProcessing(false);
+            }
+          },
+          modal: {
+            ondismiss: () => { toast.info('Payment cancelled'); setProcessing(false); },
+          },
+        };
+        const rzp = new window.Razorpay(options);
+        rzp.on('payment.failed', (r) => {
+          toast.error('Payment failed: ' + (r.error?.description || 'Unknown error'));
+          setProcessing(false);
+        });
+        rzp.open();
+      } catch (e) {
+        toast.error(e.message || 'Tournament checkout failed');
+        setProcessing(false);
+      }
+      return;
+    }
+
+    // Membership checkout (existing logic)
     const problem = validate();
     if (problem) { toast.error(problem); return; }
 
@@ -426,7 +576,7 @@ function CheckoutInner() {
     }
   };
 
-  const perMonth = Math.round(plan.price / plan.duration_months);
+  const perMonth = plan ? Math.round(plan.price / plan.duration_months) : 0;
   const f = form;
   const set = (k) => (e) => setForm(prev => ({ ...prev, [k]: e.target.value }));
 
@@ -435,12 +585,23 @@ function CheckoutInner() {
       <SiteNav />
       <div className="container py-10 md:py-14 max-w-6xl">
         <div className="mb-8">
-          <Link href="/memberships" className="text-sm text-muted-foreground hover:text-foreground transition">← Back to plans</Link>
-          <p className="text-sm uppercase tracking-widest text-muted-foreground mt-4 mb-2">Checkout</p>
-          <h1 className="font-display font-black text-4xl md:text-5xl tracking-tight">Complete your membership</h1>
-          <p className="text-muted-foreground mt-3">
-            {user ? `Signed in as ${user.full_name}. Fill in the athlete details & pay.` : 'Create your account and activate your membership in one step.'}
-          </p>
+          {checkoutType === 'tournament' ? (
+            <>
+              <Link href="/games" className="text-sm text-muted-foreground hover:text-foreground transition">← Back to tournaments</Link>
+              <p className="text-sm uppercase tracking-widest text-muted-foreground mt-4 mb-2">Tournament Entry</p>
+              <h1 className="font-display font-black text-4xl md:text-5xl tracking-tight">Confirm Your Entry & Pay</h1>
+              <p className="text-muted-foreground mt-3">Review your registration details below.</p>
+            </>
+          ) : (
+            <>
+              <Link href="/memberships" className="text-sm text-muted-foreground hover:text-foreground transition">← Back to plans</Link>
+              <p className="text-sm uppercase tracking-widest text-muted-foreground mt-4 mb-2">Checkout</p>
+              <h1 className="font-display font-black text-4xl md:text-5xl tracking-tight">Complete your membership</h1>
+              <p className="text-muted-foreground mt-3">
+                {user ? `Signed in as ${user.full_name}. Fill in the athlete details & pay.` : 'Create your account and activate your membership in one step.'}
+              </p>
+            </>
+          )}
         </div>
 
         <div className="grid lg:grid-cols-3 gap-8">
@@ -455,7 +616,44 @@ function CheckoutInner() {
               <span className="flex items-center gap-1.5"><span className="w-6 h-6 rounded-full bg-secondary flex items-center justify-center text-[10px] font-bold">3</span> Done</span>
             </div>
 
+            {/* Tournament Summary Card */}
+            {checkoutType === 'tournament' && tournamentReg && (
+              <Card className="p-6 md:p-8 rounded-2xl border-accent/30 bg-accent/5">
+                <h2 className="font-display font-bold text-2xl mb-6 flex items-center gap-2">
+                  <Check className="w-6 h-6 text-accent" />
+                  Registration Summary
+                </h2>
+                <div className="grid sm:grid-cols-2 gap-6">
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Full Name</p>
+                    <p className="font-semibold">{tournamentReg.name}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Email</p>
+                    <p className="font-semibold">{tournamentReg.email}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Mobile</p>
+                    <p className="font-semibold">{tournamentReg.mobile}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Date of Birth</p>
+                    <p className="font-semibold">{new Date(tournamentReg.dob).toLocaleDateString('en-IN')}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Gender</p>
+                    <p className="font-semibold">{tournamentReg.gender}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground mb-1">Age</p>
+                    <p className="font-semibold">{tournamentReg.calculated_age} years {tournamentReg.age_verified ? '✓' : ''}</p>
+                  </div>
+                </div>
+              </Card>
+            )}
+
             {/* UNIFIED FORM — one card for everything */}
+            {checkoutType !== 'tournament' && (
             <Card className="p-6 md:p-8 rounded-2xl">
               <div className="flex items-center gap-2 mb-1">
                 <User className="w-5 h-5" />
@@ -589,7 +787,7 @@ function CheckoutInner() {
               </div>
 
               {/* Slot quantity selector — only for slot-type plans */}
-              {plan.type === 'slot' && (
+              {checkoutType === 'membership' && plan && plan.type === 'slot' && (
                 <div className="mt-6 pt-6 border-t border-border">
                   <Label className="text-base font-semibold mb-3 block">How many slots do you want?</Label>
                   <p className="text-sm text-muted-foreground mb-4">Each slot = 1 class booking. Use all slots within 15 days.</p>
@@ -623,7 +821,7 @@ function CheckoutInner() {
               )}
 
               {/* Jersey customization — first-time basketball monthly/half-yearly/yearly only */}
-              {showJerseyForm && (
+              {checkoutType === 'membership' && showJerseyForm && (
                 <div className="mt-6 pt-6 border-t border-border">
                   <div className="flex items-center gap-2 mb-4">
                     <Info className="w-5 h-5 text-accent" />
@@ -704,15 +902,17 @@ function CheckoutInner() {
                 </div>
               )}
 
-              {!user && (
+              {!user && checkoutType === 'membership' && (
                 <p className="text-xs text-muted-foreground mt-4">
                   Already have an account?{' '}
-                  <Link href={`/auth?mode=login&next=/checkout?plan=${plan.id}`} className="underline">Sign in first</Link>
+                  <Link href={`/auth?mode=login&next=/checkout?plan=${plan?.id}`} className="underline">Sign in first</Link>
                 </p>
               )}
             </Card>
+            )}
 
             {/* Sport confirmation */}
+            {checkoutType === 'membership' && sport && (
             <Card className="p-5 rounded-2xl">
               <div className="flex items-center gap-4">
                 {sport.image && (
@@ -723,13 +923,14 @@ function CheckoutInner() {
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <span className="font-semibold">{sport.name}</span>
-                    <Badge variant="secondary">{plan.duration_months} {plan.duration_months === 1 ? 'month' : 'months'}</Badge>
+                    {plan && <Badge variant="secondary">{plan.duration_months} {plan.duration_months === 1 ? 'month' : 'months'}</Badge>}
                     <Check className="w-4 h-4 text-primary" />
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5">{sport.tagline} · Classes unlocked after payment</p>
                 </div>
               </div>
             </Card>
+            )}
 
             {/* Payment info */}
             <Card className="p-6 md:p-8 rounded-2xl">
@@ -749,6 +950,7 @@ function CheckoutInner() {
 
           {/* Sidebar */}
           <div>
+            {checkoutType === 'membership' && plan && sport && (
             <Card className="p-6 rounded-2xl lg:sticky lg:top-24">
               <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Order Summary</p>
               <h3 className="font-display font-black text-2xl">{sport.name}</h3>
@@ -844,6 +1046,41 @@ function CheckoutInner() {
                 <li className="flex items-start gap-1.5"><Check className="w-3.5 h-3.5 text-primary mt-0.5" /> Progress & level tracking</li>
               </ul>
             </Card>
+            )}
+
+            {checkoutType === 'tournament' && tournamentReg && (
+            <Card className="p-6 rounded-2xl lg:sticky lg:top-24">
+              <p className="text-xs uppercase tracking-widest text-muted-foreground mb-2">Payment Summary</p>
+              <h3 className="font-display font-black text-2xl">Tournament Entry</h3>
+              
+              <div className="mt-6 space-y-3 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Registration Fee</span>
+                  <span>₹{parseInt(amount).toLocaleString('en-IN')}</span>
+                </div>
+              </div>
+              <div className="mt-4 pt-4 border-t flex justify-between items-baseline">
+                <span className="font-semibold">Total</span>
+                <span className="font-display font-black text-3xl">₹{parseInt(amount).toLocaleString('en-IN')}</span>
+              </div>
+
+              {/* Pay button */}
+              <Button
+                onClick={pay}
+                disabled={processing}
+                className="w-full mt-6 h-14 bg-accent text-black hover:bg-accent/90 text-base font-semibold"
+              >
+                {processing
+                  ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> Processing…</>
+                  : <><CreditCard className="w-5 h-5 mr-2" /> Pay ₹{parseInt(amount).toLocaleString('en-IN')}</>
+                }
+              </Button>
+
+              <p className="mt-4 text-xs text-muted-foreground text-center">
+                Secure payment via Razorpay. Your entry is confirmed after successful payment.
+              </p>
+            </Card>
+            )}
           </div>
         </div>
       </div>

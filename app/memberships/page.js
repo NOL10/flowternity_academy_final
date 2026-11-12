@@ -16,10 +16,9 @@ function MembershipsInner() {
   const basketballPlans = MEMBERSHIPS.filter(m => m.sport_id === 'basketball');
   const otherPlans = MEMBERSHIPS.filter(m => m.sport_id !== 'basketball');
 
-  // Separate slot plans, one-on-one, and regular unlimited plans for basketball
+  // Separate slot plans and regular unlimited plans for basketball
   const basketballRegularPlans = basketballPlans.filter(m => m.type === 'unlimited');
   const basketballSlotPlans = basketballPlans.filter(m => m.type === 'slot');
-  const basketballOneOnOne = basketballPlans.filter(m => m.type === 'one_on_one');
 
   const choose = (plan) => {
     router.push(`/checkout?plan=${plan.id}`);
@@ -161,61 +160,64 @@ function MembershipsInner() {
             </div>
           )}
 
-          {/* One-on-One Training */}
-          {basketballOneOnOne.length > 0 && (
-            <div className="mb-16">
-              <div className="mb-6">
-                <h3 className="text-sm uppercase tracking-widest font-bold text-muted-foreground mb-2">One-on-One Training</h3>
-                <p className="text-xs text-muted-foreground">Personal coaching with expert trainers</p>
-              </div>
-              <div className="grid md:grid-cols-3 gap-6">
-                {basketballOneOnOne.map(plan => {
-                  const pricePerSession = Math.round(plan.price / plan.sessions);
-                  return (
-                    <Card key={plan.id} className="p-6 md:p-8 rounded-3xl border-2 border-purple-500/30 relative">
-                      <Badge className="absolute -top-3 left-8 bg-purple-500 text-white hover:bg-purple-500 font-semibold">PERSONAL COACHING</Badge>
-
-                      <div className="mb-4 mt-2">
-                        <div className="text-sm uppercase tracking-widest font-bold text-foreground">One-on-One</div>
-                      </div>
-
-                      <div className="mb-1">
-                        <div className="font-display font-black text-2xl md:text-3xl">
-                          {plan.sessions} Sessions
-                        </div>
-                      </div>
-
-                      <div className="text-sm text-muted-foreground mb-4">Personal coaching with expert trainers</div>
-
-                      <ul className="mt-4 space-y-2 text-sm mb-6">
-                        <li className="flex items-start gap-2"><span className="text-purple-500">●</span> {plan.sessions} personal coaching sessions</li>
-                        <li className="flex items-start gap-2"><span className="text-purple-500">●</span> Custom training plan</li>
-                        <li className="flex items-start gap-2"><span className="text-purple-500">●</span> Expert trainer assignment</li>
-                        <li className="flex items-start gap-2"><span className="text-purple-500">●</span> {plan.duration_months} month{plan.duration_months > 1 ? 's' : ''} validity</li>
-                      </ul>
-
-                      <div className="space-y-1">
-                        <div className="flex items-baseline gap-1">
-                          <span className="font-display font-black text-5xl md:text-6xl">₹{pricePerSession.toLocaleString('en-IN')}</span>
-                          <span className="text-muted-foreground text-base">/session</span>
-                        </div>
-                        <div className="text-sm text-muted-foreground font-medium">
-                          ₹{plan.price.toLocaleString('en-IN')} total
-                        </div>
-                      </div>
-
-                      <Button
-                        onClick={() => choose(plan)}
-                        className="w-full mt-6 h-12 text-base font-semibold bg-purple-500 text-white hover:bg-purple-600"
-                      >
-                        Get Started <ArrowRight className="w-4 h-4 ml-2" />
-                      </Button>
-                    </Card>
-                  );
-                })}
-              </div>
+          {/* One-on-One Class */}
+          <div className="mb-16">
+            <div className="mb-6">
+              <h3 className="text-sm uppercase tracking-widest font-bold text-muted-foreground mb-2">One-on-One Personal Coaching</h3>
+              <p className="text-xs text-muted-foreground">Expert trainers, customized training plans</p>
             </div>
-          )}
+            <div className="flex justify-left">
+              <Card className="p-6 md:p-8 rounded-3xl border-2 border-purple-500/30 w-full md:w-1/3 relative">
+                <Badge className="absolute -top-3 left-8 bg-purple-500 text-white hover:bg-purple-500 font-semibold">PERSONAL COACHING</Badge>
+
+                <div className="mb-4 mt-2">
+                  <div className="text-sm uppercase tracking-widest font-bold text-foreground">One-on-One Class</div>
+                </div>
+
+                <div className="mb-1">
+                  <div className="font-display font-black text-2xl md:text-3xl">
+                    Expert Personal Coaching
+                  </div>
+                </div>
+
+                <div className="text-sm text-muted-foreground mb-4">Customized training with professional trainers</div>
+
+                <ul className="mt-4 space-y-2 text-sm mb-6">
+                  <li className="flex items-start gap-2"><span className="text-purple-500">●</span> One-on-one sessions</li>
+                  <li className="flex items-start gap-2"><span className="text-purple-500">●</span> Custom training plan</li>
+                  <li className="flex items-start gap-2"><span className="text-purple-500">●</span> Expert trainer assignment</li>
+                </ul>
+
+                <div className="space-y-1">
+                  <div className="flex items-baseline gap-1">
+                    <span className="font-display font-black text-5xl md:text-6xl">₹{(1200).toLocaleString('en-IN')}</span>
+                    <span className="text-muted-foreground text-base">/session</span>
+                  </div>
+                  <div className="text-sm text-muted-foreground font-medium">
+                    Starting price
+                  </div>
+                </div>
+
+                <div className="space-y-2 mt-6">
+                  <Link href="/contact">
+                    <Button
+                      className="mb-4 w-full h-12 text-base font-semibold bg-purple-500 text-white hover:bg-purple-600"
+                    >
+                      Contact Us to Enquire <ArrowRight className="w-4 h-4 ml-2" />
+                    </Button>
+                  </Link>
+                  <a href="https://wa.me/919110427144" target="_blank" rel="noopener noreferrer">
+                    <Button
+                      className="w-full h-12 text-base font-semibold bg-green-600 text-white hover:bg-green-700"
+                    >
+                      Message on WhatsApp
+                    </Button>
+                  </a>
+                </div>
+              </Card>
+            </div>
+          </div>
+
         </div>
 
         {/* Other sports — prices vary */}

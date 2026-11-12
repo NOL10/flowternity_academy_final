@@ -106,8 +106,7 @@ async function activateOrderMembership(db, { razorpay_order_id, razorpay_payment
   const meta = paymentRec.pending_meta || {};
   const now = new Date();
   const isSlotPlan = mem.type === 'slot';
-  const isOneOnOne = mem.type === 'one_on_one';
-  const slotQty = (isSlotPlan ? (meta.slot_quantity || 1) : (isOneOnOne ? mem.sessions : null));
+  const slotQty = (isSlotPlan ? (meta.slot_quantity || 1) : null);
   
   // Check for expired membership in the same sport to chain the start date
   let chainStartDate = now;
@@ -143,7 +142,6 @@ async function activateOrderMembership(db, { razorpay_order_id, razorpay_payment
     start_date: chainStartDate, expiry_date: expiry, original_expiry_date: expiry,
     status: 'active', pause_days: 0, paused_at: null,
     ...(isSlotPlan && { slots_remaining: slotQty, slots_total: slotQty }),
-    ...(isOneOnOne && { slots_remaining: slotQty, slots_total: slotQty }),
     created_at: now,
   };
   await db.collection('user_memberships').insertOne(um);
@@ -1271,7 +1269,6 @@ async function handleRoute(request, { params }) {
         start_date: now, expiry_date: expiry,
         status: 'active', pause_days: 0, paused_at: null,
         ...(isSlotPlan && { slots_remaining: 1, slots_total: 1 }),
-        ...(mem.type === 'one_on_one' && { slots_remaining: mem.sessions, slots_total: mem.sessions }),
         created_at: now,
       };
       await db.collection('user_memberships').insertOne(um);
@@ -1360,7 +1357,6 @@ async function handleRoute(request, { params }) {
         pause_days: 0,
         paused_at: null,
         ...(mem.type === 'slot' && { slots_remaining: 1, slots_total: 1 }),
-        ...(mem.type === 'one_on_one' && { slots_remaining: mem.sessions, slots_total: mem.sessions }),
         created_at: now,
       };
       await db.collection('user_memberships').insertOne(um);
@@ -1678,12 +1674,11 @@ async function handleRoute(request, { params }) {
         // For slot-based and one-on-one memberships, find one with available slots/sessions
         for (const m of activeMems) {
           const isSlotBased = m.type === 'slot' || m.membership_snapshot?.type === 'slot';
-          const isOneOnOne = m.type === 'one_on_one' || m.membership_snapshot?.type === 'one_on_one';
           const slotsRemaining = m.slots_remaining || 0;
           
-          // Skip if it's slot/one-on-one based and has no slots remaining
-          if ((isSlotBased || isOneOnOne) && slotsRemaining <= 0) {
-            continue; // Skip, no slots/sessions
+          // Skip if it's slot-based and has no slots remaining
+          if (isSlotBased && slotsRemaining <= 0) {
+            continue; // Skip, no slots
           }
           
           selectedMembership = m;
@@ -1692,12 +1687,11 @@ async function handleRoute(request, { params }) {
         
         if (!selectedMembership) {
           const isSlotBased = activeMems[0].type === 'slot' || activeMems[0].membership_snapshot?.type === 'slot';
-          const isOneOnOne = activeMems[0].type === 'one_on_one' || activeMems[0].membership_snapshot?.type === 'one_on_one';
           
-          if (isSlotBased || isOneOnOne) {
-            return err('No slots/sessions remaining. Please purchase more or renew your membership.', 403);
+          if (isSlotBased) {
+            return err('No slots remaining. Please purchase more or renew your membership.', 403);
           }
-          selectedMembership = activeMems[0]; // Use first non-slot/one-on-one membership
+          selectedMembership = activeMems[0]; // Use first non-slot membership
         }
       }
 
@@ -1734,9 +1728,8 @@ async function handleRoute(request, { params }) {
 
       // For slot-based memberships, validate slots
       const isSlotBased = selectedMembership.type === 'slot' || selectedMembership.membership_snapshot?.type === 'slot';
-      const isOneOnOne = selectedMembership.type === 'one_on_one' || selectedMembership.membership_snapshot?.type === 'one_on_one';
       
-      if (isSlotBased || isOneOnOne) {
+      if (isSlotBased) {
         const slotsRemaining = selectedMembership.slots_remaining || 0;
         if (slotsRemaining <= 0) {
           return err('No sessions remaining. Please purchase more or renew your membership.', 403);
@@ -1754,8 +1747,8 @@ async function handleRoute(request, { params }) {
       };
       await db.collection('bookings').insertOne(booking);
 
-      // For slot or one-on-one memberships, deduct 1 slot/session
-      if (isSlotBased || isOneOnOne) {
+      // For slot-based memberships, deduct 1 slot
+      if (isSlotBased) {
         const newSlotsRemaining = Math.max(0, (selectedMembership.slots_remaining || 1) - 1);
         await db.collection('user_memberships').updateOne(
           { id: selectedMembership.id },
@@ -1787,9 +1780,8 @@ async function handleRoute(request, { params }) {
         const um = await db.collection('user_memberships').findOne({ id: b.user_membership_id });
         if (um) {
           const isSlotBased = um.type === 'slot' || um.membership_snapshot?.type === 'slot' || um.membership_id === 'basketball_slot';
-          const isOneOnOne = um.type === 'one_on_one' || um.membership_snapshot?.type === 'one_on_one';
           
-          if (isSlotBased || isOneOnOne) {
+          if (isSlotBased) {
             const slotsRemaining = um.slots_remaining || 0;
             const newSlotsRemaining = Math.min(um.slots_total || slotsRemaining, slotsRemaining + 1);
             await db.collection('user_memberships').updateOne(
@@ -1897,8 +1889,9 @@ async function handleRoute(request, { params }) {
     }
 
     // -------- GAMES (login required; join is adult-only) --------
+    // GET /api/games — List all games (public, no login required)
     if (route === '/games' && method === 'GET') {
-      const auth = await requireUser(); // Optional - for "i_joined" tracking
+      const auth = await requireUser(); // Optional - for "i_joined" tracking (no error if not logged in)
       const url = new URL(request.url);
       const sport = url.searchParams.get('sport');
       const today = new Date().toISOString().slice(0, 10);
@@ -1921,9 +1914,9 @@ async function handleRoute(request, { params }) {
         counts[p.game_id] = (counts[p.game_id] || 0) + 1;
       });
       
-      // Track which games user joined
+      // Track which games user joined (only if logged in)
       const myJoined = new Set();
-      if (auth.user) {
+      if (auth && auth.user) {
         paidBookings.filter(b => b.user_id === auth.user.id).forEach(b => myJoined.add(b.game_id));
         freeParticipants.filter(p => p.user_id === auth.user.id).forEach(p => myJoined.add(p.game_id));
       }
@@ -1942,13 +1935,23 @@ async function handleRoute(request, { params }) {
 
     const gameDetailMatch = route.match(/^\/games\/([^/]+)$/);
     if (gameDetailMatch && method === 'GET') {
-      const auth = await requireUser(); // Optional - for "i_joined" tracking
+      const auth = await requireUser(); // Optional - for "i_joined" tracking (no error if not logged in)
       const game = await db.collection('games').findOne({ id: gameDetailMatch[1] });
       if (!game) return err('Game not found', 404);
       
-      const bookings = await db.collection('game_bookings').find({ game_id: game.id, status: 'active' }).toArray();
-      const uids = bookings.map(b => b.user_id);
-      const users = uids.length ? await db.collection('users').find({ id: { $in: uids } }).toArray() : [];
+      // Get both paid bookings and free participants
+      const paidBookings = await db.collection('game_bookings').find({ game_id: game.id, status: 'active' }).toArray();
+      const freeParticipants = await db.collection('game_participants').find({ game_id: game.id }).toArray();
+      
+      // Combine all participants
+      const allParticipants = [
+        ...paidBookings.map(b => ({ ...b, type: 'paid', user_id: b.user_id })),
+        ...freeParticipants.map(p => ({ ...p, type: 'free', user_id: p.user_id }))
+      ];
+      
+      // Get user details for all participants
+      const userIds = [...new Set(allParticipants.map(p => p.user_id))];
+      const users = userIds.length ? await db.collection('users').find({ id: { $in: userIds } }).toArray() : [];
       
       return j({
         game: { 
@@ -1958,13 +1961,19 @@ async function handleRoute(request, { params }) {
           tournament_type: game.tournament_type || 'single',
           categories: game.categories || [],
           prize_pool: game.prize_pool || 0,
-          participants_count: bookings.length,
+          participants_count: allParticipants.length,
         },
-        participants: bookings.map(b => {
-          const u = users.find(x => x.id === b.user_id);
-          return { user_id: b.user_id, name: u?.full_name || 'Player', joined_at: b.booked_at };
+        participants: allParticipants.map(p => {
+          const u = users.find(x => x.id === p.user_id);
+          return { 
+            user_id: p.user_id, 
+            name: u?.full_name || 'Player', 
+            email: u?.email || 'guest@example.com',
+            type: p.type,
+            joined_at: p.booked_at || p.joined_at 
+          };
         }),
-        i_joined: auth.user ? bookings.some(b => b.user_id === auth.user.id) : false,
+        i_joined: auth && auth.user ? allParticipants.some(p => p.user_id === auth.user.id) : false,
       });
     }
 
@@ -1973,9 +1982,13 @@ async function handleRoute(request, { params }) {
       const auth = await requireUser(); if (auth.error) return auth.error;
       const game = await db.collection('games').findOne({ id: gameJoinMatch[1] });
       if (!game) return err('Game not found', 404);
-      // Require any active membership to join a game
-      const um = await db.collection('user_memberships').findOne({ user_id: auth.user.id, status: 'active', expiry_date: { $gt: new Date() } });
-      if (!um) return err('You need an active membership to join a game.', 403);
+      
+      // Only free games require membership
+      if (!game.is_paid) {
+        const um = await db.collection('user_memberships').findOne({ user_id: auth.user.id, status: 'active', expiry_date: { $gt: new Date() } });
+        if (!um) return err('You need an active membership to join a free game.', 403);
+      }
+      
       const already = await db.collection('game_participants').findOne({ game_id: game.id, user_id: auth.user.id });
       if (already) return err('You already joined this game', 409);
       const count = await db.collection('game_participants').countDocuments({ game_id: game.id });
@@ -2007,6 +2020,36 @@ async function handleRoute(request, { params }) {
         console.warn('[game-join] Email send failed:', e.message);
         // Non-fatal: don't fail the join
       }
+      
+      return j({ ok: true, participant: clean(p) });
+    }
+
+    // Guest join paid or tournament games (no auth required)
+    const guestJoinMatch = route.match(/^\/games\/([^/]+)\/join-guest$/);
+    if (guestJoinMatch && method === 'POST') {
+      const game = await db.collection('games').findOne({ id: guestJoinMatch[1] });
+      if (!game) return err('Game not found', 404);
+      
+      // Guests can only join paid or tournament games, NOT free games
+      if (!game.is_paid && !game.is_tournament) return err('Only paid or tournament games accept guests', 403);
+      
+      const { name, email } = await request.json();
+      if (!name || !email) return err('Name and email are required');
+      
+      const count = await db.collection('game_participants').countDocuments({ game_id: game.id });
+      if (count >= (game.max_players || 999)) return err('Game is full', 409);
+      
+      // Create guest participant record
+      const guestId = `guest_${uuidv4()}`;
+      const p = { 
+        id: uuidv4(), 
+        game_id: game.id, 
+        user_id: guestId,
+        guest_name: name,
+        guest_email: email,
+        joined_at: new Date() 
+      };
+      await db.collection('game_participants').insertOne(p);
       
       return j({ ok: true, participant: clean(p) });
     }
@@ -2542,6 +2585,225 @@ async function handleRoute(request, { params }) {
       });
     }
 
+    // -------- TOURNAMENT REGISTRATIONS --------
+
+    // Register for a tournament category
+    const catRegMatch = route.match(/^\/games\/([^/]+)\/categories\/([^/]+)\/register$/);
+    if (catRegMatch && method === 'POST') {
+      // Allow both authenticated users and guests
+      const auth = await requireUser(); // Optional - don't fail if not logged in
+      const [gameId, categoryId] = [catRegMatch[1], catRegMatch[2]];
+      const { name, email, mobile, dob, gender } = await request.json();
+      
+      if (!name || !email || !mobile || !dob) return err('Name, email, mobile, and DOB are required');
+      
+      // Fetch game & category
+      const game = await db.collection('games').findOne({ id: gameId });
+      if (!game || game.tournament_type !== 'age_bracket') return err('Tournament not found or not multi-category', 404);
+      
+      const category = game.categories.find(c => c.id === categoryId);
+      if (!category) return err('Category not found', 404);
+      
+      if (category.status !== 'open') return err('Category registration closed');
+      if (category.current_participants >= category.max_participants) return err('Category is full');
+      
+      // Check if already registered for this category (only if logged in)
+      if (auth && auth.user) {
+        const existing = await db.collection('tournament_registrations').findOne({
+          tournament_id: gameId,
+          category_id: categoryId,
+          user_id: auth.user.id,
+        });
+        if (existing) return err('Already registered for this category');
+      }
+      
+      // Calculate age
+      const dobDate = new Date(dob);
+      const age = Math.floor((new Date() - dobDate) / (365.25 * 24 * 60 * 60 * 1000));
+      
+      const reg = {
+        id: uuidv4(),
+        tournament_id: gameId,
+        category_id: categoryId,
+        user_id: auth && auth.user ? auth.user.id : `guest_${uuidv4()}`,
+        is_guest: !auth || !auth.user,
+        name,
+        email,
+        mobile,
+        dob,
+        gender: gender || '',
+        calculated_age: age,
+        age_verified: age >= category.age_min && age <= category.age_max,
+        status: 'registered',
+        payment_status: category.entry_fee > 0 ? 'pending' : 'paid', // Free tournaments = automatically paid (no payment needed)
+        amount: category.entry_fee,
+        registered_at: new Date(),
+      };
+      
+      await db.collection('tournament_registrations').insertOne(reg);
+      
+      // Increment category participant count
+      await db.collection('games').updateOne(
+        { id: gameId, 'categories.id': categoryId },
+        { $inc: { 'categories.$.current_participants': 1 } }
+      );
+      
+      // Send confirmation email
+      const registrationDetails = `
+        <strong>Registration Details:</strong><br>
+        Age Group: ${category.age_min}–${category.age_max} years<br>
+        Your Age: ${reg.calculated_age} years<br>
+        Status: ${reg.age_verified ? '✓ Age verified' : '⚠ Awaiting admin verification'}
+      `;
+      await sendTournamentRegistrationEmail({
+        to: email,
+        name: name,
+        tournamentName: game.name,
+        categoryName: category.name,
+        entryFee: category.entry_fee,
+        registrationDetails: registrationDetails,
+      });
+      
+      return j({ registration: clean(reg), payment_required: category.entry_fee > 0 });
+    }
+
+    // Get tournament registration by ID
+    const getTournamentRegMatch = route.match(/^\/games\/([^/]+)\/registrations\/([^/]+)$/);
+    if (getTournamentRegMatch && method === 'GET') {
+      const [gameId, registrationId] = [getTournamentRegMatch[1], getTournamentRegMatch[2]];
+      
+      const reg = await db.collection('tournament_registrations').findOne({ id: registrationId });
+      if (!reg) return err('Registration not found', 404);
+      
+      return j({ registration: clean(reg) });
+    }
+
+    // Create Razorpay order for tournament entry
+    const createTournamentOrderMatch = route.match(/^\/games\/([^/]+)\/categories\/([^/]+)\/create-order$/);
+    if (createTournamentOrderMatch && method === 'POST') {
+      // Optional auth - both logged-in users and guests can pay for tournaments
+      const auth = await requireUser(); // Don't fail if not logged in
+      const [gameId, categoryId] = [createTournamentOrderMatch[1], createTournamentOrderMatch[2]];
+      const { registration_id, amount } = await request.json();
+
+      if (!registration_id || !amount) return err('Registration ID and amount required');
+
+      // Fetch registration
+      const reg = await db.collection('tournament_registrations').findOne({ id: registration_id });
+      if (!reg) return err('Registration not found', 404);
+      
+      // Verify ownership if logged in, otherwise allow guest payment
+      if (auth && auth.user && reg.user_id !== auth.user.id && !reg.is_guest) {
+        return err('Unauthorized', 403);
+      }
+
+      // Create Razorpay order
+      const options = {
+        amount: amount * 100, // Razorpay expects amount in paise
+        currency: 'INR',
+        receipt: `tournament_${registration_id}`,
+        notes: {
+          registration_id,
+          tournament_id: gameId,
+          category_id: categoryId,
+        },
+      };
+
+      try {
+        const response = await fetch('https://api.razorpay.com/v1/orders', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Basic ${Buffer.from(`${process.env.RAZORPAY_KEY_ID}:${process.env.RAZORPAY_KEY_SECRET}`).toString('base64')}`,
+          },
+          body: JSON.stringify(options),
+        });
+
+        const order = await response.json();
+        if (!response.ok) throw new Error(order.error?.description || 'Failed to create Razorpay order');
+
+        // Store order_id in registration
+        await db.collection('tournament_registrations').updateOne(
+          { id: registration_id },
+          { $set: { razorpay_order_id: order.id } }
+        );
+
+        return j({
+          key_id: process.env.RAZORPAY_KEY_ID,
+          order_id: order.id,
+          amount: amount * 100,
+          currency: 'INR',
+        });
+      } catch (e) {
+        console.error('Razorpay order creation error:', e);
+        return err(e.message || 'Failed to create order', 500);
+      }
+    }
+
+    // Verify tournament payment
+    const verifyTournamentPaymentMatch = route.match(/^\/games\/([^/]+)\/categories\/([^/]+)\/verify-payment$/);
+    if (verifyTournamentPaymentMatch && method === 'POST') {
+      const [gameId, categoryId] = [verifyTournamentPaymentMatch[1], verifyTournamentPaymentMatch[2]];
+      const { registration_id, razorpay_order_id, razorpay_payment_id, razorpay_signature } = await request.json();
+
+      if (!registration_id) return err('Registration ID required');
+
+      // Fetch registration
+      const reg = await db.collection('tournament_registrations').findOne({ id: registration_id });
+      if (!reg) return err('Registration not found', 404);
+
+      // Verify signature using crypto
+      const crypto = require('crypto');
+      const message = razorpay_order_id + '|' + razorpay_payment_id;
+      const expectedSignature = crypto
+        .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+        .update(message)
+        .digest('hex');
+
+      if (expectedSignature !== razorpay_signature) {
+        return err('Payment verification failed', 400);
+      }
+
+      // Update registration with payment status
+      await db.collection('tournament_registrations').updateOne(
+        { id: registration_id },
+        {
+          $set: {
+            payment_status: 'success',
+            razorpay_payment_id,
+            razorpay_order_id,
+            payment_at: new Date(),
+          },
+        }
+      );
+
+      // Send confirmation email
+      const user = await db.collection('users').findOne({ id: reg.user_id });
+      if (user && reg.email) {
+        const game = await db.collection('games').findOne({ id: gameId });
+        const category = game?.categories?.find(c => c.id === categoryId);
+        
+        const confirmationDetails = `
+          <strong>Tournament Entry Confirmed!</strong><br>
+          Tournament: ${game?.title || 'N/A'}<br>
+          Category: ${category?.name || 'N/A'}<br>
+          Name: ${reg.name}<br>
+          Age: ${reg.calculated_age} years<br>
+          Amount Paid: ₹${reg.amount.toLocaleString('en-IN')}<br>
+          <br>
+          Your entry has been confirmed. Good luck!
+        `;
+
+        await sendTournamentPaymentConfirmationEmail?.({
+          to: reg.email,
+          name: reg.name,
+          confirmationDetails,
+        }).catch(e => console.error('Email send error:', e));
+      }
+
+      return j({ success: true, payment_status: 'success' });
+    }
+
     // -------- ADMIN --------
     if (route.startsWith('/admin/')) {
       const auth = await requireUser(); if (auth.error) return auth.error;
@@ -2746,12 +3008,8 @@ async function handleRoute(request, { params }) {
           cleanScores[k] = Math.max(0, Math.min(10, Math.round(num * 10) / 10));
         }
         const now = new Date();
-        // Save against this specific profile AND all other profiles for the same user
-        // so data is visible regardless of which profile the dashboard picks
-        const allProfiles = await db.collection('child_profiles').find({ parent_id: user_id }).toArray();
-        const profileIds = child_profile_id
-          ? [...new Set([child_profile_id, ...allProfiles.map(p => p.id)])]
-          : [null];
+        // Save against ONLY this specific profile — siblings have their own independent scores
+        const profileIds = child_profile_id ? [child_profile_id] : [null];
 
         for (const pid of profileIds) {
           const existing = await db.collection('athlete_metrics').findOne({
@@ -2789,11 +3047,8 @@ async function handleRoute(request, { params }) {
           if (!u) return err('Athlete not found', 404);
         }
         const now = new Date();
-        // Update level across all profiles for this user
-        const allProfiles2 = await db.collection('child_profiles').find({ parent_id: user_id }).toArray();
-        const levelProfileIds = child_profile_id
-          ? [...new Set([child_profile_id, ...allProfiles2.map(p => p.id)])]
-          : [null];
+        // Update level for only THIS specific profile (not all profiles under parent)
+        const levelProfileIds = child_profile_id ? [child_profile_id] : [null];
 
         for (const pid of levelProfileIds) {
           const existingLevel = await db.collection('athlete_levels').findOne({
@@ -3193,83 +3448,6 @@ async function handleRoute(request, { params }) {
       // Game bookings tracking for admin
 
       // -------- TOURNAMENT CATEGORY REGISTRATIONS --------
-      
-      // Register for a tournament category
-      const catRegMatch = route.match(/^\/games\/([^/]+)\/categories\/([^/]+)\/register$/);
-      if (catRegMatch && method === 'POST') {
-        const auth = await requireUser(); if (auth.error) return auth.error;
-        const [gameId, categoryId] = [catRegMatch[1], catRegMatch[2]];
-        const { name, email, mobile, dob, gender } = await request.json();
-        
-        if (!name || !email || !mobile || !dob) return err('Name, email, mobile, and DOB are required');
-        
-        // Fetch game & category
-        const game = await db.collection('games').findOne({ id: gameId });
-        if (!game || game.tournament_type !== 'age_bracket') return err('Tournament not found or not multi-category', 404);
-        
-        const category = game.categories.find(c => c.id === categoryId);
-        if (!category) return err('Category not found', 404);
-        
-        if (category.status !== 'open') return err('Category registration closed');
-        if (category.current_participants >= category.max_participants) return err('Category is full');
-        
-        // Check if already registered for this category
-        const existing = await db.collection('tournament_registrations').findOne({
-          tournament_id: gameId,
-          category_id: categoryId,
-          user_id: auth.user.id,
-        });
-        if (existing) return err('Already registered for this category');
-        
-        // Calculate age
-        const dobDate = new Date(dob);
-        const age = Math.floor((new Date() - dobDate) / (365.25 * 24 * 60 * 60 * 1000));
-        
-        const reg = {
-          id: uuidv4(),
-          tournament_id: gameId,
-          category_id: categoryId,
-          user_id: auth.user.id,
-          name,
-          email,
-          mobile,
-          dob,
-          gender: gender || '',
-          calculated_age: age,
-          age_verified: age >= category.age_min && age <= category.age_max,
-          status: 'registered',
-          payment_status: category.entry_fee > 0 ? 'pending' : 'free',
-          amount: category.entry_fee,
-          registered_at: new Date(),
-        };
-        
-        await db.collection('tournament_registrations').insertOne(reg);
-        
-        // Increment category participant count
-        await db.collection('games').updateOne(
-          { id: gameId, 'categories.id': categoryId },
-          { $inc: { 'categories.$.current_participants': 1 } }
-        );
-        
-        // Send confirmation email
-        const registrationDetails = `
-          <strong>Registration Details:</strong><br>
-          Age Group: ${category.age_min}–${category.age_max} years<br>
-          Your Age: ${reg.calculated_age} years<br>
-          Status: ${reg.age_verified ? '✓ Age verified' : '⚠ Awaiting admin verification'}
-        `;
-        await sendTournamentRegistrationEmail({
-          to: email,
-          name: name,
-          tournamentName: game.name,
-          categoryName: category.name,
-          entryFee: category.entry_fee,
-          registrationDetails: registrationDetails,
-        });
-        
-        return j({ registration: clean(reg), payment_required: category.entry_fee > 0 });
-      }
-      
       // Get registrations for admin
       const adminCatRegsMatch = route.match(/^\/admin\/games\/([^/]+)\/categories\/([^/]+)\/registrations$/);
       if (adminCatRegsMatch && method === 'GET') {
@@ -3448,6 +3626,113 @@ async function handleRoute(request, { params }) {
         }
       }
 
+      // -------- PARTICIPANTS (Free Games, Paid Games, Tournaments) --------
+      if (route === '/admin/participants/games' && method === 'GET') {
+        const auth = await requireUser(); if (auth.error) return auth.error;
+        if (auth.user.role !== 'admin' && auth.user.role !== 'coach') return err('Admin/Coach only', 403);
+
+        const participants = await db.collection('game_participants').find({}).sort({ joined_at: -1 }).toArray();
+        
+        // Enrich with game info
+        const gameIds = [...new Set(participants.map(p => p.game_id))];
+        const games = gameIds.length ? await db.collection('games').find({ id: { $in: gameIds } }).toArray() : [];
+        
+        const enriched = participants.map(p => {
+          const game = games.find(g => g.id === p.game_id);
+          return {
+            id: p.id,
+            name: p.name,
+            email: p.email,
+            mobile: p.mobile,
+            game_id: p.game_id,
+            game_name: game?.title || 'Unknown',
+            date: game?.date,
+            joined_at: p.joined_at,
+            user_id: p.user_id,
+          };
+        });
+
+        return j({ participants: enriched });
+      }
+
+      if (route === '/admin/participants/bookings' && method === 'GET') {
+        const auth = await requireUser(); if (auth.error) return auth.error;
+        if (auth.user.role !== 'admin' && auth.user.role !== 'coach') return err('Admin/Coach only', 403);
+
+        const bookings = await db.collection('game_bookings').find({}).sort({ booked_at: -1 }).toArray();
+        
+        // Enrich with game and user info
+        const gameIds = [...new Set(bookings.map(b => b.game_id))];
+        const userIds = [...new Set(bookings.map(b => b.user_id).filter(id => id))];
+        const games = gameIds.length ? await db.collection('games').find({ id: { $in: gameIds } }).toArray() : [];
+        const users = userIds.length ? await db.collection('users').find({ id: { $in: userIds } }).toArray() : [];
+
+        const enriched = bookings.map(b => {
+          const game = games.find(g => g.id === b.game_id);
+          const user = users.find(u => u.id === b.user_id);
+          return {
+            id: b.id,
+            name: user?.full_name || 'Guest User',
+            user_id: b.user_id,
+            game_id: b.game_id,
+            game_name: game?.title || 'Unknown',
+            amount: b.amount || 0,
+            is_paid: b.is_paid === true,
+            payment_status: b.is_paid ? 'paid' : 'pending',
+            status: b.status,
+            booked_at: b.booked_at,
+            razorpay_payment_id: b.razorpay_payment_id,
+          };
+        });
+
+        return j({ participants: enriched });
+      }
+
+      if (route === '/admin/participants/tournaments' && method === 'GET') {
+        const auth = await requireUser(); if (auth.error) return auth.error;
+        if (auth.user.role !== 'admin' && auth.user.role !== 'coach') return err('Admin/Coach only', 403);
+
+        const registrations = await db.collection('tournament_registrations').find({}).sort({ registered_at: -1 }).toArray();
+        
+        // Enrich with game (tournament) and category info
+        const gameIds = [...new Set(registrations.map(r => r.tournament_id))];
+        const games = gameIds.length ? await db.collection('games').find({ id: { $in: gameIds } }).toArray() : [];
+        
+        const enriched = registrations.map(r => {
+          const game = games.find(g => g.id === r.tournament_id);
+          const category = game?.categories?.find(c => c.id === r.category_id);
+          // Normalize payment status: 'success' or 'paid' both mean paid, anything else is pending
+          const paymentStatus = (r.payment_status === 'success' || r.payment_status === 'paid') ? 'paid' : 'pending';
+          return {
+            id: r.id,
+            name: r.name,
+            email: r.email,
+            mobile: r.mobile,
+            dob: r.dob,
+            calculated_age: r.calculated_age,
+            age_verified: r.age_verified,
+            gender: r.gender,
+            tournament_id: r.tournament_id,
+            tournament_name: game?.title || game?.name || 'Unknown',
+            category_id: r.category_id,
+            category_name: category?.name || 'Unknown',
+            payment_status: paymentStatus,
+            amount: r.amount || 0,
+            razorpay_payment_id: r.razorpay_payment_id,
+            created_at: r.registered_at || r.created_at,
+            user_id: r.user_id,
+            is_free: r.amount === 0 || r.amount === undefined,
+          };
+        }).filter(r => {
+          // Only show successful registrations:
+          // 1. Free registrations (amount = 0)
+          // 2. Paid registrations with successful payment
+          return r.is_free || r.payment_status === 'paid';
+        });
+
+        return j({ participants: enriched });
+      }
+
       // -------- Members --------
       if (route === '/admin/members' && method === 'POST') {
         try {
@@ -3510,7 +3795,6 @@ async function handleRoute(request, { params }) {
               start_date: now, expiry_date: expiry,
               status: 'active', pause_days: 0, paused_at: null,
               ...(mem.type === 'slot' && { slots_remaining: 1, slots_total: 1 }),
-              ...(mem.type === 'one_on_one' && { slots_remaining: mem.sessions, slots_total: mem.sessions }),
               created_at: now, created_by_admin: auth.user.id,
             };
             await db.collection('user_memberships').insertOne(um);
@@ -3699,7 +3983,8 @@ async function handleRoute(request, { params }) {
         const sportId = 'basketball';
 
         // 1. Fetch all users (members only, not admins)
-        const allUsers = await db.collection('users').find({ role: { $in: ['member', 'coach'] } }).toArray();
+        // Only fetch members (athletes), exclude admin and coach
+      const allUsers = await db.collection('users').find({ role: 'member' }).toArray();
         const allUserIds = allUsers.map(u => u.id);
 
         // 2. Fetch all child profiles for these users
@@ -3724,6 +4009,19 @@ async function handleRoute(request, { params }) {
 
         // 5. Fetch all leadership metrics for this sport
         const allLeadership = athleteIds.length ? await db.collection('leadership_metrics').find({ user_id: { $in: athleteIds }, sport_id: sportId }).toArray() : [];
+      // 6b. Fetch all athlete levels
+      // Levels are stored with user_id (parent) and child_profile_id (child)
+      // So we need to fetch levels where:
+      // - user_id is in parentIds (for parents and children) AND
+      // - child_profile_id matches the athlete's ID or is null
+      const allLevels = athleteIds.length ? await db.collection('athlete_levels').find({
+        user_id: { $in: parentIds },
+        sport_id,
+        $or: [
+          { child_profile_id: { $in: athleteIds } },  // Child profiles
+          { child_profile_id: null }                   // Parent profiles
+        ]
+      }).toArray() : [];
 
         // 6. Compute combined scores for each subject (same as leaderboard)
         const rows = subjects.map(s => {
@@ -4228,7 +4526,6 @@ async function handleRoute(request, { params }) {
         
         // For slot-based memberships, use the provided quantity
         const slotQty = isSlotPlan ? Math.max(1, parseInt(slot_quantity) || 1) : null;
-        const oneOnOneQty = (mem.type === 'one_on_one') ? mem.sessions : null;
         
         const um = {
           id: uuidv4(),
@@ -4241,7 +4538,6 @@ async function handleRoute(request, { params }) {
           start_date: now, expiry_date: expiry,
           status: 'active', pause_days: 0, paused_at: null,
           ...(isSlotPlan && { slots_remaining: slotQty, slots_total: slotQty }),
-          ...(mem.type === 'one_on_one' && { slots_remaining: oneOnOneQty, slots_total: oneOnOneQty }),
           created_at: now, granted_by_admin: auth.user.id,
           admin_note: note || '',
         };
@@ -4469,11 +4765,12 @@ async function handleRoute(request, { params }) {
       const url = new URL(request.url);
       const sport_id = url.searchParams.get('sport_id') || 'basketball';
       const tag = url.searchParams.get('tag') || null; // 'juniors', 'intermediates', 'seniors', or null
-      const limit = Math.min(200, parseInt(url.searchParams.get('limit') || '100'));
+      const limit = Math.min(10000, parseInt(url.searchParams.get('limit') || '10000')); // Allow downloading all athletes
       const skip = Math.max(0, parseInt(url.searchParams.get('skip') || '0'));
 
       // 1. Fetch all users (members only, not admins)
-      const allUsers = await db.collection('users').find({ role: { $in: ['member', 'coach'] } }).toArray();
+      // Only fetch members (athletes), exclude admin and coach
+      const allUsers = await db.collection('users').find({ role: 'member' }).toArray();
       const allUserIds = allUsers.map(u => u.id);
 
       // 2. Fetch all child profiles for these users
@@ -4506,6 +4803,19 @@ async function handleRoute(request, { params }) {
 
       // 6. Fetch all leadership metrics for all athletes
       const allLeadership = athleteIds.length ? await db.collection('leadership_metrics').find({ user_id: { $in: athleteIds }, sport_id }).toArray() : [];
+      // 6b. Fetch all athlete levels
+      // Levels are stored with user_id (parent) and child_profile_id (child)
+      // So we need to fetch levels where:
+      // - user_id is in parentIds (for parents and children) AND
+      // - child_profile_id matches the athlete's ID or is null
+      const allLevels = athleteIds.length ? await db.collection('athlete_levels').find({
+        user_id: { $in: parentIds },
+        sport_id,
+        $or: [
+          { child_profile_id: { $in: athleteIds } },  // Child profiles
+          { child_profile_id: null }                   // Parent profiles
+        ]
+      }).toArray() : [];
 
       // 7. Fetch memberships to check if parents have active memberships
       const allMemberships = parentIds.length ? await db.collection('user_memberships').find({ user_id: { $in: parentIds } }).toArray() : [];
@@ -4560,11 +4870,30 @@ async function handleRoute(request, { params }) {
           : leadAvg > 0 ? leadAvg
           : 0;
 
+        // Fetch level for this athlete
+        // For child profiles: look for child_profile_id match first, then fall back to parent
+        let levelRecord;
+        if (s.athlete_id !== s.parent_id) {
+          // This is a child profile - look for level with child_profile_id
+          levelRecord = allLevels.find(l => 
+            l.user_id === s.parent_id && l.child_profile_id === s.athlete_id
+          );
+        } else {
+          // This is a parent (no child profile) - look for level with null child_profile_id
+          levelRecord = allLevels.find(l => 
+            l.user_id === s.athlete_id && !l.child_profile_id
+          );
+        }
+        const level = levelRecord?.level || 1;
+        const category = s.athlete_tag || 'unassigned';
+        
         return {
           athlete_id: s.athlete_id,
           parent_id: s.parent_id,
           name: s.name,
           parent_name: s.parent_name,
+          level: level,
+          category: category,
           performance: Math.round(perfAvg * 10) / 10,
           leadership: Math.round(leadAvg * 10) / 10,
           combined: Math.round(combined * 10) / 10,
@@ -4574,10 +4903,13 @@ async function handleRoute(request, { params }) {
         };
       });
 
-      // 8. Sort by combined score desc, filter out zeros, apply skip+limit
+      // 8. Sort by combined score desc (but include all athletes), apply skip+limit
       const leaderboard = rows
-        .filter(r => r.combined > 0)
-        .sort((a, b) => b.combined - a.combined)
+        .sort((a, b) => {
+          // Sort by combined score desc, then by name
+          if (b.combined !== a.combined) return b.combined - a.combined;
+          return a.name.localeCompare(b.name);
+        })
         .slice(skip, skip + limit);
 
       return j({ leaderboard, sport_id, tag, total: leaderboard.length, skip, limit });

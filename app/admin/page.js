@@ -16,7 +16,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { toast } from 'sonner';
 import { useAuth } from '@/app/providers';
-import { SPORTS, MEMBERSHIPS as MEMBERSHIPS_LOCAL, LEADERSHIP_METRICS, METRIC_SCORES } from '@/lib/flowternity/config';
+import { SPORTS, MEMBERSHIPS as MEMBERSHIPS_LOCAL, LEADERSHIP_METRICS, METRIC_SCORES, KIDS_LEVELS } from '@/lib/flowternity/config';
 import {
   Trash2, Plus, Users, Calendar, Activity, Sparkles, Search, CreditCard,
   Megaphone, UserCog, ClipboardList, CheckCircle2, XCircle, Save, Flame,
@@ -124,6 +124,7 @@ const NAV = [
   { id: 'classes', label: 'Classes', icon: ClipboardList },
   { id: 'games', label: 'Games', icon: Flame },
   { id: 'game-bookings', label: 'Game Bookings', icon: Flame },
+  { id: 'participants', label: 'Participants', icon: Users },
   { id: 'members', label: 'Members', icon: Users },
   { id: 'athletes', label: 'Athletes', icon: Users },
   { id: 'jerseys', label: 'Jerseys', icon: Gift },
@@ -160,7 +161,6 @@ export default function AdminPage() {
   const isAdmin = user.role === 'admin';
   const isCoach = user.role === 'coach';
 
-  // Filter nav based on role
   const visibleNav = isAdmin ? NAV : NAV.filter(n => ['overview', 'classes', 'games', 'performance', 'trials', 'attendance', 'reports', 'announcements'].includes(n.id));
 
   return (
@@ -251,6 +251,7 @@ export default function AdminPage() {
             {tab === 'classes' && <ClassesSection />}
             {tab === 'games' && <GamesSection />}
             {tab === 'game-bookings' && <GameBookingsSection />}
+            {tab === 'participants' && <ParticipantsSection />}
             {tab === 'members' && <MembersSection />}
             {tab === 'athletes' && <AthletesSection />}
             {isAdmin && tab === 'jerseys' && <JerseysSection />}
@@ -1610,6 +1611,289 @@ function GameBookingsSection() {
   );
 }
 
+// ===================== PARTICIPANTS (Games & Tournaments) =====================
+function ParticipantsSection() {
+  const [tab, setTab] = useState('free-games'); // 'free-games', 'paid-games', 'tournaments'
+  const [data, setData] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [selectedGame, setSelectedGame] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 20;
+
+  useEffect(() => {
+    loadParticipants();
+  }, [tab, selectedGame]);
+
+  const loadParticipants = async () => {
+    setLoading(true);
+    try {
+      let url = '';
+      if (tab === 'free-games') {
+        url = '/api/admin/participants/games';
+      } else if (tab === 'paid-games') {
+        url = '/api/admin/participants/bookings';
+      } else {
+        url = '/api/admin/participants/tournaments';
+      }
+      
+      const res = await fetch(url, { credentials: 'include' });
+      const d = await res.json();
+      setData(d.participants || []);
+      setPage(1);
+    } catch (e) {
+      toast.error('Failed to load participants');
+    }
+    setLoading(false);
+  };
+
+  const filtered = data.filter(p => {
+    const q = searchQuery.toLowerCase();
+    return (
+      p.name?.toLowerCase().includes(q) ||
+      p.email?.toLowerCase().includes(q) ||
+      p.mobile?.toLowerCase().includes(q) ||
+      p.game_name?.toLowerCase().includes(q) ||
+      p.tournament_name?.toLowerCase().includes(q)
+    );
+  });
+
+  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
+
+  const downloadCSV = () => {
+    const headers = tab === 'free-games' 
+      ? ['Name', 'Email', 'Mobile', 'Game', 'Date', 'Joined Date']
+      : tab === 'paid-games'
+      ? ['Name', 'Game', 'Amount', 'Payment Status', 'Booked Date']
+      : ['Name', 'Email', 'Mobile', 'DOB', 'Age', 'Gender', 'Tournament', 'Category', 'Payment Status', 'Registration Date'];
+    
+    const rows = filtered.map(p => 
+      tab === 'free-games'
+        ? [p.name, p.email || '', p.mobile || '', p.game_name, p.date, p.joined_at]
+        : tab === 'paid-games'
+        ? [p.name || 'User', p.game_name, `₹${p.amount}`, p.payment_status || 'paid', p.booked_at]
+        : [p.name, p.email || '', p.mobile || '', p.dob || '', p.calculated_age || '', p.gender || '', p.tournament_name, p.category_name, p.payment_status || 'paid', p.created_at]
+    );
+
+    const csv = [headers, ...rows].map(r => r.map(v => `"${v || ''}"`).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${tab}-participants-${new Date().toISOString().split('T')[0]}.csv`;
+    a.click();
+  };
+
+  return (
+    <>
+      <SectionHeader
+        title="Participant Registry"
+        description="View all participants registered for games and tournaments"
+        action={
+          <Button
+            onClick={downloadCSV}
+            disabled={filtered.length === 0}
+            size="sm"
+            className="bg-lime-400/10 text-lime-400 border border-lime-400/20 hover:bg-lime-400/20"
+          >
+            <Download className="w-4 h-4 mr-2" /> Export CSV
+          </Button>
+        }
+      />
+
+      {/* Tabs */}
+      <div className="flex gap-2 mb-6 flex-wrap">
+        {[
+          { id: 'free-games', label: '🎮 Free Games', icon: null },
+          { id: 'paid-games', label: '💰 Paid Games', icon: null },
+          { id: 'tournaments', label: '🏆 Tournaments', icon: null },
+        ].map(t => (
+          <button
+            key={t.id}
+            onClick={() => { setTab(t.id); setPage(1); }}
+            className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+              tab === t.id
+                ? 'bg-lime-400/10 text-lime-400 border border-lime-400/20'
+                : 'border border-slate-700 text-slate-400 hover:text-slate-100 hover:border-slate-600'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+        <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
+          <p className="text-xs text-slate-500 mb-1 uppercase tracking-widest">Total Participants</p>
+          <p className="text-2xl font-bold">{data.length}</p>
+        </div>
+        <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
+          <p className="text-xs text-slate-500 mb-1 uppercase tracking-widest">Filtered</p>
+          <p className="text-2xl font-bold">{filtered.length}</p>
+        </div>
+        <div className="bg-slate-900 border border-slate-800 rounded-lg p-4">
+          <p className="text-xs text-slate-500 mb-1 uppercase tracking-widest">Page</p>
+          <p className="text-2xl font-bold">{page} of {totalPages || 1}</p>
+        </div>
+      </div>
+
+      {/* Search */}
+      <div className="mb-6">
+        <Input
+          placeholder="Search by name, email, mobile, or game..."
+          value={searchQuery}
+          onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }}
+          className="bg-slate-800 border-slate-700 text-white placeholder-slate-500"
+        />
+      </div>
+
+      {/* Table */}
+      {loading ? (
+        <div className="text-center py-12 text-slate-400">Loading...</div>
+      ) : paginated.length === 0 ? (
+        <EmptyState icon={Users} title="No participants" cta="No registrations found" />
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm border-collapse">
+            <thead>
+              <tr className="border-b border-slate-800 bg-slate-900">
+                {tab === 'free-games' && (
+                  <>
+                    <th className="px-4 py-3 text-left text-slate-300 font-semibold">Name</th>
+                    <th className="px-4 py-3 text-left text-slate-300 font-semibold">Email</th>
+                    <th className="px-4 py-3 text-left text-slate-300 font-semibold">Mobile</th>
+                    <th className="px-4 py-3 text-left text-slate-300 font-semibold">Game</th>
+                    <th className="px-4 py-3 text-left text-slate-300 font-semibold">Date</th>
+                    <th className="px-4 py-3 text-left text-slate-300 font-semibold">Joined</th>
+                  </>
+                )}
+                {tab === 'paid-games' && (
+                  <>
+                    <th className="px-4 py-3 text-left text-slate-300 font-semibold">Name/User</th>
+                    <th className="px-4 py-3 text-left text-slate-300 font-semibold">Game</th>
+                    <th className="px-4 py-3 text-left text-slate-300 font-semibold">Amount</th>
+                    <th className="px-4 py-3 text-left text-slate-300 font-semibold">Status</th>
+                    <th className="px-4 py-3 text-left text-slate-300 font-semibold">Booked</th>
+                  </>
+                )}
+                {tab === 'tournaments' && (
+                  <>
+                    <th className="px-4 py-3 text-left text-slate-300 font-semibold">Name</th>
+                    <th className="px-4 py-3 text-left text-slate-300 font-semibold">Email</th>
+                    <th className="px-4 py-3 text-left text-slate-300 font-semibold">Tournament</th>
+                    <th className="px-4 py-3 text-left text-slate-300 font-semibold">Category</th>
+                    <th className="px-4 py-3 text-left text-slate-300 font-semibold">Age</th>
+                    <th className="px-4 py-3 text-left text-slate-300 font-semibold">Payment</th>
+                    <th className="px-4 py-3 text-left text-slate-300 font-semibold">Date</th>
+                  </>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {paginated.map((p, i) => (
+                <tr key={i} className="border-b border-slate-800 hover:bg-slate-900/50">
+                  {tab === 'free-games' && (
+                    <>
+                      <td className="px-4 py-3 font-medium text-slate-100">{p.name}</td>
+                      <td className="px-4 py-3 text-slate-400">{p.email || '—'}</td>
+                      <td className="px-4 py-3 text-slate-400">{p.mobile || '—'}</td>
+                      <td className="px-4 py-3 text-slate-300">{p.game_name}</td>
+                      <td className="px-4 py-3 text-slate-400">{p.date}</td>
+                      <td className="px-4 py-3 text-slate-400 text-xs">{new Date(p.joined_at).toLocaleDateString('en-IN')}</td>
+                    </>
+                  )}
+                  {tab === 'paid-games' && (
+                    <>
+                      <td className="px-4 py-3 font-medium text-slate-100">{p.name || p.user_id}</td>
+                      <td className="px-4 py-3 text-slate-300">{p.game_name}</td>
+                      <td className="px-4 py-3 text-slate-100 font-mono">₹{p.amount}</td>
+                      <td className="px-4 py-3">
+                        <Badge variant="outline" className={p.is_paid ? 'border-lime-400/30 text-lime-300 bg-lime-400/5' : 'border-yellow-400/30 text-yellow-300 bg-yellow-400/5'}>
+                          {p.is_paid ? '✓ Paid' : '⏳ Pending'}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 text-slate-400 text-xs">{new Date(p.booked_at).toLocaleDateString('en-IN')}</td>
+                    </>
+                  )}
+                  {tab === 'tournaments' && (
+                    <>
+                      <td className="px-4 py-3 font-medium text-slate-100">{p.name}</td>
+                      <td className="px-4 py-3 text-slate-400">{p.email || '—'}</td>
+                      <td className="px-4 py-3 text-slate-300">{p.tournament_name}</td>
+                      <td className="px-4 py-3 text-slate-300">{p.category_name}</td>
+                      <td className="px-4 py-3 text-slate-400">{p.calculated_age || p.age || '—'}</td>
+                      <td className="px-4 py-3">
+                        <Badge variant="outline" className={p.payment_status === 'paid' ? 'border-lime-400/30 text-lime-300 bg-lime-400/5' : 'border-yellow-400/30 text-yellow-300 bg-yellow-400/5'}>
+                          {p.payment_status === 'paid' ? '✓ Paid' : '⏳ Pending'}
+                        </Badge>
+                      </td>
+                      <td className="px-4 py-3 text-slate-400 text-xs">{new Date(p.created_at).toLocaleDateString('en-IN')}</td>
+                    </>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-6 pt-4 border-t border-slate-800">
+          <div className="text-sm text-slate-400">
+            Showing {(page - 1) * PAGE_SIZE + 1} to {Math.min(page * PAGE_SIZE, filtered.length)} of {filtered.length}
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage(Math.max(1, page - 1))}
+              disabled={page === 1}
+              className="border-slate-700 hover:bg-slate-800"
+            >
+              Previous
+            </Button>
+            <div className="flex items-center gap-1">
+              {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+                let pageNum;
+                if (totalPages <= 5) pageNum = i + 1;
+                else if (page <= 3) pageNum = i + 1;
+                else if (page >= totalPages - 2) pageNum = totalPages - 4 + i;
+                else pageNum = page - 2 + i;
+                
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => setPage(pageNum)}
+                    className={`w-8 h-8 rounded text-sm font-medium transition-colors ${
+                      page === pageNum
+                        ? 'bg-lime-400/10 text-lime-400 border border-lime-400/20'
+                        : 'border border-slate-700 text-slate-400 hover:text-slate-100 hover:border-slate-600'
+                    }`}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setPage(Math.min(totalPages, page + 1))}
+              disabled={page === totalPages}
+              className="border-slate-700 hover:bg-slate-800"
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ===================== MEMBERS =====================
 function MembersSection() {
   const [members, setMembers] = useState([]);
@@ -2005,7 +2289,7 @@ function MembersSection() {
                     <SelectContent>
                       <SelectItem value="none">No membership</SelectItem>
                       {MEMBERSHIPS_LOCAL.map(m => (
-                        <SelectItem key={m.id} value={m.id}>{m.name} {m.type === 'one_on_one' ? `· ${m.sessions} sessions · ₹${m.price.toLocaleString('en-IN')}` : `· ${m.duration_months}M · ₹${m.price.toLocaleString('en-IN')}`}</SelectItem>
+                        <SelectItem key={m.id} value={m.id}>{m.name} · {m.duration_months}M · ₹{m.price.toLocaleString('en-IN')}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
@@ -2073,7 +2357,7 @@ function MembersSection() {
                       <div className="flex justify-between items-start gap-3">
                         <div className="min-w-0">
                           <div className="text-sm font-medium text-slate-100 truncate">
-                            {m.membership_snapshot?.name} {m.membership_snapshot?.type === 'one_on_one' ? `· ${m.membership_snapshot?.sessions} sessions` : `· ${m.membership_snapshot?.duration_months}M`}
+                            {m.membership_snapshot?.name} · {m.membership_snapshot?.duration_months}M
                           </div>
                           <div className="text-xs text-slate-500">Expires {new Date(m.expiry_date).toLocaleDateString('en-IN')}</div>
                           {m.slots_remaining !== undefined && <div className="text-[10px] text-slate-500 mt-0.5">{m.slots_remaining}/{m.slots_total} slots remaining</div>}
@@ -2168,7 +2452,7 @@ function MembersSection() {
                   <SelectTrigger className="h-11 mt-1"><SelectValue placeholder="Pick a plan" /></SelectTrigger>
                   <SelectContent>
                     {MEMBERSHIPS_LOCAL.map(m => (
-                      <SelectItem key={m.id} value={m.id}>{m.name} {m.type === 'one_on_one' ? `· ${m.sessions} sessions · ₹${m.price.toLocaleString('en-IN')}` : `· ${m.duration_months}M · ₹${m.price.toLocaleString('en-IN')}`}</SelectItem>
+                      <SelectItem key={m.id} value={m.id}>{m.name} · {m.duration_months}M · ₹{m.price.toLocaleString('en-IN')}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -2320,7 +2604,11 @@ function AttendanceSection() {
       return;
     }
     
-    const dateStr = selectedDate.toISOString().split('T')[0];
+    // Format date as YYYY-MM-DD using local timezone (not UTC)
+    const year = selectedDate.getFullYear();
+    const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+    const day = String(selectedDate.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
     const filtered = classes.filter(c => c.date === dateStr);
     setClassesForDate(filtered);
     setSelectedClass(''); // Reset class selection when date changes
@@ -2547,7 +2835,10 @@ function AttendanceSection() {
                 onSelect={setSelectedDate}
                 disabled={(date) => {
                   // Disable dates with no classes
-                  const dateStr = date.toISOString().split('T')[0];
+                  const year = date.getFullYear();
+                  const month = String(date.getMonth() + 1).padStart(2, '0');
+                  const day = String(date.getDate()).padStart(2, '0');
+                  const dateStr = `${year}-${month}-${day}`;
                   return !classes.some(c => c.date === dateStr);
                 }}
                 className="[&_.rdp-months]:!w-full [&_.rdp-month]:!w-full [&_.rdp-head_cell]:!w-9 [&_.rdp-cell]:!w-9 [&_.rdp-day]:!w-9"
@@ -3743,57 +4034,72 @@ function PerformanceSection() {
   };
 
   // Download leaderboard as CSV
-  const downloadLeaderboardCSV = () => {
-    if (dashboardData.length === 0) {
-      toast.error('No data to download');
-      return;
+  // Download leaderboard as CSV (fetch ALL athletes, not just current page)
+  const downloadLeaderboardCSV = async () => {
+    try {
+      // Fetch ALL athletes regardless of pagination
+      const url = new URL('/api/admin/leaderboard', window.location.origin);
+      url.searchParams.set('sport_id', dashboardSport);
+      url.searchParams.set('limit', '10000'); // Fetch all
+      url.searchParams.set('skip', 0);
+      if (dashboardTagFilter) url.searchParams.set('tag', dashboardTagFilter);
+      
+      const r = await fetch(url.toString(), { credentials: 'include' });
+      const d = await r.json();
+      const allAthletes = d.leaderboard || [];
+      
+      if (allAthletes.length === 0) {
+        toast.error('No athletes to download');
+        return;
+      }
+      
+      // CSV headers
+      const headers = ['Rank', 'Athlete Name', 'Level', 'Category', 'Parent', 'Sport', 'Performance Score', 'Leadership Score', 'Combined Score', 'Status'];
+      // CSV rows
+      const rows = allAthletes.map((row, idx) => [
+        idx + 1,
+        row.name,
+        (() => {
+          const levelNum = row.level || 1;
+          const levelInfo = KIDS_LEVELS.find(l => l.level === levelNum);
+          return levelInfo ? `L${levelNum} ${levelInfo.name}` : `L${levelNum}`;
+        })(),
+        row.category || 'unassigned',
+        row.parent_name,
+        SPORTS.find(s => s.id === dashboardSport)?.name || dashboardSport,
+        row.performance?.toFixed(2) || '—',
+        row.leadership?.toFixed(2) || '—',
+        row.combined?.toFixed(2) || '—',
+        row.is_active_member ? 'Active' : 'Inactive'
+      ]);
+      // Create CSV string
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => 
+          row.map(cell => 
+            typeof cell === 'string' && cell.includes(',') 
+              ? `"${cell}"` 
+              : cell
+          ).join(',')
+        )
+      ].join('\n');
+      // Create blob and download
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url_obj = URL.createObjectURL(blob);
+      const sportName = SPORTS.find(s => s.id === dashboardSport)?.name || 'leaderboard';
+      const tagName = dashboardTagFilter ? `_${dashboardTagFilter}` : '';
+      const timestamp = new Date().toISOString().slice(0, 10);
+      link.setAttribute('href', url_obj);
+      link.setAttribute('download', `flowternity_leaderboard_${sportName}${tagName}_${timestamp}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success(`Downloaded ${allAthletes.length} athletes`);
+    } catch (err) {
+      toast.error('Download failed: ' + err.message);
     }
-
-    // CSV headers
-    const headers = ['Rank', 'Athlete Name', 'Parent', 'Sport', 'Performance Score', 'Leadership Score', 'Combined Score', 'Status'];
-    
-    // CSV rows
-    const rows = dashboardData.map((row, i) => [
-      i + 1,
-      row.name,
-      row.parent_name,
-      SPORTS.find(s => s.id === dashboardSport)?.name || dashboardSport,
-      row.performance?.toFixed(2) || '—',
-      row.leadership?.toFixed(2) || '—',
-      row.combined?.toFixed(2) || '—',
-      row.is_active_member ? 'Active' : 'Inactive'
-    ]);
-
-    // Create CSV string
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => 
-        row.map(cell => 
-          typeof cell === 'string' && cell.includes(',') 
-            ? `"${cell}"` 
-            : cell
-        ).join(',')
-      )
-    ].join('\n');
-
-    // Create blob and download
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    
-    const sportName = SPORTS.find(s => s.id === dashboardSport)?.name || 'leaderboard';
-    const tagName = dashboardTagFilter ? `_${dashboardTagFilter}` : '';
-    const timestamp = new Date().toISOString().slice(0, 10);
-    
-    link.setAttribute('href', url);
-    link.setAttribute('download', `flowternity_leaderboard_${sportName}${tagName}_${timestamp}.csv`);
-    link.style.visibility = 'hidden';
-    
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    toast.success(`Downloaded ${dashboardData.length} athletes`);
   };
 
   return (
@@ -3891,6 +4197,11 @@ function PerformanceSection() {
                           <div className="flex-1 min-w-0">
                             <p className="font-semibold text-slate-100 truncate text-sm">{row.name}</p>
                             {row.parent_name !== row.name && <p className="text-[10px] text-slate-500 truncate">{row.parent_name}</p>}
+                            {/* Level and Category Badges */}
+                            <div className="flex gap-1 flex-wrap mt-1 mb-1">
+                              <span className="text-[9px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-medium">{(() => { const levelNum = row.level || 1; const levelInfo = KIDS_LEVELS.find(l => l.level === levelNum); return levelInfo ? `L${levelNum} ${levelInfo.name}` : `L${levelNum}`; })()}</span>
+                              <span className="text-[9px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-medium capitalize">{row.category ? row.category.replace(/_/g, " ") : "unassigned"}</span>
+                            </div>
                             {row.is_active_member ? (
                               <div className="text-[9px] mt-0.5 inline-block px-1.5 py-0.5 rounded bg-lime-400/20 text-lime-400 font-semibold">Active</div>
                             ) : (
@@ -3925,6 +4236,11 @@ function PerformanceSection() {
                         <div className="col-span-4 min-w-0">
                           <p className="font-semibold text-slate-100 truncate text-sm">{row.name}</p>
                           {row.parent_name !== row.name && <p className="text-[10px] text-slate-500 truncate">{row.parent_name}</p>}
+                            {/* Level and Category Badges */}
+                            <div className="flex gap-1 flex-wrap mt-1 mb-1">
+                              <span className="text-[9px] px-2 py-0.5 rounded-full bg-purple-500/20 text-purple-300 font-medium">{(() => { const levelNum = row.level || 1; const levelInfo = KIDS_LEVELS.find(l => l.level === levelNum); return levelInfo ? `L${levelNum} ${levelInfo.name}` : `L${levelNum}`; })()}</span>
+                              <span className="text-[9px] px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 font-medium capitalize">{row.category ? row.category.replace(/_/g, " ") : "unassigned"}</span>
+                            </div>
                           {row.is_active_member ? (
                             <div className="text-[9px] mt-0.5 inline-block px-1.5 py-0.5 rounded bg-lime-400/20 text-lime-400 font-semibold">Active</div>
                           ) : (
