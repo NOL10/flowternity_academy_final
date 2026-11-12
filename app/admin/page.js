@@ -2915,15 +2915,34 @@ function AttendanceSection() {
               <Card className="rounded-lg bg-slate-900 border-slate-800 overflow-hidden">
                 {roster
                   .filter(r => !rosterSearch.trim() || r.name.toLowerCase().includes(rosterSearch.toLowerCase()))
-                  .map(r => {
+                  .map((r, idx) => {
                   const cur = dirty[r.booking_id] !== undefined ? dirty[r.booking_id] : r.present;
+                  
+                  // Tag styling based on athlete_tag
+                  const tagStyles = {
+                    juniors: 'bg-blue-500/20 text-blue-300 border border-blue-500/30',
+                    intermediates: 'bg-purple-500/20 text-purple-300 border border-purple-500/30',
+                    seniors: 'bg-amber-500/20 text-amber-300 border border-amber-500/30',
+                  };
+                  const tagLabel = {
+                    juniors: 'Juniors',
+                    intermediates: 'Intermediates',
+                    seniors: 'Seniors',
+                  };
+                  
                   return (
                     <div key={r.booking_id} className="flex items-center gap-3 px-4 py-3 border-b border-slate-800 last:border-0">
-                      <div className="w-9 h-9 rounded-full bg-slate-800 flex items-center justify-center font-bold text-sm">{r.name[0]?.toUpperCase()}</div>
+                      <div className="w-8 h-8 rounded-full bg-slate-800 flex items-center justify-center font-bold text-xs text-slate-300">{r.serial}</div>
+                      <div className="w-9 h-9 rounded-full bg-slate-700 flex items-center justify-center font-bold text-sm">{r.name[0]?.toUpperCase()}</div>
                       <div className="flex-1 min-w-0">
                         <div className="font-medium text-slate-100 truncate">{r.name}</div>
                         <div className="text-xs text-slate-500 truncate">{r.subtitle}</div>
                       </div>
+                      {r.athlete_tag && (
+                        <span className={`text-xs font-semibold px-2 py-1 rounded whitespace-nowrap ${tagStyles[r.athlete_tag] || ''}`}>
+                          {tagLabel[r.athlete_tag]}
+                        </span>
+                      )}
                       <div className="flex gap-1">
                         <Button size="sm" onClick={() => toggle(r.booking_id, true)} className={cur === true ? 'bg-lime-400 text-slate-900 hover:bg-lime-300' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}><CheckCircle2 className="w-4 h-4 mr-1" /> Present</Button>
                         <Button size="sm" onClick={() => toggle(r.booking_id, false)} className={cur === false ? 'bg-red-500 text-white hover:bg-red-600' : 'bg-slate-800 hover:bg-slate-700 text-slate-300'}><XCircle className="w-4 h-4 mr-1" /> Absent</Button>

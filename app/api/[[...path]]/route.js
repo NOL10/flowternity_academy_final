@@ -4149,15 +4149,17 @@ async function handleRoute(request, { params }) {
         const att = await db.collection('attendance').find({ class_id: cid }).toArray();
         return j({
           class: clean(cls),
-          roster: bookings.map(b => {
+          roster: bookings.map((b, index) => {
             const u = users.find(x => x.id === b.user_id);
             const kid = b.child_profile_id ? kids.find(k => k.id === b.child_profile_id) : null;
             const a = att.find(x => x.booking_id === b.id);
             return {
               booking_id: b.id,
               user_id: b.user_id,
+              serial: index + 1,
               name: kid ? kid.child_name : (u?.full_name || 'Unknown'),
               subtitle: kid ? `Kid of ${u?.full_name}` : (u?.email || ''),
+              athlete_tag: kid?.athlete_tag || null,
               present: a ? a.present : null,
             };
           }),

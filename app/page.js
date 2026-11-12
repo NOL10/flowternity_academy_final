@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { motion } from 'framer-motion';
-import { ArrowRight, Check, Zap, Users, Calendar, Trophy, Sparkles, CalendarCheck2, ChevronDown } from 'lucide-react';
+import { ArrowRight, Check, Zap, Users, Calendar, Trophy, Sparkles, CalendarCheck2, ChevronDown, MessageCircle } from 'lucide-react';
 import { SPORTS, MEMBERSHIPS } from '@/lib/flowternity/config';
 import { useAuth } from '@/app/providers';
 import { BreadcrumbSchema } from '@/components/structured-data';
@@ -259,38 +259,86 @@ function App() {
             <div className="mb-16">
               <p className="text-white/50 text-sm uppercase tracking-widest mb-6 text-center">Basketball · One-on-One Personal Coaching</p>
               <div className="flex justify-center">
-                <div className="w-full md:w-3/3">
-                  <div className="bg-gradient-to-br from-purple-500/10 to-purple-600/5 border border-purple-500/30 rounded-2xl p-6 flex flex-col">
-                    <Badge className="w-fit bg-purple-500 text-white text-xs mb-3">PERSONAL COACHING</Badge>
+                <div className="w-full max-w-[850px]">
+                  <div className="grid md:grid-cols-[1.5fr_1fr] gap-8 bg-gradient-to-br from-purple-500/5 to-purple-600/5 border border-purple-500/20 rounded-3xl p-8 md:p-10">
                     
-                    <div className="text-xs uppercase tracking-widest text-purple-300 font-bold mb-1">One-on-One Class</div>
-                    <div className="font-display font-black text-xl mb-1">Expert Personal Coaching</div>
-                    <div className="text-xs text-white/50 mb-3">Customized training with professional trainers</div>
-
-                    <ul className="space-y-1.5 mb-4 text-sm">
-                      <li className="flex items-center gap-2 text-white/70"><span className="text-purple-400">●</span> One-on-one sessions</li>
-                      <li className="flex items-center gap-2 text-white/70"><span className="text-purple-400">●</span> Custom training plan</li>
-                      <li className="flex items-center gap-2 text-white/70"><span className="text-purple-400">●</span> Expert trainer assigned</li>
-                    </ul>
-
-                    <div className="mt-auto">
-                      <div className="flex items-baseline gap-1 mb-1">
-                        <span className="font-display font-black text-4xl md:text-5xl">₹{(1200).toLocaleString('en-IN')}</span>
-                        <span className="text-white/40 text-sm">/session</span>
+                    {/* Left Column - Content */}
+                    <div className="flex flex-col justify-between">
+                      {/* Header */}
+                      <div>
+                        <Badge className="mb-4 bg-purple-500 text-white text-xs font-semibold px-3 py-1">PERSONAL COACHING</Badge>
+                        
+                        <h3 className="text-xs uppercase tracking-widest text-purple-300 font-bold mb-3">One-on-One Class</h3>
+                        <h2 className="font-display font-black text-4xl md:text-5xl text-white mb-2 leading-tight">Expert Personal Coaching</h2>
+                        <p className="text-white/60 text-base mb-6 leading-relaxed">Train smarter. Play stronger. Reach your potential.</p>
+                        
+                        <div className="w-full h-px bg-gradient-to-r from-purple-500/30 to-transparent mb-6" />
                       </div>
-                      <div className="text-white/40 text-xs">Starting price</div>
+
+                      {/* Benefits */}
+                      <div>
+                        <div className="text-xs uppercase tracking-widest text-white/40 font-bold mb-4">What You Get</div>
+                        <ul className="space-y-3">
+                          <li className="flex items-start gap-3 text-white/80">
+                            <span className="w-5 h-5 rounded-full border-2 border-purple-500 flex items-center justify-center flex-shrink-0 mt-0.5">
+                              <Check className="w-3 h-3 text-purple-500" />
+                            </span>
+                            <span className="text-sm font-medium">Personalized training programmes</span>
+                          </li>
+                          <li className="flex items-start gap-3 text-white/80">
+                            <span className="w-5 h-5 rounded-full border-2 border-purple-500 flex items-center justify-center flex-shrink-0 mt-0.5">
+                              <Check className="w-3 h-3 text-purple-500" />
+                            </span>
+                            <span className="text-sm font-medium">Performance tracking & assessments</span>
+                          </li>
+                          <li className="flex items-start gap-3 text-white/80">
+                            <span className="w-5 h-5 rounded-full border-2 border-purple-500 flex items-center justify-center flex-shrink-0 mt-0.5">
+                              <Check className="w-3 h-3 text-purple-500" />
+                            </span>
+                            <span className="text-sm font-medium">Elite trainer assignment</span>
+                          </li>
+                        </ul>
+                      </div>
                     </div>
 
-                    <div className="mt-5 space-y-2">
-                      <Link href="/personal-coaching">
-                        <Button className="mb-4 w-full bg-purple-500 text-white hover:bg-purple-600 h-11 font-semibold ">Learn More <ArrowRight className="w-4 h-4 ml-2" /></Button>
-                      </Link>
-                      <Link href="/contact">
-                        <Button className="mb-4 w-full bg-purple-500 text-white hover:bg-purple-600 h-11 font-semibold ">Contact Us to Enquire</Button>
-                      </Link>
-                      <a href="https://wa.me/919110427144" target="_blank" rel="noopener noreferrer">
-                        <Button className="w-full bg-green-600 text-white hover:bg-green-700 h-11 font-semibold">Message on WhatsApp</Button>
-                      </a>
+                    {/* Right Column - Pricing Panel */}
+                    <div className="flex flex-col justify-between bg-purple-600/10 border border-purple-500/20 rounded-2xl p-6 md:p-8">
+                      {/* Header Badge */}
+                      <div className="text-right mb-4">
+                        <p className="text-xs uppercase tracking-widest text-white/40 font-bold">BASKETBALL / 01</p>
+                      </div>
+
+                      {/* Pricing */}
+                      <div className="mb-6">
+                        <div className="text-xs uppercase tracking-widest text-white/50 font-bold mb-3">Starting From</div>
+                        <div className="flex items-baseline gap-2 mb-2">
+                          <span className="font-display font-black text-5xl md:text-6xl text-white">₹1,200</span>
+                        </div>
+                        <div className="text-white/60 text-sm font-medium">Per session</div>
+                      </div>
+
+                      {/* Divider */}
+                      <div className="w-full h-px bg-gradient-to-r from-purple-500/30 to-transparent mb-6" />
+
+                      {/* CTAs */}
+                      <div className="space-y-3">
+                        <Link href="/personal-coaching">
+                          <Button className="mt-3 w-full bg-purple-500 text-white hover:bg-purple-600 h-12 font-semibold text-base rounded-xl">
+                            Explore Coaching <ArrowRight className="w-4 h-4 ml-2" />
+                          </Button>
+                        </Link>
+                        <Link href="/contact">
+                          <Button className="mt-3 w-full bg-transparent text-white/70 hover:text-white hover:bg-white/10 h-11 font-medium text-sm border border-white/20 rounded-xl transition">
+                            Contact us to enquire
+                          </Button>
+                        </Link>
+                        <a href="https://wa.me/919110427144" target="_blank" rel="noopener noreferrer">
+                          <Button className="mt-3 w-full bg-transparent text-accent hover:bg-accent/10 h-11 font-medium text-sm border border-accent/30 rounded-xl transition flex items-center justify-center gap-2">
+                            <MessageCircle className="w-4 h-4" />
+                            WhatsApp
+                          </Button>
+                        </a>
+                      </div>
                     </div>
                   </div>
                 </div>
