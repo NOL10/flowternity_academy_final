@@ -5239,7 +5239,7 @@ function DataHealthSection() {
   const [selectedIssue, setSelectedIssue] = useState(null);
 
   const autoRepairIssues = async (healthData) => {
-    const repairableTypes = ['stale_membership_status', 'expired_paused_membership', 'orphaned_attendance', 'booking_missing_class'];
+    const repairableTypes = ['stale_membership_status', 'expired_paused_membership', 'orphaned_attendance', 'booking_missing_class', 'booking_with_expired_membership'];
     const toRepair = healthData.issues.filter(i => repairableTypes.includes(i.type));
     
     if (toRepair.length > 0) {
@@ -5478,6 +5478,23 @@ function DataHealthSection() {
                             ))}
                           </div>
                         )}
+                        
+                        {/* Repair button for repairable issues */}
+                        {['stale_membership_status', 'expired_paused_membership', 'orphaned_attendance', 'booking_missing_class', 'booking_with_expired_membership'].includes(issue.type) && (
+                          <div className="mt-4 flex gap-2">
+                            <Button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                repairIssue(issue.type);
+                              }}
+                              disabled={repairing}
+                              className="text-xs bg-lime-400/20 hover:bg-lime-400/30 text-lime-300 border border-lime-400/30"
+                            >
+                              <RotateCcw className="w-3 h-3 mr-1" />
+                              {repairing ? 'Repairing...' : 'Repair Now'}
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -5588,36 +5605,46 @@ function AthletesSection() {
   const [tagValue, setTagValue] = useState('');
   const [savingTag, setSavingTag] = useState(false);
   const [page, setPage] = useState(1);
+  const [filterMembership, setFilterMembership] = useState('all');
+  const [filterSport, setFilterSport] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
   const PAGE_SIZE = 20;
   const cacheRef = useRef({});
 
   const load = async () => {
     setLoading(true);
     try {
-      // Fetch all members (increased limit to get everyone)
+      // Fetch all members with children and memberships
       const res = await fetch('/api/admin/members?limit=500&include_children=true', { credentials: 'include' });
       const data = await res.json();
       
       // Flatten immediately to show to user
       const flatList = [];
+      
       for (const member of (data.members || [])) {
+        const allMemberships = member.active_memberships || [];
         const children = member.children || [];
         for (const child of children) {
-          flatList.push({
+          const childAthlete = {
             ...child,
             parent_id: member.id,
             parent_name: member.full_name,
             parent_email: member.email,
             parent_phone: member.phone,
-          });
+            // Use all memberships from detail endpoint if available, otherwise active_memberships
+            memberships: allMemberships,
+            activeMembership: member.latest_membership || null,
+          };
+          
+          flatList.push(childAthlete);
         }
       }
       
       const sorted = flatList.sort((a, b) => (a.athlete_name || a.child_name).localeCompare(b.athlete_name || b.child_name));
+      console.log(`📊 Loaded ${sorted.length} athletes. With active memberships: ${sorted.filter(a => a.memberships?.length > 0).length}`, sorted.filter(a => a.memberships?.length > 0).slice(0, 2));
       setAllAthletes(sorted);
       setFilteredAthletes(sorted);
       setPage(1);
-      setSearchQuery('');
     } catch (e) {
       console.error('Error loading athletes:', e);
       setAllAthletes([]);
@@ -5629,20 +5656,54 @@ function AthletesSection() {
   const handleSearch = (query) => {
     setSearchQuery(query);
     setPage(1);
-    
-    if (!query.trim()) {
-      setFilteredAthletes(allAthletes);
-      return;
-    }
+    applyFilters(query, filterMembership, filterSport, filterStatus);
+  };
 
-    const lowerQuery = query.toLowerCase();
-    const filtered = allAthletes.filter(athlete => {
-      const name = (athlete.athlete_name || athlete.child_name).toLowerCase();
-      const parentName = (athlete.parent_name || '').toLowerCase();
-      const email = (athlete.parent_email || '').toLowerCase();
-      
-      return name.includes(lowerQuery) || parentName.includes(lowerQuery) || email.includes(lowerQuery);
-    });
+  const applyFilters = (searchQuery, membershipFilter, sportFilter, statusFilter) => {
+    let filtered = allAthletes;
+    
+    // Apply text search
+    if (searchQuery.trim()) {
+      const lowerQuery = searchQuery.toLowerCase();
+      filtered = filtered.filter(athlete => {
+        const name = (athlete.athlete_name || athlete.child_name).toLowerCase();
+        const parentName = (athlete.parent_name || '').toLowerCase();
+        const email = (athlete.parent_email || '').toLowerCase();
+        
+        return name.includes(lowerQuery) || parentName.includes(lowerQuery) || email.includes(lowerQuery);
+      });
+    }
+    
+    // Apply membership type filter
+    if (membershipFilter !== 'all') {
+      filtered = filtered.filter(athlete => 
+        athlete.memberships?.some(m => m.membership_id === membershipFilter)
+      );
+    }
+    
+    // Apply sport filter
+    if (sportFilter !== 'all') {
+      filtered = filtered.filter(athlete => 
+        athlete.selected_sports?.includes(sportFilter)
+      );
+    }
+    
+    // Apply membership status filter
+    if (statusFilter !== 'all') {
+      const now = new Date();
+      filtered = filtered.filter(athlete => {
+        const hasActiveMembership = athlete.memberships?.some(m => 
+          m.status === 'active' && new Date(m.expiry_date) > now
+        );
+        
+        if (statusFilter === 'active') {
+          return hasActiveMembership;
+        } else if (statusFilter === 'inactive') {
+          return !hasActiveMembership;
+        }
+        return true;
+      });
+    }
     
     setFilteredAthletes(filtered);
   };
@@ -5717,7 +5778,8 @@ function AthletesSection() {
             levels_catalog: perfData.levels_catalog || []
           } : {},
           attendance: attendanceData.attendance || {},
-          jerseys: athleteJerseys
+          jerseys: athleteJerseys,
+          memberships: detailData.memberships || []
         };
         
         cacheRef.current[athlete.id] = combined;
@@ -5729,7 +5791,18 @@ function AthletesSection() {
     setDetailLoading(false);
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { 
+    load();
+    // Ensure filters start fresh
+    setFilterMembership('all');
+    setFilterSport('all');
+    setFilterStatus('all');
+    setSearchQuery('');
+  }, []);
+
+  useEffect(() => { 
+    applyFilters(searchQuery, filterMembership, filterSport, filterStatus);
+  }, [searchQuery, filterMembership, filterSport, filterStatus, allAthletes]);
 
   // Pagination
   const totalPages = Math.ceil(filteredAthletes.length / PAGE_SIZE);
@@ -5764,6 +5837,72 @@ function AthletesSection() {
           )}
         </div>
       </div>
+
+      {/* Filters */}
+      <div className="mb-6 mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div>
+          <label className="text-xs text-slate-500 uppercase tracking-widest mb-2 block">Membership Type</label>
+          <Select value={filterMembership} onValueChange={(v) => { setFilterMembership(v); setPage(1); }}>
+            <SelectTrigger className="h-10 bg-slate-900 border-slate-700">
+              <SelectValue placeholder="All memberships" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All memberships</SelectItem>
+              {MEMBERSHIPS_LOCAL.map(m => (
+                <SelectItem key={m.id} value={m.id}>{m.name} • {m.duration_months}m</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
+          <label className="text-xs text-slate-500 uppercase tracking-widest mb-2 block">Sport</label>
+          <Select value={filterSport} onValueChange={(v) => { setFilterSport(v); setPage(1); }}>
+            <SelectTrigger className="h-10 bg-slate-900 border-slate-700">
+              <SelectValue placeholder="All sports" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All sports</SelectItem>
+              {SPORTS.map(s => (
+                <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
+          <label className="text-xs text-slate-500 uppercase tracking-widest mb-2 block">Membership Status</label>
+          <Select value={filterStatus} onValueChange={(v) => { setFilterStatus(v); setPage(1); }}>
+            <SelectTrigger className="h-10 bg-slate-900 border-slate-700">
+              <SelectValue placeholder="All statuses" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All statuses</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="inactive">Inactive/Expired</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {(filterMembership !== 'all' || filterSport !== 'all' || filterStatus !== 'all' || searchQuery) && (
+        <div className="mb-6 flex justify-end">
+          <Button
+            onClick={() => {
+              setSearchQuery('');
+              setFilterMembership('all');
+              setFilterSport('all');
+              setFilterStatus('all');
+              setPage(1);
+            }}
+            variant="outline"
+            size="sm"
+            className="border-slate-700 text-xs"
+          >
+            Clear All Filters
+          </Button>
+        </div>
+      )}
 
       {loading ? (
         <div className="grid md:grid-cols-3 gap-4 mt-6">{[1,2,3,4,5,6].map(i => <div key={i} className="h-64 bg-secondary rounded-2xl animate-pulse" />)}</div>
@@ -6037,31 +6176,66 @@ function AthletesSection() {
                   <h3 className="text-sm font-semibold text-lime-400 uppercase tracking-widest mb-3">Membership History</h3>
                   <div className="space-y-2">
                     {athleteDetails.memberships.map((m, idx) => {
-                      const plan = MEMBERSHIPS_LOCAL.find(p => p.id === m.plan_id);
+                      const plan = MEMBERSHIPS_LOCAL.find(p => p.id === m.membership_id);
+                      const sports = (m.selected_sports || []).map(sid => SPORTS.find(s => s.id === sid)?.name || sid).join(', ');
+                      const now = new Date();
+                      const expiryDate = new Date(m.expiry_date);
+                      const daysLeft = Math.max(0, Math.ceil((expiryDate - now) / (1000 * 60 * 60 * 24)));
+                      const isActive = m.status === 'active' && expiryDate > now;
+                      
                       return (
                         <div key={idx} className="bg-slate-900 p-4 rounded-lg border border-slate-800">
                           <div className="flex items-center justify-between mb-3">
-                            <p className="font-semibold text-slate-100">{plan?.name || m.plan_id}</p>
-                            <Badge className={m.status === 'active' ? 'bg-lime-400/30 text-lime-300 border-lime-400/50' : 'bg-slate-800 text-slate-400 border-slate-700'}>
-                              {m.status}
-                            </Badge>
-                          </div>
-                          <div className="grid grid-cols-3 gap-3 text-xs">
                             <div>
-                              <p className="text-slate-500 mb-1">Sport</p>
-                              <p className="text-slate-300 font-medium">{SPORTS.find(s => s.id === m.sport_id)?.name || m.sport_id}</p>
+                              <p className="font-semibold text-slate-100">{plan?.name || m.membership_id || 'Unknown Plan'}</p>
+                              {plan && <p className="text-xs text-slate-500">{plan.duration_months} months</p>}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge className={isActive ? 'bg-lime-400/30 text-lime-300 border-lime-400/50' : m.status === 'expired' ? 'bg-red-400/20 text-red-300 border-red-400/30' : 'bg-slate-800 text-slate-400 border-slate-700'}>
+                                {m.status || 'unknown'}
+                              </Badge>
+                              {isActive && daysLeft <= 7 && (
+                                <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/30 text-xs animate-pulse">
+                                  {daysLeft}d left
+                                </Badge>
+                              )}
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 text-xs">
+                            <div>
+                              <p className="text-slate-500 mb-1">Sports</p>
+                              <p className="text-slate-300 font-medium">{sports || 'N/A'}</p>
                             </div>
                             <div>
                               <p className="text-slate-500 mb-1">Start Date</p>
                               <p className="text-slate-300 font-medium">{new Date(m.start_date).toLocaleDateString('en-IN')}</p>
                             </div>
-                            {m.end_date && (
-                              <div>
-                                <p className="text-slate-500 mb-1">End Date</p>
-                                <p className="text-slate-300 font-medium">{new Date(m.end_date).toLocaleDateString('en-IN')}</p>
-                              </div>
-                            )}
+                            <div>
+                              <p className="text-slate-500 mb-1">Expiry Date</p>
+                              <p className="text-slate-300 font-medium">{new Date(m.expiry_date).toLocaleDateString('en-IN')}</p>
+                            </div>
+                            <div>
+                              <p className="text-slate-500 mb-1">Duration</p>
+                              <p className="text-slate-300 font-medium">
+                                {Math.floor((new Date(m.expiry_date) - new Date(m.start_date)) / (1000 * 60 * 60 * 24))} days
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-slate-500 mb-1">Days Left</p>
+                              <p className={`text-slate-300 font-medium ${isActive && daysLeft <= 7 ? 'text-orange-400 animate-pulse' : ''}`}>
+                                {isActive ? `${daysLeft} days` : 'Expired'}
+                              </p>
+                            </div>
                           </div>
+                          {m.membership_snapshot && (
+                            <div className="mt-3 pt-3 border-t border-slate-800 text-xs">
+                              <p className="text-slate-500 mb-1">Plan Details</p>
+                              <p className="text-slate-400">
+                                Price: ₹{m.membership_snapshot.price?.toLocaleString('en-IN')} 
+                                {m.membership_snapshot.max_sports && ` • Up to ${m.membership_snapshot.max_sports} sports`}
+                              </p>
+                            </div>
+                          )}
                         </div>
                       );
                     })}

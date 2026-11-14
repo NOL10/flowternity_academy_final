@@ -1640,6 +1640,66 @@ async function handleRoute(request, { params }) {
       return j({ classes: enriched, member_sport_ids: isAdmin ? null : memberSportIds });
     }
 
+    // -------- ADMIN: Cancel bookings for expired memberships --------
+    if (route === '/admin/bookings/cancel-expired' && method === 'POST') {
+      const auth = await requireUser(); if (auth.error) return auth.error;
+      if (auth.user.role !== 'admin') return err('Admin only', 403);
+
+      const now = new Date();
+      
+      // Find all expired memberships
+      const expiredMemberships = await db.collection('user_memberships').find({
+        status: 'active',
+        expiry_date: { $lt: now }
+      }).toArray();
+
+      if (expiredMemberships.length === 0) {
+        return j({ cancelled: 0, message: 'No expired memberships found' });
+      }
+
+      const expiredMembershipIds = expiredMemberships.map(m => m.id);
+
+      // Find all future bookings for expired memberships
+      const futureBookings = await db.collection('bookings').find({
+        user_membership_id: { $in: expiredMembershipIds },
+        status: 'booked'
+      }).toArray();
+
+      // Filter to only FUTURE bookings (class hasn't started yet)
+      const futureClassIds = futureBookings.map(b => b.class_id);
+      const futureClasses = futureClassIds.length 
+        ? await db.collection('classes').find({
+            id: { $in: futureClassIds },
+            date: { $gte: new Date().toISOString().slice(0, 10) }
+          }).toArray()
+        : [];
+
+      const futureClassIdSet = new Set(futureClasses.map(c => c.id));
+      const bookingsToCancel = futureBookings.filter(b => futureClassIdSet.has(b.class_id));
+
+      if (bookingsToCancel.length === 0) {
+        return j({ cancelled: 0, message: 'No future bookings found for expired memberships' });
+      }
+
+      // Cancel all future bookings for expired memberships
+      const bookingIds = bookingsToCancel.map(b => b.id);
+      const result = await db.collection('bookings').updateMany(
+        { id: { $in: bookingIds } },
+        { $set: { status: 'cancelled', reason: 'membership_expired', cancelled_at: now } }
+      );
+
+      // Also mark the expired memberships as expired
+      await db.collection('user_memberships').updateMany(
+        { id: { $in: expiredMembershipIds }, status: 'active' },
+        { $set: { status: 'expired', expired_at: now } }
+      );
+
+      return j({ 
+        cancelled: result.modifiedCount,
+        message: `Cancelled ${result.modifiedCount} future bookings for expired memberships`
+      });
+    }
+
     // -------- BOOKINGS --------
     if (route === '/bookings' && method === 'POST') {
       const auth = await requireUser(); if (auth.error) return auth.error;
@@ -5000,52 +5060,88 @@ async function handleRoute(request, { params }) {
           repairs.auto_fixed += fixResult.modifiedCount;
         }
 
-        // 3. Check for bookings with expired memberships
+        // 3. Check for bookings with expired memberships (check by user/child + sport match)
         const allBookings = await db.collection('bookings').find({}).toArray();
-        const membershipIds = [...new Set(allBookings.map(b => b.user_membership_id).filter(Boolean))];
-        const memberships = membershipIds.length 
-          ? await db.collection('user_memberships').find({ id: { $in: membershipIds } }).toArray()
-          : [];
-        const membershipMap = Object.fromEntries(memberships.map(m => [m.id, m]));
-
-        // Get classes early so we can use classMap below
+        
+        // Get all memberships (used by multiple checks below)
+        const memberships = await db.collection('user_memberships').find({}).toArray();
+        
+        // Get all expired memberships
+        const expiredMembers = memberships.filter(m => 
+          m.status === 'expired' || new Date(m.expiry_date) < now
+        );
+        
+        // Get classes for date comparison
         const classIds = [...new Set(allBookings.map(b => b.class_id))];
         const classes = classIds.length 
           ? await db.collection('classes').find({ id: { $in: classIds } }).toArray()
           : [];
         const classMap = Object.fromEntries(classes.map(c => [c.id, c]));
 
-        const bookingsWithExpiredMem = allBookings.filter(b => {
-          if (!b.user_membership_id) return false;
-          const mem = membershipMap[b.user_membership_id];
-          return mem && (mem.status === 'expired' || new Date(mem.expiry_date) < now);
-        });
+        // Find bookings that:
+        // 1. Are still 'booked' status (not already cancelled)
+        // 2. Reference a membership that is now expired, OR
+        // 3. Belong to a user/child with an expired membership for that sport
+        const bookingsToCheck = allBookings.filter(b => b.status === 'booked');
+        const membershipMap = Object.fromEntries(memberships.map(m => [m.id, m]));
+        
+        const bookingsWithExpiredMem = [];
+        for (const booking of bookingsToCheck) {
+          // Check 1: Direct membership reference that is expired
+          if (booking.user_membership_id && membershipMap[booking.user_membership_id]) {
+            const mem = membershipMap[booking.user_membership_id];
+            if (mem.status === 'expired' || new Date(mem.expiry_date) < now) {
+              bookingsWithExpiredMem.push(booking);
+              continue;
+            }
+          }
+          
+          // Check 2: User/child has expired membership for this booking's sport
+          const cls = classMap[booking.class_id];
+          if (cls && booking.user_id) {
+            const userExpiredMemberships = expiredMembers.filter(m => 
+              m.user_id === booking.user_id && 
+              (!booking.child_profile_id || m.child_profile_id === booking.child_profile_id) &&
+              (m.selected_sports?.includes(cls.sport_id) || !m.selected_sports)
+            );
+            if (userExpiredMemberships.length > 0) {
+              bookingsWithExpiredMem.push(booking);
+            }
+          }
+        }
 
         if (bookingsWithExpiredMem.length > 0) {
           // Get details about expired bookings - ONLY FUTURE ONES
           const expiredBookingDetails = [];
           
           for (const booking of bookingsWithExpiredMem) {
-            const mem = membershipMap[booking.user_membership_id];
             const cls = classMap[booking.class_id];
+            if (!cls) continue;
             
-            const classDate = new Date(`${cls?.date}T${cls?.start_time || '00:00'}`);
+            const classDate = new Date(`${cls.date}T${cls.start_time || '00:00'}`);
             const isPastClass = classDate < now;
             
             // Only include FUTURE classes that need cancelling
             if (!isPastClass) {
               const user = await db.collection('users').findOne({ id: booking.user_id });
               const child = booking.child_profile_id ? await db.collection('child_profiles').findOne({ id: booking.child_profile_id }) : null;
-              const sportName = SPORTS.find(s => s.id === cls?.sport_id)?.name || 'Unknown';
+              const sportName = SPORTS.find(s => s.id === cls.sport_id)?.name || 'Unknown';
+              
+              // Find the expired membership for this booking
+              const mem = booking.user_membership_id ? membershipMap[booking.user_membership_id] : expiredMembers.find(m => 
+                m.user_id === booking.user_id && 
+                (!booking.child_profile_id || m.child_profile_id === booking.child_profile_id) &&
+                (m.selected_sports?.includes(cls.sport_id) || !m.selected_sports)
+              );
               
               expiredBookingDetails.push({
                 student_name: child?.athlete_name || child?.child_name || user?.full_name || 'Unknown',
                 parent_name: user?.full_name || 'Unknown',
                 parent_email: user?.email || '',
                 sport: sportName,
-                class_date: cls?.date || 'Unknown',
-                class_time: cls?.start_time || 'Unknown',
-                membership_expired: new Date(mem.expiry_date).toLocaleDateString('en-IN'),
+                class_date: cls.date || 'Unknown',
+                class_time: cls.start_time || 'Unknown',
+                membership_expired: mem ? new Date(mem.expiry_date).toLocaleDateString('en-IN') : 'Unknown',
                 booking_id: booking.id
               });
               
@@ -5273,6 +5369,90 @@ async function handleRoute(request, { params }) {
               _id: { $in: deleteIds }
             });
             repairs.success = result.deletedCount;
+          }
+        } else if (issue_type === 'booking_with_expired_membership') {
+          // Cancel future bookings for expired memberships
+          // Get all expired memberships
+          const expiredMemberships = await db.collection('user_memberships').find({
+            $or: [
+              { status: 'expired' },
+              { status: 'active', expiry_date: { $lt: now } }
+            ]
+          }).toArray();
+
+          if (expiredMemberships.length > 0) {
+            const expiredMembershipIds = expiredMemberships.map(m => m.id);
+            
+            // Build a map for quick lookup
+            const membershipMap = {};
+            expiredMemberships.forEach(m => {
+              membershipMap[m.id] = m;
+            });
+
+            // Find all bookings (status=booked) for expired memberships
+            const allBookings = await db.collection('bookings').find({ status: 'booked' }).toArray();
+            const allClasses = await db.collection('classes').find({}).toArray();
+            const classMap = {};
+            allClasses.forEach(c => {
+              classMap[c.id] = c;
+            });
+            
+            // Find bookings that reference an expired membership OR belong to a user with an expired membership
+            const bookingsToCancel = [];
+            const todayStr = new Date().toISOString().slice(0, 10);
+            
+            for (const booking of allBookings) {
+              // Check 1: Direct membership reference
+              if (booking.user_membership_id && membershipMap[booking.user_membership_id]) {
+                const cls = classMap[booking.class_id];
+                if (cls) {
+                  const classDateStr = typeof cls.date === 'string' ? cls.date : new Date(cls.date).toISOString().slice(0, 10);
+                  if (classDateStr >= todayStr) {
+                    bookingsToCancel.push(booking);
+                    continue;
+                  }
+                }
+              }
+              
+              // Check 2: User/child has expired membership for this booking's sport
+              const cls = classMap[booking.class_id];
+              if (cls && booking.user_id) {
+                const userExpiredMems = expiredMemberships.filter(m => 
+                  m.user_id === booking.user_id && 
+                  (!booking.child_profile_id || m.child_profile_id === booking.child_profile_id) &&
+                  (m.selected_sports?.includes(cls.sport_id) || !m.selected_sports)
+                );
+                
+                if (userExpiredMems.length > 0) {
+                  const classDateStr = typeof cls.date === 'string' ? cls.date : new Date(cls.date).toISOString().slice(0, 10);
+                  if (classDateStr >= todayStr) {
+                    bookingsToCancel.push(booking);
+                  }
+                }
+              }
+            }
+
+            // Cancel the bookings
+            if (bookingsToCancel.length > 0) {
+              const bookingIds = bookingsToCancel.map(b => b.id);
+              const result = await db.collection('bookings').updateMany(
+                { id: { $in: bookingIds } },
+                { $set: { 
+                  status: 'cancelled', 
+                  reason: 'membership_expired', 
+                  cancelled_at: now,
+                  auto_fixed_at: now,
+                  repaired_by: auth.user.id
+                } }
+              );
+              repairs.success = result.modifiedCount;
+
+              // Mark any active expired memberships as expired
+              await db.collection('user_memberships').updateMany(
+                { id: { $in: expiredMembershipIds }, status: 'active' },
+                { $set: { status: 'expired', expired_at: now } }
+              );
+            }
           }
         } else {
           return err('Unknown issue_type', 400);

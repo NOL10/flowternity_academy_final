@@ -401,6 +401,170 @@ function App() {
         </div>
       </section>
 
+      {/* SCHEDULE & CLASSES */}
+      <section className="py-20 md:py-28 bg-white">
+        <div className="container">
+          {/* Hero Section */}
+          <motion.div 
+            initial={{ opacity: 0, y: 24 }} 
+            whileInView={{ opacity: 1, y: 0 }} 
+            viewport={{ once: true }} 
+            transition={{ duration: 0.7 }}
+            className="mb-20 md:mb-24"
+          >
+            <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground mb-4 font-semibold">TRAIN. PLAY. PROGRESS.</p>
+            <h1 className="font-display font-black text-6xl md:text-8xl leading-[0.95] tracking-tight mb-6 text-black">
+              Find Your<br />Game. Find<br />Your Time.
+            </h1>
+            <p className="text-lg md:text-xl text-slate-600 max-w-2xl leading-relaxed">
+              From early morning sessions to weekend training, discover the perfect time to get moving.
+            </p>
+          </motion.div>
+
+          {/* Schedule Grid */}
+          <div className="space-y-16 md:space-y-20">
+            {/* Basketball Sport Section */}
+            <motion.div
+              initial={{ opacity: 0, y: 24 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.7 }}
+              className="group"
+            >
+              <div className="grid md:grid-cols-[1fr_1.2fr] gap-12 items-start">
+                {/* Left: Sport Header */}
+                <div>
+                  <div className="inline-block mb-6">
+                    <div className="w-14 h-14 rounded-lg bg-black flex items-center justify-center mb-6">
+                      <Trophy className="w-7 h-7 text-accent" />
+                    </div>
+                  </div>
+                  <h2 className="font-display font-black text-5xl md:text-6xl leading-[1.1] mb-3 text-black">Basketball</h2>
+                  <p className="text-sm uppercase tracking-[0.15em] text-slate-500 font-semibold mb-8">Beginner to Advanced</p>
+                  
+                  <div className="space-y-6 mb-10">
+                    <div className="flex items-start gap-4">
+                      <div className="text-accent font-bold text-2xl mt-1">→</div>
+                      <div>
+                        <p className="text-xs uppercase tracking-[0.15em] text-slate-500 font-semibold mb-1">Weekday Coaching</p>
+                        <p className="text-slate-900 font-semibold text-base">Tuesday & Thursday</p>
+                        <p className="text-lg font-bold text-black mt-2">5:00 PM – 6:00 PM</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Link href="/memberships?sport=basketball" className="inline-flex items-center gap-2 group/cta">
+                    <span className="text-sm font-bold uppercase tracking-[0.1em] text-black group-hover/cta:text-accent transition-colors">Explore Basketball</span>
+                    <ArrowRight className="w-4 h-4 text-black group-hover/cta:translate-x-1 group-hover/cta:text-accent transition-all" />
+                  </Link>
+                </div>
+
+                {/* Right: Schedule Timetable */}
+                <div className="bg-black text-white p-8 md:p-10 rounded-2xl">
+                  <p className="text-xs uppercase tracking-[0.15em] text-slate-400 font-semibold mb-8">Full Schedule</p>
+                  
+                  <div className="space-y-8">
+                    {/* Weekday Session */}
+                    <div className="pb-8 border-b border-slate-800">
+                      <p className="text-xs uppercase tracking-[0.15em] text-slate-400 font-semibold mb-4">Weekdays</p>
+                      <div className="space-y-3">
+                        <div>
+                          <p className="text-slate-400 text-sm mb-1">Tuesday & Thursday</p>
+                          <p className="font-display font-black text-2xl text-accent">5:00 PM – 6:00 PM</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Weekend Sessions */}
+                    <div className="pb-8 border-b border-slate-800">
+                      <p className="text-xs uppercase tracking-[0.15em] text-slate-400 font-semibold mb-4">Weekends</p>
+                      <div className="space-y-6">
+                        <div>
+                          <p className="text-slate-400 text-sm mb-1">Saturday & Sunday · Morning</p>
+                          <p className="font-display font-black text-2xl text-accent">8:00 AM – 9:00 AM</p>
+                        </div>
+                        <div className="pt-4 border-t border-slate-800">
+                          <p className="text-slate-400 text-sm mb-1">Saturday & Sunday · Juniors/Intermediates</p>
+                          <p className="font-display font-black text-2xl text-accent">5:00 PM – 6:00 PM</p>
+                        </div>
+                        <div className="pt-4 border-t border-slate-800">
+                          <p className="text-slate-400 text-sm mb-1">Saturday & Sunday · Seniors/Advanced</p>
+                          <p className="font-display font-black text-2xl text-accent">6:00 PM Onwards</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+
+            {/* Skating Sport Section */}
+            <motion.div
+              initial={{ opacity: 0, y: 24 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.7, delay: 0.1 }}
+              className="group"
+            >
+              <div className="grid md:grid-cols-[1.2fr_1fr] gap-12 items-start">
+                {/* Left: Schedule Timetable */}
+                <div className="bg-black text-white p-8 md:p-10 rounded-2xl">
+                  <p className="text-xs uppercase tracking-[0.15em] text-slate-400 font-semibold mb-8">Schedule</p>
+                  
+                  <div className="space-y-8">
+                    <div className="pb-8 border-b border-slate-800">
+                      <p className="text-xs uppercase tracking-[0.15em] text-slate-400 font-semibold mb-4">Weekends</p>
+                      <div>
+                        <p className="text-slate-400 text-sm mb-1">Saturday & Sunday</p>
+                        <p className="font-display font-black text-3xl text-accent">4:00 PM – 5:00 PM</p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-xs uppercase tracking-[0.15em] text-slate-400 font-semibold mb-3">What's Included</p>
+                      <ul className="space-y-2 text-sm text-slate-300">
+                        <li className="flex items-start gap-2">
+                          <span className="text-accent font-bold mt-0.5">✓</span>
+                          <span>All equipment provided</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <span className="text-accent font-bold mt-0.5">✓</span>
+                          <span>Perfect for all levels</span>
+                        </li>
+                        <li className="flex items-start gap-2">
+                          <span className="text-accent font-bold mt-0.5">✓</span>
+                          <span>Group rates available</span>
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right: Sport Header */}
+                <div>
+                  <div className="inline-block mb-6">
+                    <div className="w-14 h-14 rounded-lg bg-black flex items-center justify-center mb-6">
+                      <Zap className="w-7 h-7 text-accent" />
+                    </div>
+                  </div>
+                  <h2 className="font-display font-black text-5xl md:text-6xl leading-[1.1] mb-3 text-black">Skating</h2>
+                  <p className="text-sm uppercase tracking-[0.15em] text-slate-500 font-semibold mb-8">All Levels Welcome</p>
+                  
+                  <p className="text-base text-slate-700 mb-10 leading-relaxed">
+                    Perfect for beginners and experienced skaters. All equipment provided. Book in advance for group rates.
+                  </p>
+
+                  <Link href="/memberships?sport=skating" className="inline-flex items-center gap-2 group/cta">
+                    <span className="text-sm font-bold uppercase tracking-[0.1em] text-black group-hover/cta:text-accent transition-colors">Book Skating</span>
+                    <ArrowRight className="w-4 h-4 text-black group-hover/cta:translate-x-1 group-hover/cta:text-accent transition-all" />
+                  </Link>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        </div>
+      </section>
+
       {/* LOCATION & MAP */}
       <section className="py-24 md:py-32">
         <div className="container">
