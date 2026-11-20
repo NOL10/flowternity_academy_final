@@ -913,7 +913,7 @@ function PickupGameCard({ game, onJoin, onLeave, isBusy, isParent }) {
           </div>
         ) : (
           <Button
-            onClick={() => game.is_paid ? window.location.href = `#pay-${game.id}` : onJoin(game.id)}
+            onClick={() => onJoin(game.id)}
             disabled={isBusy === game.id || isFull || isParent}
             className="w-full mt-auto bg-lime-400 text-black hover:bg-lime-300 font-black py-3 rounded-lg disabled:bg-slate-700 disabled:text-slate-500 premium-hover shadow-lg hover:shadow-2xl hover:shadow-lime-400/40 transition-all duration-300 uppercase tracking-wider disabled:shadow-none"
           >
@@ -1150,11 +1150,6 @@ export default function GamesPage() {
   const join = async (gameId) => {
     if (!user) {
       router.push(`/auth?mode=login&next=/games`);
-      return;
-    }
-    if (!user.has_active_membership) {
-      toast.error('Active membership required');
-      router.push('/memberships');
       return;
     }
     setBusy(gameId);

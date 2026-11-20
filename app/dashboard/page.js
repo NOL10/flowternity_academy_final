@@ -102,30 +102,33 @@ export default function DashboardPage() {
   }, [user, activeChild, activeSport]);
 
   // Export performance data
-  const exportPerformance = () => {
+  const exportPerformance = async () => {
     if (!performanceData) return;
     const sport = performanceData.sports.find(s => s.sport_id === activeSport);
     if (!sport) return;
 
-    const csvContent = [
-      ['Performance Report', activeSport.toUpperCase()],
-      ['Generated', new Date().toLocaleDateString('en-IN')],
-      [],
-      ['Metric', 'Score', 'Max'],
-      ...Object.entries(sport.scores || {}).map(([key, val]) => [key, val, 10]),
-      [],
-      ['Monthly Data'],
-      ['Month', 'Average Score'],
-      ...(performanceData.monthly_history?.[activeSport] || []).map(m => [m.month, (Object.values(m.metrics).reduce((a, b) => a + b, 0) / Object.keys(m.metrics).length).toFixed(1)]),
-    ].map(row => row.join(',')).join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `performance-${activeSport}-${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    toast.success('Performance data exported');
+    try {
+      // Dynamic import for client-side PDF generation
+      const { generatePerformanceReportPDF } = await import('@/lib/flowternity/performance-pdf');
+      const { metricsForSport } = await import('@/lib/flowternity/metrics');
+      
+      const metrics = metricsForSport(activeSport);
+      const scores = metrics.map(m => sport.scores?.[m.key] || null);
+      
+      const doc = await generatePerformanceReportPDF(
+        user?.full_name || 'Player',
+        activeSport,
+        metrics,
+        scores,
+        new Date().toLocaleDateString('en-IN')
+      );
+      
+      doc.save(`performance-${activeSport}-${new Date().toISOString().split('T')[0]}.pdf`);
+      toast.success('Performance report exported as PDF');
+    } catch (error) {
+      console.error('Export error:', error);
+      toast.error('Failed to export report');
+    }
   };
 
   if (loading || loadingData) {
@@ -173,6 +176,23 @@ export default function DashboardPage() {
   // Filter announcements and allow dismissal
   const visibleAnnouncements = (data?.announcements || []).filter(a => !dismissedAnnouncements.includes(a.id));
 
+  // Helper function to convert URLs in text to clickable links
+  const parseMessageWithLinks = (message) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = message.split(urlRegex);
+    
+    return parts.map((part, idx) => {
+      if (urlRegex.test(part)) {
+        return (
+          <a key={idx} href={part} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:text-blue-700 underline font-semibold">
+            {part}
+          </a>
+        );
+      }
+      return part;
+    });
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-background via-background to-secondary/5 pb-12">
       <SiteNav />
@@ -204,7 +224,7 @@ export default function DashboardPage() {
                   <Bell className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
                   <div className="flex-1">
                     <h4 className="font-semibold text-blue-900">{a.title}</h4>
-                    <p className="text-sm text-blue-800 mt-1">{a.message}</p>
+                    <p className="text-sm text-blue-800 mt-1 whitespace-pre-wrap break-words">{parseMessageWithLinks(a.message)}</p>
                   </div>
                 </div>
                 <button 

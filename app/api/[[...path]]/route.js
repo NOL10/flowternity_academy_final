@@ -834,7 +834,8 @@ async function handleRoute(request, { params }) {
               attended_classes: 0,
               attendance_rate: 0,
               by_sport: {}
-            }
+            },
+            classes: []
           });
         }
 
@@ -856,6 +857,7 @@ async function handleRoute(request, { params }) {
         let totalAttended = 0;
         let totalClasses = bookings.length;
         const bySport = {};
+        const classDetailsList = [];
 
         for (const booking of bookings) {
           const cls = classMap[booking.class_id];
@@ -885,13 +887,36 @@ async function handleRoute(request, { params }) {
           ? Math.round((totalAttended / totalClasses) * 100)
           : 0;
 
+        // Build detailed class list
+        for (const booking of bookings) {
+          const cls = classMap[booking.class_id];
+          if (!cls) continue;
+          
+          const attended = attendanceRecords.find(a => a.booking_id === booking.id && a.present);
+          classDetailsList.push({
+            booking_id: booking.id,
+            class_name: cls.title || 'Class',
+            sport_id: cls.sport_id,
+            date: cls.date,
+            start_time: cls.start_time,
+            end_time: cls.end_time,
+            location: cls.location,
+            status: attended ? 'attended' : 'booked',
+            booked_at: booking.booked_at
+          });
+        }
+        
+        // Sort by date descending
+        classDetailsList.sort((a, b) => new Date(b.date) - new Date(a.date));
+
         return j({ 
           attendance: {
             total_classes: totalClasses,
             attended_classes: totalAttended,
             attendance_rate: attendanceRate,
             by_sport: bySport
-          }
+          },
+          classes: classDetailsList
         });
       } catch (e) {
         console.error('Error getting attendance:', e);
@@ -2069,12 +2094,6 @@ async function handleRoute(request, { params }) {
       const game = await db.collection('games').findOne({ id: gameJoinMatch[1] });
       if (!game) return err('Game not found', 404);
       
-      // Only free games require membership
-      if (!game.is_paid) {
-        const um = await db.collection('user_memberships').findOne({ user_id: auth.user.id, status: 'active', expiry_date: { $gt: new Date() } });
-        if (!um) return err('You need an active membership to join a free game.', 403);
-      }
-      
       const already = await db.collection('game_participants').findOne({ game_id: game.id, user_id: auth.user.id });
       if (already) return err('You already joined this game', 409);
       const count = await db.collection('game_participants').countDocuments({ game_id: game.id });
@@ -2880,10 +2899,12 @@ async function handleRoute(request, { params }) {
           Your entry has been confirmed. Good luck!
         `;
 
-        await sendTournamentPaymentConfirmationEmail?.({
+        await sendTournamentRegistrationEmail?.({
           to: reg.email,
           name: reg.name,
-          confirmationDetails,
+          tournament: game.title,
+          category: category.name,
+          amount: reg.amount,
         }).catch(e => console.error('Email send error:', e));
       }
 
@@ -3800,9 +3821,11 @@ async function handleRoute(request, { params }) {
             gender: r.gender,
             tournament_id: r.tournament_id,
             tournament_name: game?.title || game?.name || 'Unknown',
+            tournament_date: game?.date || '',
             category_id: r.category_id,
             category_name: category?.name || 'Unknown',
             payment_status: paymentStatus,
+            entry_fee: category?.entry_fee || r.amount || 0,
             amount: r.amount || 0,
             razorpay_payment_id: r.razorpay_payment_id,
             created_at: r.registered_at || r.created_at,

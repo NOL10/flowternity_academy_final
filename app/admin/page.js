@@ -21,7 +21,7 @@ import {
   Trash2, Plus, Users, Calendar, Activity, Sparkles, Search, CreditCard,
   Megaphone, UserCog, ClipboardList, CheckCircle2, XCircle, Save, Flame,
   LayoutDashboard, ArrowLeft, LogOut, ChevronRight, Home, TrendingUp, Gift, CalendarPlus, RotateCcw,
-  BarChart2, FileText, TrendingDown, Percent, BookOpen, Printer, Download, Upload, X
+  BarChart2, FileText, TrendingDown, Percent, BookOpen, Printer, Download, Upload, X, ChevronDown
 } from 'lucide-react';
 import {
   BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -1666,14 +1666,14 @@ function ParticipantsSection() {
       ? ['Name', 'Email', 'Mobile', 'Game', 'Date', 'Joined Date']
       : tab === 'paid-games'
       ? ['Name', 'Game', 'Amount', 'Payment Status', 'Booked Date']
-      : ['Name', 'Email', 'Mobile', 'DOB', 'Age', 'Gender', 'Tournament', 'Category', 'Payment Status', 'Registration Date'];
+      : ['Name', 'Email', 'Mobile', 'DOB', 'Age', 'Gender', 'Tournament', 'Category', 'Amount Paid', 'Payment Status', 'Tournament Date', 'Registration Date'];
     
     const rows = filtered.map(p => 
       tab === 'free-games'
         ? [p.name, p.email || '', p.mobile || '', p.game_name, p.date, p.joined_at]
         : tab === 'paid-games'
         ? [p.name || 'User', p.game_name, `₹${p.amount}`, p.payment_status || 'paid', p.booked_at]
-        : [p.name, p.email || '', p.mobile || '', p.dob || '', p.calculated_age || '', p.gender || '', p.tournament_name, p.category_name, p.payment_status || 'paid', p.created_at]
+        : [p.name, p.email || '', p.mobile || '', p.dob || '', p.calculated_age || '', p.gender || '', p.tournament_name, p.category_name, `₹${p.entry_fee || 0}`, p.payment_status || 'paid', p.tournament_date, p.created_at]
     );
 
     const csv = [headers, ...rows].map(r => r.map(v => `"${v || ''}"`).join(',')).join('\n');
@@ -1785,8 +1785,10 @@ function ParticipantsSection() {
                     <th className="px-4 py-3 text-left text-slate-300 font-semibold">Tournament</th>
                     <th className="px-4 py-3 text-left text-slate-300 font-semibold">Category</th>
                     <th className="px-4 py-3 text-left text-slate-300 font-semibold">Age</th>
+                    <th className="px-4 py-3 text-left text-slate-300 font-semibold">Amount Paid</th>
                     <th className="px-4 py-3 text-left text-slate-300 font-semibold">Payment</th>
-                    <th className="px-4 py-3 text-left text-slate-300 font-semibold">Date</th>
+                    <th className="px-4 py-3 text-left text-slate-300 font-semibold">Tournament Date</th>
+                    <th className="px-4 py-3 text-left text-slate-300 font-semibold">Registered</th>
                   </>
                 )}
               </tr>
@@ -1824,11 +1826,13 @@ function ParticipantsSection() {
                       <td className="px-4 py-3 text-slate-300">{p.tournament_name}</td>
                       <td className="px-4 py-3 text-slate-300">{p.category_name}</td>
                       <td className="px-4 py-3 text-slate-400">{p.calculated_age || p.age || '—'}</td>
+                      <td className="px-4 py-3 text-slate-100 font-mono">₹{p.entry_fee || '—'}</td>
                       <td className="px-4 py-3">
                         <Badge variant="outline" className={p.payment_status === 'paid' ? 'border-lime-400/30 text-lime-300 bg-lime-400/5' : 'border-yellow-400/30 text-yellow-300 bg-yellow-400/5'}>
                           {p.payment_status === 'paid' ? '✓ Paid' : '⏳ Pending'}
                         </Badge>
                       </td>
+                      <td className="px-4 py-3 text-slate-400 text-xs">{new Date(p.tournament_date).toLocaleDateString('en-IN')}</td>
                       <td className="px-4 py-3 text-slate-400 text-xs">{new Date(p.created_at).toLocaleDateString('en-IN')}</td>
                     </>
                   )}
@@ -3683,6 +3687,23 @@ function AnnouncementsSection() {
     load();
   };
 
+  // Helper function to convert URLs in text to clickable links
+  const parseMessageWithLinks = (message) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const parts = message.split(urlRegex);
+    
+    return parts.map((part, idx) => {
+      if (urlRegex.test(part)) {
+        return (
+          <a key={idx} href={part} target="_blank" rel="noopener noreferrer" className="text-lime-400 hover:text-lime-300 underline">
+            {part}
+          </a>
+        );
+      }
+      return part;
+    });
+  };
+
   return (
     <>
       <SectionHeader
@@ -3700,7 +3721,7 @@ function AnnouncementsSection() {
               <div className="flex justify-between items-start gap-3">
                 <div className="min-w-0">
                   <h3 className="font-semibold text-slate-100">{a.title}</h3>
-                  <p className="text-sm text-slate-400 mt-1">{a.message}</p>
+                  <p className="text-sm text-slate-400 mt-1 whitespace-pre-wrap break-words">{parseMessageWithLinks(a.message)}</p>
                   <p className="text-xs text-slate-500 mt-2">{new Date(a.created_at).toLocaleString('en-IN')}</p>
                 </div>
                 <button onClick={() => remove(a.id)} className="p-2 rounded hover:bg-red-500/10 text-slate-500 hover:text-red-400"><Trash2 className="w-4 h-4" /></button>
@@ -5608,6 +5629,7 @@ function AthletesSection() {
   const [filterMembership, setFilterMembership] = useState('all');
   const [filterSport, setFilterSport] = useState('all');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [showClassesList, setShowClassesList] = useState(false);
   const PAGE_SIZE = 20;
   const cacheRef = useRef({});
 
@@ -5778,6 +5800,7 @@ function AthletesSection() {
             levels_catalog: perfData.levels_catalog || []
           } : {},
           attendance: attendanceData.attendance || {},
+          classes: attendanceData.classes || [],
           jerseys: athleteJerseys,
           memberships: detailData.memberships || []
         };
@@ -6060,7 +6083,47 @@ function AthletesSection() {
                 </div>
               )}
 
-              {/* Personal Information */}
+              {/* Classes List Dropdown */}
+              {athleteDetails?.classes && athleteDetails.classes.length > 0 && (
+                <div className="bg-slate-900 p-4 rounded-lg border border-slate-800">
+                  <button
+                    onClick={() => setShowClassesList(!showClassesList)}
+                    className="w-full flex items-center justify-between hover:text-lime-400 transition"
+                  >
+                    <h4 className="font-semibold text-slate-100">View Booked & Attended Classes</h4>
+                    <ChevronDown className={`w-5 h-5 transition-transform ${showClassesList ? 'rotate-180' : ''}`} />
+                  </button>
+                  
+                  {showClassesList && (
+                    <div className="mt-4 space-y-2 pt-4 border-t border-slate-800 max-h-96 overflow-y-auto">
+                      {athleteDetails.classes.map((cls, idx) => (
+                        <div key={idx} className={`p-3 rounded border flex items-start justify-between gap-3 ${
+                          cls.status === 'attended' 
+                            ? 'bg-emerald-950 border-emerald-700' 
+                            : 'bg-blue-950 border-blue-700'
+                        }`}>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-slate-100">{cls.class_name}</p>
+                            <p className="text-xs text-slate-400 mt-1">
+                              {new Date(cls.date).toLocaleDateString('en-IN')} • {cls.start_time} - {cls.end_time}
+                            </p>
+                            {cls.location && (
+                              <p className="text-xs text-slate-400">📍 {cls.location}</p>
+                            )}
+                          </div>
+                          <Badge className={`flex-shrink-0 ${
+                            cls.status === 'attended'
+                              ? 'bg-emerald-600 text-white'
+                              : 'bg-blue-600 text-white'
+                          }`}>
+                            {cls.status === 'attended' ? '✓ Attended' : 'Booked'}
+                          </Badge>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               <div>
                 <h3 className="text-sm font-semibold text-lime-400 uppercase tracking-widest mb-3">Personal Information</h3>
                 <div className="grid grid-cols-2 gap-4">
