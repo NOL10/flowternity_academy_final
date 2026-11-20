@@ -103,6 +103,12 @@ export default function DashboardPage() {
 
   // Export performance data
   const exportPerformance = async () => {
+    // Profile isolation: require activeChild to export
+    if (!activeChild) {
+      toast.error('Please select a child profile first');
+      return;
+    }
+    
     if (!performanceData) return;
     const sport = performanceData.sports.find(s => s.sport_id === activeSport);
     if (!sport) return;
@@ -115,15 +121,23 @@ export default function DashboardPage() {
       const metrics = metricsForSport(activeSport);
       const scores = metrics.map(m => sport.scores?.[m.key] || null);
       
+      // Use child's athlete name, not parent's
+      const childName = activeChild?.athlete_name || activeChild?.child_name || 'Player';
+      const parentName = user?.full_name || 'Parent';
+      
       const doc = await generatePerformanceReportPDF(
-        user?.full_name || 'Player',
+        childName,
         activeSport,
         metrics,
         scores,
-        new Date().toLocaleDateString('en-IN')
+        new Date().toLocaleDateString('en-IN'),
+        parentName
       );
       
-      doc.save(`performance-${activeSport}-${new Date().toISOString().split('T')[0]}.pdf`);
+      // Filename includes child name for traceability and to prevent overwrites
+      const sanitizedChildName = childName.replace(/\s+/g, '-').toLowerCase();
+      const date = new Date().toISOString().split('T')[0];
+      doc.save(`performance-${sanitizedChildName}-${activeSport}-${date}.pdf`);
       toast.success('Performance report exported as PDF');
     } catch (error) {
       console.error('Export error:', error);
