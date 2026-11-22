@@ -78,12 +78,19 @@ export default function SiteNav({ dark = false }) {
 
         <div className="hidden md:flex items-center gap-3">
           {user ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-2">
-                  <Avatar className="w-9 h-9"><AvatarFallback className="bg-accent text-black font-semibold">{user.full_name?.[0]?.toUpperCase() || 'U'}</AvatarFallback></Avatar>
-                </button>
-              </DropdownMenuTrigger>
+            <>
+              <Link href="/classes">
+                <Button variant="outline" className="flex items-center gap-2 border-accent/30 hover:border-accent hover:bg-accent/5 transition-colors">
+                  <Calendar className="w-4 h-4" />
+                  <span className="text-sm font-medium">Book Class</span>
+                </Button>
+              </Link>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button className="flex items-center gap-2">
+                    <Avatar className="w-9 h-9"><AvatarFallback className="bg-accent text-black font-semibold">{user.full_name?.[0]?.toUpperCase() || 'U'}</AvatarFallback></Avatar>
+                  </button>
+                </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
                 <div className="px-2 py-1.5">
                   <p className="text-sm font-semibold">{user.full_name}</p>
@@ -98,7 +105,8 @@ export default function SiteNav({ dark = false }) {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={logout} className="text-destructive">Sign out</DropdownMenuItem>
               </DropdownMenuContent>
-            </DropdownMenu>
+              </DropdownMenu>
+            </>
           ) : (
             <>
               {!activeMembership && (
