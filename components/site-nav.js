@@ -125,7 +125,7 @@ export default function SiteNav({ dark = false }) {
         <div className="md:hidden flex items-center gap-2">
           {user && (
             <Link href="/classes" onClick={() => setOpen(false)}>
-              <Button variant="outline" size="sm" className="rounded-full px-3 py-2 text-xs font-semibold flex items-center gap-1 border-accent text-accent hover:bg-accent/10 md:hidden">
+              <Button variant="outline" size="sm" className="flex items-center gap-1 border-accent/30 text-foreground hover:border-accent hover:bg-accent/5 transition-colors md:hidden">
                 <Calendar className="w-3.5 h-3.5" />
                 <span>Book</span>
               </Button>
