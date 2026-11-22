@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/app/providers';
-import { Menu, X, Sparkles } from 'lucide-react';
+import { Menu, X, Sparkles, Calendar, Zap } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
@@ -114,45 +114,84 @@ export default function SiteNav({ dark = false }) {
           )}
         </div>
 
-        <button className={`md:hidden ${textColor}`} onClick={() => setOpen(!open)}>
-          {open ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-        </button>
+        <div className="md:hidden flex items-center gap-2">
+          {user && (
+            <Link href="/classes" onClick={() => setOpen(false)}>
+              <Button variant="outline" size="sm" className="rounded-full px-3 py-2 text-xs font-semibold flex items-center gap-1 border-accent text-accent hover:bg-accent/10 md:hidden">
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Book</span>
+              </Button>
+            </Link>
+          )}
+          <button className={`${textColor}`} onClick={() => setOpen(!open)}>
+            {open ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+          </button>
+        </div>
       </div>
 
       {open && (
         <div className={`md:hidden border-t ${border} ${dark ? 'bg-black' : 'bg-background'}`}>
-          <div className="container py-4 flex flex-col gap-3">
-            {baseLinks.map(l => (
-              <Link key={l.href} href={l.href} className={`text-sm font-medium ${textColor} py-2`} onClick={() => setOpen(false)}>{l.label}</Link>
-            ))}
-            
-            {/* Mobile Academy Submenu */}
-            <div className={`text-sm font-medium ${textColor} py-2 border-t ${border} mt-2 pt-4`}>
-              <div className="font-semibold mb-2">Academy</div>
-              <div className="pl-4 flex flex-col gap-2">
+          <div className="container py-4 flex flex-col">
+            {/* Section 1: Account Actions Group (for logged-in users) */}
+            {user && (
+              <div className={`flex flex-col gap-1 border-t ${border} pt-4 pb-4`}>
+                <Link href="/dashboard" className={`text-sm font-medium ${textColor} py-3 px-2 hover:bg-accent/5 rounded-lg transition`} onClick={() => setOpen(false)}>Dashboard</Link>
+                <Link href="/profile" className={`text-sm font-medium ${textColor} py-3 px-2 hover:bg-accent/5 rounded-lg transition`} onClick={() => setOpen(false)}>Profile</Link>
+                
+                {/* Book Class - More Prominent */}
+                <Link href="/classes" className={`text-sm font-semibold ${textColor} py-3 px-2 bg-secondary/80 rounded-lg hover:bg-secondary transition flex items-center gap-2`} onClick={() => setOpen(false)}>
+                  <Calendar className="w-4 h-4" />
+                  Book Class
+                </Link>
+                
+                <Link href="/games" className={`text-sm font-medium ${textColor} py-3 px-2 hover:bg-accent/5 rounded-lg transition`} onClick={() => setOpen(false)}>Games</Link>
+                
+                {(user.role === 'admin' || user.role === 'coach') && (
+                  <Link href="/admin" className={`text-sm font-medium ${textColor} py-3 px-2 hover:bg-accent/5 rounded-lg transition`} onClick={() => setOpen(false)}>
+                    {user.role === 'admin' ? 'Admin Panel' : 'Coach Dashboard'}
+                  </Link>
+                )}
+              </div>
+            )}
+
+            {/* Section 2: Academy Sports Group */}
+            <div className={`flex flex-col gap-1 border-t ${border} pt-4 pb-4`}>
+              <div className={`text-sm font-semibold ${textColor} px-2 pb-2`}>
+                Academy
+              </div>
+              <div className="flex flex-col gap-1">
                 {sports.map(sport => (
-                  <Link key={sport.id} href={sport.href} className={`text-sm ${textColor} opacity-80 py-1`} onClick={() => setOpen(false)}>
+                  <Link key={sport.id} href={sport.href} className={`text-sm font-medium ${textColor} opacity-80 hover:opacity-100 py-3 px-2 hover:bg-accent/5 rounded-lg transition`} onClick={() => setOpen(false)}>
                     {sport.name}
                   </Link>
                 ))}
               </div>
             </div>
+
+            {/* Section 3: Main Navigation Group */}
+            <div className={`flex flex-col gap-1 border-t ${border} pt-4 pb-4`}>
+              {baseLinks.map(l => (
+                <Link key={l.href} href={l.href} className={`text-sm font-medium ${textColor} opacity-80 hover:opacity-100 py-3 px-2 hover:bg-accent/5 rounded-lg transition`} onClick={() => setOpen(false)}>
+                  {l.label}
+                </Link>
+              ))}
+            </div>
             
+            {/* Auth Section */}
             {user ? (
-              <>
-                <Link href="/dashboard" className={`text-sm font-medium ${textColor} py-2`} onClick={() => setOpen(false)}>Dashboard</Link>
-                <Link href="/profile" className={`text-sm font-medium ${textColor} py-2`} onClick={() => setOpen(false)}>Profile</Link>
-                {(user.role === 'admin' || user.role === 'coach') && <Link href="/admin" className={`text-sm font-medium ${textColor} py-2`} onClick={() => setOpen(false)}>{user.role === 'admin' ? 'Admin Panel' : 'Coach Dashboard'}</Link>}
-                <button onClick={logout} className="text-sm text-destructive text-left py-2">Sign out</button>
-              </>
+              <div className={`flex flex-col gap-1 border-t ${border} pt-4 pb-4`}>
+                <button onClick={() => { logout(); setOpen(false); }} className="text-sm font-medium text-destructive text-left py-3 px-2 hover:bg-destructive/5 rounded-lg transition">
+                  Sign out
+                </button>
+              </div>
             ) : (
-              <div className="flex flex-col gap-2 pt-2">
+              <div className={`flex flex-col gap-3 border-t ${border} pt-4 pb-4`}>
                 {!activeMembership && (
-                  <Link href="/trial" onClick={() => setOpen(false)}><Button variant="outline" className="w-full"><Sparkles className="w-4 h-4 mr-1.5" /> Book free class</Button></Link>
+                  <Link href="/trial" onClick={() => setOpen(false)}><Button variant="outline" className="w-full py-6"><Sparkles className="w-4 h-4 mr-1.5" /> Book free class</Button></Link>
                 )}
                 <div className="flex gap-2">
-                  <Link className="flex-1" href="/auth?mode=login" onClick={() => setOpen(false)}><Button variant="outline" className="w-full">Sign in</Button></Link>
-                  <Link className="flex-1" href="/memberships" onClick={() => setOpen(false)}><Button className="w-full bg-accent text-black hover:bg-accent/90">Join Now</Button></Link>
+                  <Link className="flex-1" href="/auth?mode=login" onClick={() => setOpen(false)}><Button variant="outline" className="w-full py-6">Sign in</Button></Link>
+                  <Link className="flex-1" href="/memberships" onClick={() => setOpen(false)}><Button className="w-full py-6 bg-accent text-black hover:bg-accent/90">Join Now</Button></Link>
                 </div>
               </div>
             )}
